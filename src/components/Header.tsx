@@ -14,14 +14,6 @@ export function Header({ onMenuClick }: HeaderProps) {
   return (
     <header className="flex h-16 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-4 md:px-8 items-center justify-between shrink-0 transition-colors z-20">
       <div className="flex items-center gap-3 md:gap-4 flex-1 md:flex-none">
-        {onMenuClick && (
-          <button
-            onClick={onMenuClick}
-            className="md:hidden p-2 -ml-2 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white focus:outline-none rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-700"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-        )}
         <div className="flex items-center text-zinc-500 dark:text-zinc-400">
           <span className="text-sm font-medium hidden sm:inline-block">
             {format(new Date(), "EEEE, dd MMMM yyyy")}

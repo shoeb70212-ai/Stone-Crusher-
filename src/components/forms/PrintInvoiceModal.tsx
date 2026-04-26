@@ -35,8 +35,8 @@ export function PrintInvoiceModal({
   }[companySettings.primaryColor || "emerald"];
 
   return (
-    <div className="fixed inset-0 bg-zinc-900/80 flex items-center justify-center p-4 z-50">
-      <div className={`bg-white dark:bg-zinc-800 rounded-2xl w-full shadow-xl flex flex-col max-h-[90vh] ${format === 'A4' ? 'max-w-4xl' : 'max-w-sm'}`}>
+    <div className="fixed inset-0 bg-zinc-900/80 flex items-center justify-center md:p-4 z-50 overflow-hidden">
+      <div className={`bg-white dark:bg-zinc-800 md:rounded-2xl w-full h-full md:h-auto shadow-xl flex flex-col md:max-h-[90vh] ${format === 'A4' ? 'max-w-4xl' : 'max-w-sm'}`}>
         <div className="p-4 border-b flex justify-between items-center print:hidden">
           <h3 className="font-bold text-zinc-900 dark:text-white">Print Invoice</h3>
           <button
@@ -47,11 +47,13 @@ export function PrintInvoiceModal({
           </button>
         </div>
 
-        <div
-          id="print-invoice-area"
-          className="p-4 md:p-8 text-black bg-white dark:bg-white flex-1 overflow-y-auto"
-        >
-          <style dangerouslySetInnerHTML={{ __html: `
+        <div className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-900 p-4">
+          <div
+            id="print-invoice-area"
+            className="text-black bg-white mx-auto relative p-4 md:p-8"
+            style={{ width: format === 'A4' ? '794px' : (format === 'Thermal-58mm' ? '220px' : '300px') }}
+          >
+            <style dangerouslySetInnerHTML={{ __html: `
             @media print {
               @page {
                 size: ${format === 'A4' ? 'A4' : format === 'Thermal-58mm' ? '58mm auto' : '80mm auto'};
@@ -65,7 +67,280 @@ export function PrintInvoiceModal({
           `}} />
           
           {format === "A4" ? (
-            <div className="flex flex-col min-h-[1050px] bg-white text-black font-sans border-2 border-black m-4">
+             companySettings.invoiceTemplate === "Modern" ? (
+               <div className="flex flex-col min-h-[1050px] bg-white text-black font-sans m-4 shadow-2xl overflow-hidden rounded-xl relative">
+                  {companySettings.invoiceWatermark && companySettings.invoiceWatermark !== "None" && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden z-0 opacity-[0.03]">
+                      <div className="text-[150px] font-black transform -rotate-45 whitespace-nowrap" style={{ color: primaryColorHex }}>
+                        {companySettings.invoiceWatermark === "Company Name" ? companySettings.name : 
+                         companySettings.invoiceWatermark === "Status" ? invoice.status || "PENDING" : 
+                         companySettings.invoiceWatermarkText}
+                      </div>
+                    </div>
+                  )}
+                 {/* Modern Header */}
+                 <div className="p-8 text-white flex justify-between items-center relative z-10" style={{ backgroundColor: primaryColorHex }}>
+                   <div className="flex items-center gap-4">
+                     {companySettings.logo && (
+                        <div className="bg-white p-2 rounded-lg">
+                           <img src={companySettings.logo} alt="Logo" className="h-16 w-16 object-contain" />
+                        </div>
+                     )}
+                     <div>
+                       <h1 className="text-3xl font-extrabold tracking-tight uppercase">{companySettings.name || "COMPANY NAME"}</h1>
+                       <div className="text-sm opacity-90 mt-1 whitespace-pre-wrap">{companySettings.address}</div>
+                     </div>
+                   </div>
+                   <div className="text-right text-sm space-y-1">
+                      <div className="text-2xl font-black tracking-widest uppercase mb-2">
+                        {invoice.type === "GST" ? "TAX INVOICE" : "INVOICE"}
+                      </div>
+                      {companySettings.phone && <p>Tel: {companySettings.phone}</p>}
+                      {companySettings.gstin && <p>GSTIN: {companySettings.gstin}</p>}
+                   </div>
+                 </div>
+                 
+                 {/* Details */}
+                 <div className="p-8 grid grid-cols-2 gap-8 relative z-10">
+                   <div>
+                     <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Billed To</div>
+                     <div className="font-bold text-lg text-gray-800">{customer?.name || (invoice.customerId === 'CASH' ? 'Cash Customer' : invoice.customerId)}</div>
+                     {customer?.address && <div className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{customer.address}</div>}
+                     {customer?.phone && <div className="text-sm text-gray-600 mt-1">Ph: {customer.phone}</div>}
+                     {invoice.type === "GST" && customer?.gstin && <div className="text-sm text-gray-600 mt-1">GSTIN: {customer.gstin}</div>}
+                   </div>
+                   <div className="text-right flex flex-col items-end">
+                     <table className="text-sm text-gray-600">
+                       <tbody>
+                         <tr>
+                           <td className="pr-4 py-1 text-gray-500 font-medium">Invoice No:</td>
+                           <td className="font-bold text-gray-900">{invoice.invoiceNo}</td>
+                         </tr>
+                         <tr>
+                           <td className="pr-4 py-1 text-gray-500 font-medium">Date:</td>
+                           <td className="font-bold text-gray-900">{new Date(invoice.date).toLocaleDateString('en-GB')}</td>
+                         </tr>
+                         {companySettings.invoiceShowDueDate && (
+                           <tr>
+                             <td className="pr-4 py-1 text-gray-500 font-medium">Due Date:</td>
+                             <td className="font-bold text-gray-900">{new Date(new Date(invoice.date).getTime() + 15 * 86400000).toLocaleDateString('en-GB')}</td>
+                           </tr>
+                         )}
+                       </tbody>
+                     </table>
+                   </div>
+                 </div>
+
+                 {/* Table */}
+                 <div className="px-8 flex-1 relative z-10">
+                   <table className="w-full text-sm">
+                     <thead className="bg-gray-50 text-gray-500 font-bold text-xs uppercase tracking-wider">
+                       <tr>
+                         <th className="py-3 px-4 text-left rounded-l-lg">Description</th>
+                         <th className="py-3 px-4 text-left">HSN</th>
+                         <th className="py-3 px-4 text-right">Qty</th>
+                         <th className="py-3 px-4 text-right">Rate</th>
+                         <th className="py-3 px-4 text-right rounded-r-lg">Total</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y divide-gray-100">
+                       {invoice.items.map((item, i) => (
+                         <tr key={i} className="text-gray-700">
+                           <td className="py-4 px-4 font-medium">{item.materialType}</td>
+                           <td className="py-4 px-4">{item.hsnCode || "-"}</td>
+                           <td className="py-4 px-4 text-right">{item.quantity}</td>
+                           <td className="py-4 px-4 text-right">{item.rate.toFixed(2)}</td>
+                           <td className="py-4 px-4 text-right font-semibold text-gray-900">{item.amount.toFixed(2)}</td>
+                         </tr>
+                       ))}
+                     </tbody>
+                   </table>
+                 </div>
+
+                 {/* Totals & Footer */}
+                 <div className="p-8 grid grid-cols-2 gap-8 border-t border-gray-100 relative z-10">
+                    <div>
+                      {companySettings.bankName && (
+                        <div className="mb-6">
+                           <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Payment Info</div>
+                           <div className="text-sm text-gray-600">
+                             <div><span className="font-medium">Bank:</span> {companySettings.bankName}</div>
+                             <div><span className="font-medium">Account:</span> {companySettings.accountNumber}</div>
+                             <div><span className="font-medium">IFSC:</span> {companySettings.ifscCode}</div>
+                           </div>
+                        </div>
+                      )}
+                      <div>
+                         <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Terms & Conditions</div>
+                         <div className="text-[10px] text-gray-500 whitespace-pre-wrap">
+                           {companySettings.termsAndConditions || "Subject to local jurisdiction. Goods once sold will not be taken back."}
+                         </div>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="bg-gray-50 rounded-xl p-6">
+                         <div className="flex justify-between text-sm mb-2 text-gray-600">
+                           <span>Subtotal</span>
+                           <span className="font-medium">₹{invoice.subTotal.toFixed(2)}</span>
+                         </div>
+                         {invoice.type === "GST" && (
+                           <>
+                             <div className="flex justify-between text-sm mb-2 text-gray-600">
+                               <span>CGST</span>
+                               <span className="font-medium">₹{invoice.cgst.toFixed(2)}</span>
+                             </div>
+                             <div className="flex justify-between text-sm mb-4 text-gray-600">
+                               <span>SGST</span>
+                               <span className="font-medium">₹{invoice.sgst.toFixed(2)}</span>
+                             </div>
+                           </>
+                         )}
+                         <div className="flex justify-between items-center border-t border-gray-200 pt-4">
+                           <span className="font-bold text-gray-900 uppercase">Total Amount</span>
+                           <span className="text-2xl font-black" style={{ color: primaryColorHex }}>₹{invoice.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                         </div>
+                         <div className="text-right text-[10px] text-gray-500 mt-2 font-medium">
+                           {toWords.convert(invoice.total, { doNotAddOnly: false })}
+                         </div>
+                      </div>
+                      
+                      <div className="mt-12 text-center flex flex-col items-end">
+                         <div className="w-48 border-t-2 border-gray-200 pt-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                           Authorized Signatory
+                         </div>
+                      </div>
+                    </div>
+                 </div>
+
+               </div>
+             ) : companySettings.invoiceTemplate === "Minimal" ? (
+               <div className="flex flex-col min-h-[1050px] bg-white text-black font-sans m-4 p-12 relative">
+                  {companySettings.invoiceWatermark && companySettings.invoiceWatermark !== "None" && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden z-0 opacity-[0.03]">
+                      <div className="text-[150px] font-black transform -rotate-45 whitespace-nowrap" style={{ color: primaryColorHex }}>
+                        {companySettings.invoiceWatermark === "Company Name" ? companySettings.name : 
+                         companySettings.invoiceWatermark === "Status" ? invoice.status || "PENDING" : 
+                         companySettings.invoiceWatermarkText}
+                      </div>
+                    </div>
+                  )}
+                 {/* Minimal Header */}
+                 <div className="flex justify-between items-start border-b-2 border-black pb-8 mb-8 relative z-10">
+                   <div>
+                     <h1 className="text-4xl font-black uppercase tracking-tighter">{companySettings.name || "COMPANY NAME"}</h1>
+                     <div className="text-sm mt-2 text-gray-600 whitespace-pre-wrap max-w-sm">{companySettings.address}</div>
+                     <div className="text-sm text-gray-600 mt-1">
+                       {companySettings.phone && <span className="mr-4">T: {companySettings.phone}</span>}
+                       {companySettings.gstin && <span>GSTIN: {companySettings.gstin}</span>}
+                     </div>
+                   </div>
+                   <div className="text-right">
+                     <div className="text-2xl font-light uppercase tracking-widest text-gray-400 mb-4">
+                       {invoice.type === "GST" ? "Tax Invoice" : "Invoice"}
+                     </div>
+                     <div className="text-sm">
+                       <div className="mb-1"><span className="text-gray-500 inline-block w-20">Inv No.</span> <span className="font-medium">{invoice.invoiceNo}</span></div>
+                       <div className="mb-1"><span className="text-gray-500 inline-block w-20">Date</span> <span className="font-medium">{new Date(invoice.date).toLocaleDateString('en-GB')}</span></div>
+                       {companySettings.invoiceShowDueDate && (
+                          <div className="mb-1"><span className="text-gray-500 inline-block w-20">Due Date</span> <span className="font-medium">{new Date(new Date(invoice.date).getTime() + 15 * 86400000).toLocaleDateString('en-GB')}</span></div>
+                       )}
+                     </div>
+                   </div>
+                 </div>
+
+                 {/* Minimal Billed To */}
+                 <div className="mb-12 relative z-10">
+                   <div className="text-xs uppercase tracking-widest text-gray-400 mb-2">Billed To</div>
+                   <div className="font-medium text-lg">{customer?.name || (invoice.customerId === 'CASH' ? 'Cash Customer' : invoice.customerId)}</div>
+                   {customer?.address && <div className="text-gray-600 mt-1">{customer.address}</div>}
+                   {customer?.phone && <div className="text-gray-600 mt-1">{customer.phone}</div>}
+                 </div>
+
+                 {/* Minimal Table */}
+                 <div className="flex-1 relative z-10">
+                   <table className="w-full text-sm">
+                     <thead>
+                       <tr className="border-b-2 border-black">
+                         <th className="py-2 text-left font-medium">Description</th>
+                         <th className="py-2 text-right font-medium">Qty</th>
+                         <th className="py-2 text-right font-medium">Rate</th>
+                         <th className="py-2 text-right font-medium">Amount</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                       {invoice.items.map((item, i) => (
+                         <tr key={i} className="border-b border-gray-200">
+                           <td className="py-4">
+                             <div className="font-medium">{item.materialType}</div>
+                             {item.hsnCode && <div className="text-xs text-gray-500 mt-0.5">HSN: {item.hsnCode}</div>}
+                           </td>
+                           <td className="py-4 text-right">{item.quantity}</td>
+                           <td className="py-4 text-right">{item.rate.toFixed(2)}</td>
+                           <td className="py-4 text-right">{item.amount.toFixed(2)}</td>
+                         </tr>
+                       ))}
+                     </tbody>
+                   </table>
+                 </div>
+
+                 {/* Minimal Footer */}
+                 <div className="mt-auto pt-8 flex justify-between items-end relative z-10">
+                   <div className="w-1/2">
+                     {companySettings.termsAndConditions && (
+                       <div className="mb-6">
+                         <div className="text-xs uppercase tracking-widest text-gray-400 mb-2">Terms</div>
+                         <div className="text-xs text-gray-600 whitespace-pre-wrap">{companySettings.termsAndConditions}</div>
+                       </div>
+                     )}
+                     {companySettings.bankName && (
+                       <div>
+                         <div className="text-xs uppercase tracking-widest text-gray-400 mb-2">Payment Details</div>
+                         <div className="text-xs text-gray-600">
+                           {companySettings.bankName} • A/C: {companySettings.accountNumber} • IFSC: {companySettings.ifscCode}
+                         </div>
+                       </div>
+                     )}
+                   </div>
+                   
+                   <div className="w-1/3">
+                     <div className="border-t border-black pt-4">
+                       <div className="flex justify-between mb-2 text-sm text-gray-600">
+                         <span>Subtotal</span>
+                         <span>{invoice.subTotal.toFixed(2)}</span>
+                       </div>
+                       {invoice.type === "GST" && (
+                         <>
+                           <div className="flex justify-between mb-2 text-sm text-gray-600">
+                             <span>CGST</span>
+                             <span>{invoice.cgst.toFixed(2)}</span>
+                           </div>
+                           <div className="flex justify-between mb-4 text-sm text-gray-600">
+                             <span>SGST</span>
+                             <span>{invoice.sgst.toFixed(2)}</span>
+                           </div>
+                         </>
+                       )}
+                       <div className="flex justify-between items-baseline pt-4 border-t-2 border-black">
+                         <span className="font-medium uppercase tracking-wider">Total</span>
+                         <span className="text-xl font-bold">₹{invoice.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+
+               </div>
+             ) : (
+            <div className="flex flex-col min-h-[1050px] bg-white text-black font-sans border-2 border-black m-4 relative">
+              {companySettings.invoiceWatermark && companySettings.invoiceWatermark !== "None" && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden z-0 opacity-[0.03]">
+                  <div className="text-[150px] font-black transform -rotate-45 whitespace-nowrap" style={{ color: primaryColorHex }}>
+                    {companySettings.invoiceWatermark === "Company Name" ? companySettings.name : 
+                     companySettings.invoiceWatermark === "Status" ? invoice.status || "PENDING" : 
+                     companySettings.invoiceWatermarkText}
+                  </div>
+                </div>
+              )}
+              <div className="relative z-10 flex flex-col h-full">
                {/* header */}
                <div className="p-4 flex flex-col">
                  <div className="flex justify-between items-start">
@@ -145,8 +420,8 @@ export function PrintInvoiceModal({
                     <tbody>
                       {invoice.items.map((item, i) => {
                          const itemTaxable = item.amount;
-                         const itemCgst = invoice.type === "GST" ? (itemTaxable * 2.5) / 100 : 0;
-                         const itemSgst = invoice.type === "GST" ? (itemTaxable * 2.5) / 100 : 0;
+                         const itemCgst = invoice.type === "GST" ? (itemTaxable * ((item.gstRate || 5) / 2)) / 100 : 0;
+                         const itemSgst = invoice.type === "GST" ? (itemTaxable * ((item.gstRate || 5) / 2)) / 100 : 0;
                          const itemTotal = itemTaxable + itemCgst + itemSgst;
                          return (
                           <tr key={i} className="text-center align-top">
@@ -272,8 +547,9 @@ export function PrintInvoiceModal({
                    </div>
                  </div>
                </div>
+              </div>
             </div>
-          ) : (
+          )) : (
             // Thermal Formats (80mm or 58mm)
             <div className={`mx-auto font-mono leading-tight ${format === 'Thermal-58mm' ? 'max-w-[58mm] text-[10px] p-2' : 'max-w-[80mm] text-xs p-4'}`}>
               <div className="text-center mb-3 border-b-2 border-dashed pb-3" style={{ borderColor: primaryColorHex }}>
@@ -357,6 +633,7 @@ export function PrintInvoiceModal({
               </div>
             </div>
           )}
+          </div>
         </div>
         
         <div className="p-4 border-t bg-zinc-50 dark:bg-zinc-900/50 flex justify-between items-center rounded-b-2xl print:hidden">

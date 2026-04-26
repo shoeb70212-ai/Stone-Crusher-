@@ -13,8 +13,8 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
   if (format === "Thermal-58mm") printWidthClass = "max-w-[58mm] text-[10px]";
 
   return (
-    <div className="fixed inset-0 bg-zinc-900/80 flex items-center justify-center p-4 z-50">
-      <div className={`bg-white dark:bg-zinc-800 rounded-2xl w-full shadow-xl flex flex-col max-h-[90vh] ${format === 'A4' ? 'max-w-3xl' : 'max-w-sm'}`}>
+    <div className="fixed inset-0 bg-zinc-900/80 flex items-center justify-center md:p-4 z-50 overflow-hidden">
+      <div className={`bg-white dark:bg-zinc-800 md:rounded-2xl w-full h-full md:h-auto shadow-xl flex flex-col md:max-h-[90vh] ${format === 'A4' ? 'max-w-3xl' : 'max-w-sm'}`}>
         <div className="p-4 border-b flex justify-between items-center print:hidden">
           <h3 className="font-bold text-zinc-900 dark:text-white">Print Loading Token</h3>
           <button
@@ -25,11 +25,13 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
           </button>
         </div>
 
-        <div
-          id="print-area"
-          className="p-4 md:p-6 text-black bg-white dark:bg-white flex-1 overflow-y-auto"
-        >
-          <style dangerouslySetInnerHTML={{ __html: `
+        <div className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-900 p-4">
+          <div
+            id="print-area"
+            className="text-black bg-white mx-auto relative p-4 md:p-6"
+            style={{ width: format === 'A4' ? '794px' : (format === 'Thermal-58mm' ? '220px' : '300px') }}
+          >
+            <style dangerouslySetInnerHTML={{ __html: `
             @media print {
               @page {
                 size: ${format === 'A4' ? 'A4' : format === 'Thermal-58mm' ? '58mm auto' : '80mm auto'};
@@ -148,6 +150,7 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
             {companySettings.receiptFooter || "Thank you!"}
           </p>
         </div>
+          </div>
 
         <div className="p-4 border-t bg-zinc-50 dark:bg-zinc-900/50 print:hidden flex justify-between items-center">
           <div className="flex items-center space-x-2">

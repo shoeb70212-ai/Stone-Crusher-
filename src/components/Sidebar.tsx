@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckSquare,
+  Menu,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useErp } from "../context/ErpContext";
@@ -27,7 +28,6 @@ interface SidebarProps {
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "daybook", label: "Daybook", icon: CalendarDays },
-  { id: "tasks", label: "Tasks", icon: CheckSquare },
   { id: "dispatch", label: "Dispatch (Slips)", icon: Truck },
   { id: "invoices", label: "Invoicing", icon: Receipt },
   { id: "vehicles", label: "Vehicles", icon: Truck },
@@ -163,6 +163,45 @@ export function Sidebar({
           </button>
         </div>
       </aside>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-950 border-t border-zinc-200 dark:border-zinc-800 z-40 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-1 flex justify-between items-center shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]">
+        {[
+          { id: "dashboard", label: "Home", icon: LayoutDashboard },
+          { id: "dispatch", label: "Slips", icon: Truck },
+          { id: "invoices", label: "Invoices", icon: Receipt },
+          { id: "customers", label: "Users", icon: Users },
+        ].map((item) => {
+          const Icon = item.icon;
+          const isActive = currentView === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => {
+                onChangeView(item.id);
+                setIsOpen(false);
+              }}
+              className={cn(
+                "flex-1 flex flex-col items-center py-2 transition-colors",
+                isActive ? "text-primary-600 dark:text-primary-500" : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900"
+              )}
+            >
+              <Icon className="w-6 h-6 mb-1" strokeWidth={isActive ? 2.5 : 2} />
+              <span className="text-[10px] font-medium leading-none">{item.label}</span>
+            </button>
+          );
+        })}
+        <button
+          onClick={() => setIsOpen(true)}
+          className={cn(
+            "flex-1 flex flex-col items-center py-2 transition-colors",
+            isOpen ? "text-primary-600 dark:text-primary-500" : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900"
+          )}
+        >
+          <Menu className="w-6 h-6 mb-1" strokeWidth={isOpen ? 2.5 : 2} />
+          <span className="text-[10px] font-medium leading-none">More</span>
+        </button>
+      </nav>
     </>
   );
 }

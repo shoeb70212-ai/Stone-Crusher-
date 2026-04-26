@@ -4,7 +4,7 @@ import { Building2, Users, Receipt, Save, Check, Palette, Truck } from "lucide-r
 
 export function Settings() {
   const { userRole, companySettings, updateCompanySettings, vehicles, updateVehicle } = useErp();
-  const [activeTab, setActiveTab] = useState<"general" | "categories" | "users" | "materials" | "appearance" | "vehicles" | "invoicing">(
+  const [activeTab, setActiveTab] = useState<"general" | "categories" | "users" | "materials" | "appearance" | "invoicing">(
     "general",
   );
   const [isSaved, setIsSaved] = useState(false);
@@ -25,80 +25,7 @@ export function Settings() {
     });
   }, [companySettings]);
 
-  const [materials, setMaterials] = useState([
-    {
-      id: 1,
-      name: "10mm",
-      defaultPrice: 450,
-      unit: "Ton",
-      hsnCode: "25171010",
-      gstRate: 5,
-    },
-    {
-      id: 2,
-      name: "20mm",
-      defaultPrice: 480,
-      unit: "Ton",
-      hsnCode: "25171010",
-      gstRate: 5,
-    },
-    {
-      id: 3,
-      name: "40mm",
-      defaultPrice: 400,
-      unit: "Ton",
-      hsnCode: "25171010",
-      gstRate: 5,
-    },
-    {
-      id: 4,
-      name: "Dust",
-      defaultPrice: 350,
-      unit: "Ton",
-      hsnCode: "25171010",
-      gstRate: 5,
-    },
-    {
-      id: 5,
-      name: "GSB",
-      defaultPrice: 300,
-      unit: "Ton",
-      hsnCode: "25171020",
-      gstRate: 5,
-    },
-    {
-      id: 6,
-      name: "Boulders",
-      defaultPrice: 250,
-      unit: "Ton",
-      hsnCode: "25169090",
-      gstRate: 5,
-    },
-  ]);
 
-  const [users, setUsers] = useState([
-    {
-      id: 1,
-      name: "Admin User",
-      email: "admin@crushtrack.com",
-      role: "Admin",
-      status: "Active",
-    },
-    {
-      id: 2,
-      name: "Operations Manager",
-      email: "manager@crushtrack.com",
-      role: "Manager",
-      status: "Active",
-    },
-    {
-      id: 3,
-      name: "Sales Partner",
-      email: "partner@crushtrack.com",
-      role: "Partner",
-      status: "Active",
-    },
-  ]);
 
   const handleSave = () => {
     updateCompanySettings(localSettings);
@@ -173,17 +100,7 @@ export function Settings() {
           <Palette className="w-4 h-4 mr-2" />
           Appearance
         </button>
-        <button
-          onClick={() => setActiveTab("vehicles")}
-          className={`flex items-center px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === "vehicles"
-              ? "border-primary-500 text-primary-600 dark:text-primary-400"
-              : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:text-zinc-200 dark:hover:text-zinc-200 hover:border-zinc-300 dark:border-zinc-600"
-          }`}
-        >
-          <Truck className="w-4 h-4 mr-2" />
-          Vehicles
-        </button>
+
         <button
           onClick={() => setActiveTab("invoicing")}
           className={`flex items-center px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
@@ -580,7 +497,20 @@ export function Settings() {
               <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">
                 User Roles & Permissions
               </h3>
-              <button className="text-sm font-medium text-primary-600 hover:text-primary-700 bg-primary-50 px-4 py-2 rounded-lg transition-colors">
+              <button 
+                onClick={() => {
+                  const newUsers = [...(localSettings.users || [])];
+                  newUsers.push({
+                    id: Math.random().toString(36).substring(2, 11),
+                    name: "New User",
+                    email: "new@crushtrack.com",
+                    role: "Partner",
+                    status: "Active"
+                  });
+                  setLocalSettings({ ...localSettings, users: newUsers });
+                }}
+                className="text-sm font-medium text-primary-600 hover:text-primary-700 bg-primary-50 px-4 py-2 rounded-lg transition-colors"
+              >
                 + Invite User
               </button>
             </div>
@@ -605,24 +535,46 @@ export function Settings() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {users.map((user) => (
-                    <tr key={user.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800">
-                      <td className="py-3 px-4 font-medium text-zinc-900 dark:text-white">
-                        {user.name}
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {(localSettings.users || []).map((user) => (
+                    <tr key={user.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                      <td className="py-3 px-4">
+                        <input
+                          type="text"
+                          value={user.name}
+                          onChange={(e) => {
+                            const newUsers = (localSettings.users || []).map((u) =>
+                              u.id === user.id ? { ...u, name: e.target.value } : u
+                            );
+                            setLocalSettings({ ...localSettings, users: newUsers });
+                          }}
+                          className="w-full bg-transparent border-b border-transparent focus:border-primary-500 outline-none text-zinc-900 dark:text-white"
+                        />
                       </td>
-                      <td className="py-3 px-4 text-zinc-500 dark:text-zinc-400">{user.email}</td>
+                      <td className="py-3 px-4">
+                        <input
+                          type="email"
+                          value={user.email}
+                          onChange={(e) => {
+                            const newUsers = (localSettings.users || []).map((u) =>
+                              u.id === user.id ? { ...u, email: e.target.value } : u
+                            );
+                            setLocalSettings({ ...localSettings, users: newUsers });
+                          }}
+                          className="w-full bg-transparent border-b border-transparent focus:border-primary-500 outline-none text-zinc-500 dark:text-zinc-400"
+                        />
+                      </td>
                       <td className="py-3 px-4">
                         <select
-                          className="border border-zinc-300 dark:border-zinc-600 rounded px-2 py-1 text-sm bg-white dark:bg-zinc-800 outline-none focus:border-primary-500"
+                          className="border border-zinc-300 dark:border-zinc-600 rounded px-2 py-1 text-sm bg-white dark:bg-zinc-800 outline-none focus:border-primary-500 dark:text-white"
                           value={user.role}
                           onChange={(e) => {
-                            const newUsers = users.map((u) =>
+                            const newUsers = (localSettings.users || []).map((u) =>
                               u.id === user.id
-                                ? { ...u, role: e.target.value }
+                                ? { ...u, role: e.target.value as any }
                                 : u,
                             );
-                            setUsers(newUsers);
+                            setLocalSettings({...localSettings, users: newUsers});
                           }}
                         >
                           <option value="Admin">Admin</option>
@@ -631,21 +583,49 @@ export function Settings() {
                         </select>
                       </td>
                       <td className="py-3 px-4">
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${user.status === "Active" ? "bg-primary-100 text-primary-800" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200"}`}
+                        <select
+                          className={`inline-flex items-center border border-transparent rounded px-2 py-1 text-xs font-medium outline-none focus:border-primary-500 ${user.status === "Active" ? "bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-300" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200"}`}
+                          value={user.status}
+                          onChange={(e) => {
+                            const newUsers = (localSettings.users || []).map((u) =>
+                              u.id === user.id ? { ...u, status: e.target.value as any } : u
+                            );
+                            setLocalSettings({ ...localSettings, users: newUsers });
+                          }}
                         >
-                          {user.status}
-                        </span>
+                          <option value="Active">Active</option>
+                          <option value="Inactive">Inactive</option>
+                        </select>
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <button className="text-indigo-600 hover:text-indigo-900 text-sm font-medium">
-                          Edit
+                        <button 
+                          onClick={() => {
+                            const newUsers = (localSettings.users || []).filter((u) => u.id !== user.id);
+                            setLocalSettings({ ...localSettings, users: newUsers });
+                          }}
+                          className="text-rose-600 hover:text-rose-900 dark:text-rose-400 dark:hover:text-rose-300 text-sm font-medium"
+                        >
+                          Remove
                         </button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="flex justify-end pt-4 border-t border-zinc-100 dark:border-zinc-700">
+              <button
+                onClick={handleSave}
+                disabled={isSaved}
+                className="flex items-center px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors disabled:bg-primary-400"
+              >
+                {isSaved ? (
+                  <Check className="w-5 h-5 mr-2" />
+                ) : (
+                  <Save className="w-5 h-5 mr-2" />
+                )}
+                {isSaved ? "Saved!" : "Save Changes"}
+              </button>
             </div>
           </div>
         )}
@@ -656,7 +636,21 @@ export function Settings() {
               <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">
                 Materials & Pricing
               </h3>
-              <button className="text-sm font-medium text-primary-600 hover:text-primary-700 bg-primary-50 px-4 py-2 rounded-lg transition-colors">
+              <button 
+                onClick={() => {
+                  const newMats = [...(localSettings.materials || [])];
+                  newMats.push({
+                    id: Math.random().toString(36).substring(2, 11),
+                    name: "New Material",
+                    defaultPrice: 0,
+                    unit: "Ton",
+                    hsnCode: "",
+                    gstRate: 5
+                  });
+                  setLocalSettings({ ...localSettings, materials: newMats });
+                }}
+                className="text-sm font-medium text-primary-600 hover:text-primary-700 bg-primary-50 dark:bg-primary-900/30 dark:text-primary-400 px-4 py-2 rounded-lg transition-colors"
+              >
                 + Add Material
               </button>
             </div>
@@ -684,43 +678,69 @@ export function Settings() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {materials.map((material) => (
-                    <tr key={material.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800">
-                      <td className="py-3 px-4 font-medium text-zinc-900 dark:text-white">
-                        {material.name}
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {(localSettings.materials || []).map((material) => (
+                    <tr key={material.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                      <td className="py-3 px-4">
+                        <input
+                          type="text"
+                          value={material.name}
+                          onChange={(e) => {
+                            const newMats = (localSettings.materials || []).map((m) =>
+                              m.id === material.id
+                                ? { ...m, name: e.target.value }
+                                : m,
+                            );
+                            setLocalSettings({ ...localSettings, materials: newMats });
+                          }}
+                          className="w-full bg-transparent border-b border-transparent focus:border-primary-500 outline-none text-zinc-900 dark:text-white font-medium"
+                        />
                       </td>
                       <td className="py-3 px-4">
                         <input
                           type="number"
                           value={material.defaultPrice}
                           onChange={(e) => {
-                            const newMats = materials.map((m) =>
+                            const newMats = (localSettings.materials || []).map((m) =>
                               m.id === material.id
                                 ? { ...m, defaultPrice: Number(e.target.value) }
                                 : m,
                             );
-                            setMaterials(newMats);
+                            setLocalSettings({...localSettings, materials: newMats});
                           }}
-                          className="w-24 border border-zinc-300 dark:border-zinc-600 rounded px-2 py-1 text-sm outline-none focus:border-primary-500"
+                          className="w-24 border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 rounded px-2 py-1 text-sm outline-none focus:border-primary-500 text-zinc-900 dark:text-white"
                         />
                       </td>
                       <td className="py-3 px-4 text-zinc-500 dark:text-zinc-400">
-                        {material.unit}
+                        <select
+                          className="border border-zinc-300 dark:border-zinc-600 rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900 outline-none focus:border-primary-500 text-zinc-900 dark:text-white"
+                          value={material.unit}
+                          onChange={(e) => {
+                            const newMats = (localSettings.materials || []).map((m) =>
+                              m.id === material.id ? { ...m, unit: e.target.value } : m
+                            );
+                            setLocalSettings({ ...localSettings, materials: newMats });
+                          }}
+                        >
+                          <option value="Ton">Ton</option>
+                          <option value="Brass">Brass</option>
+                          <option value="Kg">Kg</option>
+                          <option value="Nos">Nos</option>
+                        </select>
                       </td>
                       <td className="py-3 px-4">
                         <input
                           type="text"
                           value={material.hsnCode}
                           onChange={(e) => {
-                            const newMats = materials.map((m) =>
+                            const newMats = (localSettings.materials || []).map((m) =>
                               m.id === material.id
                                 ? { ...m, hsnCode: e.target.value }
                                 : m,
                             );
-                            setMaterials(newMats);
+                            setLocalSettings({...localSettings, materials: newMats});
                           }}
-                          className="w-24 border border-zinc-300 dark:border-zinc-600 rounded px-2 py-1 text-sm outline-none focus:border-primary-500"
+                          className="w-24 border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 rounded px-2 py-1 text-sm outline-none focus:border-primary-500 text-zinc-900 dark:text-white"
                         />
                       </td>
                       <td className="py-3 px-4">
@@ -728,18 +748,24 @@ export function Settings() {
                           type="number"
                           value={material.gstRate}
                           onChange={(e) => {
-                            const newMats = materials.map((m) =>
+                            const newMats = (localSettings.materials || []).map((m) =>
                               m.id === material.id
                                 ? { ...m, gstRate: Number(e.target.value) }
                                 : m,
                             );
-                            setMaterials(newMats);
+                            setLocalSettings({...localSettings, materials: newMats});
                           }}
-                          className="w-16 border border-zinc-300 dark:border-zinc-600 rounded px-2 py-1 text-sm outline-none focus:border-primary-500"
+                          className="w-16 border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 rounded px-2 py-1 text-sm outline-none focus:border-primary-500 text-zinc-900 dark:text-white"
                         />
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <button className="text-rose-600 hover:text-rose-900 text-sm font-medium">
+                        <button 
+                          onClick={() => {
+                            const newMats = (localSettings.materials || []).filter(m => m.id !== material.id);
+                            setLocalSettings({ ...localSettings, materials: newMats });
+                          }}
+                          className="text-rose-600 hover:text-rose-900 dark:text-rose-400 dark:hover:text-rose-300 text-sm font-medium"
+                        >
                           Remove
                         </button>
                       </td>
@@ -933,6 +959,29 @@ export function Settings() {
                     {localSettings.invoiceColor || "#000000"}
                   </span>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">
+                  Invoice Template
+                </label>
+                <select
+                  value={localSettings.invoiceTemplate || "Classic"}
+                  onChange={(e) =>
+                    setLocalSettings({
+                      ...localSettings,
+                      invoiceTemplate: e.target.value as any,
+                    })
+                  }
+                  className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-shadow bg-transparent"
+                >
+                  <option value="Classic">Classic</option>
+                  <option value="Modern">Modern</option>
+                  <option value="Minimal">Minimal</option>
+                </select>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Choose the aesthetic design for PDF generation.
+                </p>
               </div>
             </div>
             

@@ -4,6 +4,7 @@ import { MaterialType, DeliveryMode, MeasurementType, Slip } from "../../types";
 import { Plus } from "lucide-react";
 import { format } from "date-fns";
 import { Combobox } from "../ui/Combobox";
+import { parseFeetInches } from "../../lib/utils";
 
 export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void }) {
   const { vehicles, customers, addSlip, slips, companySettings, addVehicle, updateVehicle, addCustomer, addTransaction } = useErp();
@@ -11,7 +12,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
     vehicleNo: "",
     driverName: "",
     driverPhone: "",
-    materialType: "20mm" as MaterialType,
+    materialType: companySettings.materials?.[0]?.name || "20mm",
     deliveryMode: "Third-Party Vehicle" as DeliveryMode,
     measurementType: "Volume (Brass)" as MeasurementType,
     lengthFeet: "",
@@ -21,6 +22,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
     tareWeight: "",
     ratePerUnit: "",
     freightAmount: "",
+    paymentStatus: "Cash (Paid)" as "Credit (Unpaid)" | "Cash (Paid)" | "Partial",
     amountPaid: "",
     customerId: "CASH",
     notes: "",
@@ -28,14 +30,9 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
     loaderName: localStorage.getItem('lastLoaderName') || "",
   });
 
-  const DEFAULT_RATES: Record<string, number> = {
-    "10mm": 450,
-    "20mm": 480,
-    "40mm": 400,
-    "Dust": 350,
-    "GSB": 300,
-    "Boulders": 250
-  };
+  const DEFAULT_RATES: Record<string, number> = Object.fromEntries(
+    (companySettings.materials || []).map(m => [m.name, m.defaultPrice || 0])
+  );
 
   useEffect(() => {
     if (formData.customerId && formData.materialType) {
@@ -69,11 +66,13 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
   }, [formData.customerId, formData.materialType]);
 
   const [vehicleSearch, setVehicleSearch] = useState("");
-    const calculateQuantity = () => {
+  // parseFeetInches imported from ../../lib/utils
+
+  const calculateQuantity = () => {
     if (formData.measurementType === "Volume (Brass)") {
-      const l = parseFloat(formData.lengthFeet) || 0;
-      const w = parseFloat(formData.widthFeet) || 0;
-      const h = parseFloat(formData.heightFeet) || 0;
+      const l = parseFeetInches(formData.lengthFeet);
+      const w = parseFeetInches(formData.widthFeet);
+      const h = parseFeetInches(formData.heightFeet);
       return (l * w * h) / 100;
     } else {
       const gross = parseFloat(formData.grossWeight) || 0;
@@ -115,9 +114,9 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
         return;
       }
     } else if (formData.measurementType === "Volume (Brass)") {
-      const l = parseFloat(formData.lengthFeet) || 0;
-      const w = parseFloat(formData.widthFeet) || 0;
-      const h = parseFloat(formData.heightFeet) || 0;
+      const l = parseFeetInches(formData.lengthFeet);
+      const w = parseFeetInches(formData.widthFeet);
+      const h = parseFeetInches(formData.heightFeet);
       if (l <= 0 || w <= 0 || h <= 0) {
         alert("Length, width, and height must be positive values.");
         return;
@@ -140,10 +139,15 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
       return;
     }
 
-    const finalAmountPaid = parseFloat(formData.amountPaid) || 0;
-    if (finalAmountPaid < 0) {
-      alert("Amount paid cannot be negative.");
-      return;
+    let finalAmountPaid = 0;
+    if (formData.paymentStatus === "Cash (Paid)") {
+      finalAmountPaid = finalAmount;
+    } else if (formData.paymentStatus === "Partial") {
+      finalAmountPaid = parseFloat(formData.amountPaid) || 0;
+      if (finalAmountPaid < 0) {
+        alert("Amount paid cannot be negative.");
+        return;
+      }
     }
 
     // Auto-update or add vehicle
@@ -158,7 +162,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
           });
         }
       } else {
-         let newVehicleId = Math.random().toString(36).substr(2, 9);
+         let newVehicleId = Math.random().toString(36).substring(2, 11);
          addVehicle({
             id: newVehicleId,
              vehicleNo: formData.vehicleNo.toUpperCase(),
@@ -179,7 +183,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
     let finalCustomerId = formData.customerId || "CASH";
     if (finalCustomerId !== "CASH" && !customers.find(c => c.id === finalCustomerId)) {
       const newCust = {
-        id: "cust_" + Math.random().toString(36).substr(2, 9),
+        id: "cust_" + Math.random().toString(36).substring(2, 11),
         name: finalCustomerId, // The combobox passed the new name directly
         phone: "",
         openingBalance: 0
@@ -189,7 +193,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
     }
 
     const newSlip: Slip = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substring(2, 11),
       date: new Date().toISOString(),
       vehicleNo: formData.vehicleNo.toUpperCase(),
       driverName: formData.driverName,
@@ -219,7 +223,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
 
     if (finalAmountPaid > 0) {
        addTransaction({
-           id: "tx_" + Math.random().toString(36).substr(2, 9),
+           id: "tx_" + Math.random().toString(36).substring(2, 11),
            date: new Date().toISOString(),
            type: "Income",
            category: "Slip Payment",
@@ -338,12 +342,9 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
           }
           className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
         >
-          <option value="10mm">10mm</option>
-          <option value="20mm">20mm</option>
-          <option value="40mm">40mm</option>
-          <option value="Dust">Dust</option>
-          <option value="GSB">GSB</option>
-          <option value="Boulders">Boulders</option>
+          {companySettings.materials?.map((m) => (
+            <option key={m.id} value={m.name}>{m.name}</option>
+          ))}
         </select>
       </div>
 
@@ -549,20 +550,46 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-1">
           <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-            Amount Paid (₹)
+            Payment Status
           </label>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={formData.amountPaid}
-            onChange={(e) =>
-              setFormData({ ...formData, amountPaid: e.target.value })
-            }
-            className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-            placeholder="0"
-          />
+          <div className="flex gap-2">
+            {["Cash (Paid)", "Credit (Unpaid)", "Partial"].map((status) => (
+              <button
+                key={status}
+                type="button"
+                onClick={() => setFormData({ ...formData, paymentStatus: status as any, amountPaid: "" })}
+                className={`flex-1 py-2 px-2 text-sm font-semibold rounded-lg border transition-colors ${
+                  formData.paymentStatus === status
+                    ? "bg-primary-500 text-white border-primary-500 shadow-sm"
+                    : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                }`}
+              >
+                {status.split(" ")[0]}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {formData.paymentStatus === "Partial" && (
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+              Amount Paid (₹)
+            </label>
+            <input
+              required
+              type="number"
+              min="0"
+              step="0.01"
+              max={manualTotalAmount}
+              value={formData.amountPaid}
+              onChange={(e) =>
+                setFormData({ ...formData, amountPaid: e.target.value })
+              }
+              className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              placeholder="Enter partial amount"
+            />
+          </div>
+        )}
       </div>
 
       <div className="p-4 rounded-xl border-2 border-primary-500 bg-white dark:bg-zinc-800 shadow-sm flex items-center justify-between">

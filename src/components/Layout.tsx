@@ -9,7 +9,6 @@ import { Customers } from "../pages/Customers";
 import { Daybook } from "../pages/Daybook";
 import { Settings } from "../pages/Settings";
 import { Invoices } from "../pages/Invoices";
-import { Tasks } from "../pages/Tasks";
 import { Menu, ShieldAlert } from "lucide-react";
 import { useErp } from "../context/ErpContext";
 
@@ -71,9 +70,6 @@ export function Layout() {
     case "daybook":
       content = <Daybook />;
       break;
-    case "tasks":
-      content = <Tasks />;
-      break;
     case "dispatch":
       content = <Dispatch />;
       break;
@@ -126,7 +122,7 @@ export function Layout() {
       />
       <div className="flex-1 flex flex-col overflow-hidden w-full relative">
         <Header onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
-        <main className="flex-1 overflow-auto p-2 sm:p-4 lg:p-6 pb-20 md:pb-6">{content}</main>
+        <main className="flex-1 overflow-auto p-2 sm:p-4 lg:p-6 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6">{content}</main>
       </div>
     </div>
   );

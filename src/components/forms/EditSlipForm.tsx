@@ -2,9 +2,10 @@ import React, { useState, useEffect } from "react";
 import { useErp } from "../../context/ErpContext";
 import { Slip, MaterialType, DeliveryMode, MeasurementType } from "../../types";
 import { Combobox } from "../ui/Combobox";
+import { parseFeetInches } from "../../lib/utils";
 
 export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSuccess: () => void, onCancel: () => void }) {
-  const { customers, updateSlip, slips, transactions, addTransaction, updateTransaction, deleteTransaction } = useErp();
+  const { customers, updateSlip, slips, transactions, addTransaction, updateTransaction, deleteTransaction, companySettings } = useErp();
   const [formData, setFormData] = useState({
     vehicleNo: slip.vehicleNo || "",
     driverName: slip.driverName || "",
@@ -28,9 +29,9 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
 
   const calculateQuantity = () => {
     if (formData.measurementType === "Volume (Brass)") {
-      const l = parseFloat(formData.lengthFeet) || 0;
-      const w = parseFloat(formData.widthFeet) || 0;
-      const h = parseFloat(formData.heightFeet) || 0;
+      const l = parseFeetInches(formData.lengthFeet);
+      const w = parseFeetInches(formData.widthFeet);
+      const h = parseFeetInches(formData.heightFeet);
       return (l * w * h) / 100;
     } else {
       const g = parseFloat(formData.grossWeight) || 0;
@@ -73,9 +74,9 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
         return;
       }
     } else if (formData.measurementType === "Volume (Brass)") {
-      const l = parseFloat(formData.lengthFeet) || 0;
-      const w = parseFloat(formData.widthFeet) || 0;
-      const h = parseFloat(formData.heightFeet) || 0;
+      const l = parseFeetInches(formData.lengthFeet);
+      const w = parseFeetInches(formData.widthFeet);
+      const h = parseFeetInches(formData.heightFeet);
       if (l <= 0 || w <= 0 || h <= 0) {
         alert("Length, width, and height must be positive values.");
         return;
@@ -161,7 +162,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
           if (finalAmountPaid > 0) {
              if (addTransaction) {
                  addTransaction({
-                    id: "tx_" + Math.random().toString(36).substr(2, 9),
+                    id: "tx_" + Math.random().toString(36).substring(2, 11),
                     date: new Date().toISOString(),
                     type: "Income",
                     category: "Slip Payment",
@@ -211,12 +212,9 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
             onChange={(e) => setFormData({ ...formData, materialType: e.target.value })}
             className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white dark:bg-zinc-900"
           >
-            <option value="10mm">10mm</option>
-            <option value="20mm">20mm</option>
-            <option value="40mm">40mm</option>
-            <option value="Dust">Dust</option>
-            <option value="GSB">GSB</option>
-            <option value="Boulders">Boulders</option>
+            {companySettings.materials?.map((m) => (
+              <option key={m.id} value={m.name}>{m.name}</option>
+            ))}
           </select>
         </div>
         <div className="space-y-1">

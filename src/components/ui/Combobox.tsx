@@ -36,8 +36,9 @@ export function Combobox({ options, value, onChange, placeholder = "Select...", 
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const normalizedSearch = search.toLowerCase().replace(/\s+/g, '');
   const filteredOptions = options.filter((o) =>
-    o.label.toLowerCase().includes(search.toLowerCase())
+    o.label.toLowerCase().replace(/\s+/g, '').includes(normalizedSearch)
   );
 
   const handleCreate = () => {

@@ -228,7 +228,7 @@ export function CreateInvoiceForm({ onSuccess }: { onSuccess: (invoice?: Invoice
     // Check if new customer
     if (finalCustomerId !== "CASH" && !customers.find(c => c.id === finalCustomerId)) {
       const newCust = {
-        id: "cust_" + Math.random().toString(36).substr(2, 9),
+        id: "cust_" + Math.random().toString(36).substring(2, 11),
         name: finalCustomerId, // The combobox passed the new name directly
         phone: "",
         openingBalance: 0
@@ -253,7 +253,7 @@ export function CreateInvoiceForm({ onSuccess }: { onSuccess: (invoice?: Invoice
     const total = subTotal + cgst + sgst;
 
     const invoice: Invoice = {
-      id: "inv_" + Math.random().toString(36).substr(2, 9),
+      id: "inv_" + Math.random().toString(36).substring(2, 11),
       invoiceNo: newInvoice.invoiceNo as string,
       date: newInvoice.date as string,
       customerId: finalCustomerId,

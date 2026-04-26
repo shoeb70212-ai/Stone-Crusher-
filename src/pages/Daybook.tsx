@@ -16,11 +16,9 @@ import {
 } from "lucide-react";
 import { format, parseISO, isSameDay } from "date-fns";
 import { CreateSlipForm } from "../components/forms/CreateSlipForm";
-import { CreateInvoiceForm } from "../components/forms/CreateInvoiceForm";
 import { EditSlipForm } from "../components/forms/EditSlipForm";
 import { PrintSlipModal } from "../components/forms/PrintSlipModal";
-import { PrintInvoiceModal } from "../components/forms/PrintInvoiceModal";
-import { Slip, Invoice } from "../types";
+import { Slip } from "../types";
 
 export function Daybook() {
   const { transactions, slips, customers, companySettings, addTransaction, addCustomer } =
@@ -32,12 +30,11 @@ export function Daybook() {
     format(new Date(), "yyyy-MM-dd"),
   );
 
-  const [activeTab, setActiveTab] = useState<"slip" | "income" | "expense" | "invoice">("slip");
+  const [activeTab, setActiveTab] = useState<"slip" | "income" | "expense">("slip");
   
   const [isCustModalOpen, setIsCustModalOpen] = useState(false);
   const [editingSlip, setEditingSlip] = useState<Slip | null>(null);
   const [printSlip, setPrintSlip] = useState<Slip | null>(null);
-  const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
 
   const [txFormData, setTxFormData] = useState({
     amount: "",
@@ -55,7 +52,7 @@ export function Daybook() {
   const handleCreateCustomer = (e: React.FormEvent) => {
     e.preventDefault();
     const newCust = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substring(2, 11),
       name: custFormData.name,
       phone: custFormData.phone,
       openingBalance: parseFloat(custFormData.openingBalance) || 0,
@@ -68,7 +65,7 @@ export function Daybook() {
   const handleCreateTx = (e: React.FormEvent) => {
     e.preventDefault();
     const newTx: Transaction = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substring(2, 11),
       date: new Date().toISOString(),
       type: activeTab === "income" ? "Income" : "Expense",
       amount: Math.round(parseFloat(txFormData.amount) || 0),
@@ -313,22 +310,12 @@ export function Daybook() {
             <button onClick={() => setActiveTab('slip')} className={`flex-none py-3 px-3 text-center border-b-2 transition-colors ${activeTab === 'slip' ? 'border-zinc-900 dark:border-white text-zinc-900 dark:text-white bg-white dark:bg-zinc-900' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>Dispatch Slip</button>
             <button onClick={() => setActiveTab('income')} className={`flex-none py-3 px-3 text-center border-b-2 transition-colors ${activeTab === 'income' ? 'border-primary-500 text-primary-600 dark:text-primary-400 bg-white dark:bg-zinc-900' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>Receive</button>
             <button onClick={() => setActiveTab('expense')} className={`flex-none py-3 px-3 text-center border-b-2 transition-colors ${activeTab === 'expense' ? 'border-rose-500 text-rose-600 dark:text-rose-400 bg-white dark:bg-zinc-900' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>Expense</button>
-            <button onClick={() => setActiveTab('invoice')} className={`flex-none py-3 px-3 text-center border-b-2 transition-colors flex items-center justify-center gap-1 ${activeTab === 'invoice' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-zinc-900' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>Invoice</button>
          </div>
 
          <div className="flex-1 overflow-y-auto w-full">
             {activeTab === 'slip' && (
               <div className="pb-8">
                  <CreateSlipForm onSuccess={(slip) => slip && setPrintSlip(slip)} />
-              </div>
-            )}
-            
-            {activeTab === 'invoice' && (
-              <div className="pb-8">
-                 <CreateInvoiceForm onSuccess={(inv) => {
-                    setActiveTab('slip');
-                    if (inv) setPrintInvoice(inv);
-                 }} />
               </div>
             )}
 
@@ -479,7 +466,6 @@ export function Daybook() {
       )}
 
       {printSlip && <PrintSlipModal slip={printSlip} onClose={() => setPrintSlip(null)} />}
-      {printInvoice && <PrintInvoiceModal invoice={printInvoice} onClose={() => setPrintInvoice(null)} />}
     </div>
   );
 }

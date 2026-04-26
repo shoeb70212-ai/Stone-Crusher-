@@ -39,7 +39,7 @@ export function Ledger() {
   const handleCreateTx = (e: React.FormEvent) => {
     e.preventDefault();
     const newTx: Transaction = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substring(2, 11),
       date: new Date().toISOString(),
       type: txFormData.type,
       amount: Math.round(parseFloat(txFormData.amount) || 0),
@@ -61,7 +61,7 @@ export function Ledger() {
   const handleCreateCustomer = (e: React.FormEvent) => {
     e.preventDefault();
     const newCust: Customer = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substring(2, 11),
       name: custFormData.name,
       phone: custFormData.phone,
       openingBalance: parseFloat(custFormData.openingBalance) || 0,

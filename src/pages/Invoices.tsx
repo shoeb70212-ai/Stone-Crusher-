@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useErp } from "../context/ErpContext";
 import { Invoice, InvoiceItem } from "../types";
 import { Plus, Download, FileText, Upload, Printer } from "lucide-react";
@@ -17,7 +17,7 @@ const toWords = new ToWords({
     currencyOptions: {
       name: 'Rupee',
       plural: 'Rupees',
-      symbol: '₹',
+      symbol: 'â‚¹',
       fractionalUnit: {
         name: 'Paisa',
         plural: 'Paise',
@@ -39,19 +39,47 @@ const getPrimaryRGB = (color: string) => {
 };
 
 export function Invoices() {
-  const { invoices, customers, addInvoice, updateInvoice, companySettings, addCustomer } = useErp();
+  const { invoices, customers, slips, addInvoice, updateInvoice, updateSlip, companySettings, addCustomer } = useErp();
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [invoiceToCancel, setInvoiceToCancel] = useState<string | null>(null);
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
   const [activeTab, setActiveTab] = useState<"All" | "GST" | "Cash">("All");
 
+  const [filterCustomerId, setFilterCustomerId] = useState<string>("All");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+
+  const [selectedSlipIds, setSelectedSlipIds] = useState<string[]>([]);
   const [newInvoice, setNewInvoice] = useState<Partial<Invoice>>({
     type: "GST",
     date: new Date().toISOString().split("T")[0],
     invoiceNo: "",
     items: [],
   });
+
+  const unbilledSlips = useMemo(() => {
+    if (!newInvoice.customerId || newInvoice.customerId === "CASH") return [];
+    return slips.filter(
+      (s) =>
+        s.customerId === newInvoice.customerId &&
+        (s.status === "Pending" || s.status === "Tallied") &&
+        (!s.invoiceId || s.invoiceId === editingInvoiceId)
+    );
+  }, [slips, newInvoice.customerId, editingInvoiceId]);
+
+  useEffect(() => {
+    if (editingInvoiceId) {
+      const editingInvoice = invoices.find(inv => inv.id === editingInvoiceId);
+      if (editingInvoice && editingInvoice.slipIds) {
+        setSelectedSlipIds(editingInvoice.slipIds);
+      } else {
+        setSelectedSlipIds([]);
+      }
+    } else {
+      setSelectedSlipIds([]);
+    }
+  }, [newInvoice.customerId, editingInvoiceId, invoices]);
 
   const handleStatusChange = (invId: string, newStatus: string) => {
     if (newStatus === "Cancelled") {
@@ -70,56 +98,27 @@ export function Invoices() {
     gstRate: 5,
   });
 
-  const materials = [
-    {
-      id: 1,
-      name: "10mm",
-      defaultPrice: 450,
-      unit: "Ton",
-      hsnCode: "25171010",
-      gstRate: 5,
-    },
-    {
-      id: 2,
-      name: "20mm",
-      defaultPrice: 480,
-      unit: "Ton",
-      hsnCode: "25171010",
-      gstRate: 5,
-    },
-    {
-      id: 3,
-      name: "40mm",
-      defaultPrice: 400,
-      unit: "Ton",
-      hsnCode: "25171010",
-      gstRate: 5,
-    },
-    {
-      id: 4,
-      name: "Dust",
-      defaultPrice: 350,
-      unit: "Ton",
-      hsnCode: "25171010",
-      gstRate: 5,
-    },
-    {
-      id: 5,
-      name: "GSB",
-      defaultPrice: 300,
-      unit: "Ton",
-      hsnCode: "25171020",
-      gstRate: 5,
-    },
-    {
-      id: 6,
-      name: "Boulders",
-      defaultPrice: 250,
-      unit: "Ton",
-      hsnCode: "25169090",
-      gstRate: 5,
-    },
-  ];
+  const materials = useMemo(() => {
+    if (companySettings.materials && companySettings.materials.length > 0) {
+      return companySettings.materials.map((m, idx) => ({
+        id: m.id || idx + 1,
+        name: m.name,
+        defaultPrice: m.defaultPrice || 0,
+        unit: m.unit || "Ton",
+        hsnCode: m.hsnCode || "25171010",
+        gstRate: m.gstRate || 5,
+      }));
+    }
+    // Fallback defaults if no materials configured
+    return [
+      { id: 1, name: "10mm", defaultPrice: 450, unit: "Ton", hsnCode: "25171010", gstRate: 5 },
+      { id: 2, name: "20mm", defaultPrice: 480, unit: "Ton", hsnCode: "25171010", gstRate: 5 },
+      { id: 3, name: "40mm", defaultPrice: 400, unit: "Ton", hsnCode: "25171010", gstRate: 5 },
+      { id: 4, name: "Dust", defaultPrice: 350, unit: "Ton", hsnCode: "25171010", gstRate: 5 },
+      { id: 5, name: "GSB", defaultPrice: 300, unit: "Ton", hsnCode: "25171020", gstRate: 5 },
+      { id: 6, name: "Boulders", defaultPrice: 250, unit: "Ton", hsnCode: "25169090", gstRate: 5 },
+    ];
+  }, [companySettings.materials]);
 
   // Calculate rate based on customer history
   useEffect(() => {
@@ -160,17 +159,31 @@ export function Invoices() {
     }
   };
 
-  const openCreateModal = () => {
+  const generateInvoiceNoForType = (type: string) => {
     const today = new Date();
     const yearStr = today.getFullYear().toString().slice(-2);
-    const nextNo = invoices.length + 1;
-    const generatedNo = `INV-${yearStr}-${nextNo.toString().padStart(4, "0")}`;
+    const prefix = type === "GST" ? "GST" : "CASH";
+    // Extract the highest existing number for this type to prevent collisions on deletion
+    const typeInvoices = invoices.filter(inv => inv.type === type);
+    let maxNo = 0;
+    typeInvoices.forEach(inv => {
+      const match = inv.invoiceNo.match(/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNo) maxNo = num;
+      }
+    });
+    const nextNo = maxNo + 1;
+    return `${prefix}-${yearStr}-${nextNo.toString().padStart(4, "0")}`;
+  };
+
+  const openCreateModal = () => {
 
     setEditingInvoiceId(null);
     setNewInvoice({
       type: "GST",
       date: new Date().toISOString().split("T")[0],
-      invoiceNo: generatedNo,
+      invoiceNo: generateInvoiceNoForType("GST"),
       items: [],
     });
     setNewItem({ ...materials[0], quantity: 0, rate: materials[0].defaultPrice, amount: 0, materialType: materials[0].name });
@@ -191,7 +204,7 @@ export function Invoices() {
     // Check if new customer
     if (finalCustomerId !== "CASH" && !customers.find(c => c.id === finalCustomerId)) {
       const newCust = {
-        id: "cust_" + Math.random().toString(36).substr(2, 9),
+        id: "cust_" + Math.random().toString(36).substring(2, 11),
         name: finalCustomerId, // The combobox passed the new name directly
         phone: "",
         openingBalance: 0
@@ -226,10 +239,25 @@ export function Invoices() {
         cgst,
         sgst,
         total,
+        slipIds: selectedSlipIds,
       });
+
+      // Remove invoiceId from unselected slips
+      const oldInvoice = invoices.find(inv => inv.id === editingInvoiceId);
+      if (oldInvoice && oldInvoice.slipIds) {
+        oldInvoice.slipIds.forEach(id => {
+          if (!selectedSlipIds.includes(id)) {
+            updateSlip(id, { invoiceId: undefined });
+          }
+        });
+      }
+      // Add invoiceId to newly selected slips
+      selectedSlipIds.forEach(id => updateSlip(id, { invoiceId: editingInvoiceId }));
+
     } else {
+      const newInvoiceId = "inv_" + Math.random().toString(36).substring(2, 11);
       const invoice: Invoice = {
-        id: "inv_" + Math.random().toString(36).substr(2, 9),
+        id: newInvoiceId,
         invoiceNo: newInvoice.invoiceNo,
         date: newInvoice.date!,
         customerId: finalCustomerId,
@@ -240,8 +268,10 @@ export function Invoices() {
         sgst,
         total,
         status: "Pending",
+        slipIds: selectedSlipIds,
       };
       addInvoice(invoice);
+      selectedSlipIds.forEach(id => updateSlip(id, { invoiceId: newInvoiceId }));
     }
     
     setShowGenerateModal(false);
@@ -249,282 +279,43 @@ export function Invoices() {
 
   const downloadPDF = (invoice: Invoice) => {
     setPrintInvoice(invoice);
-    return;
-    // Legacy jsPDF formatting bypassed in favor of PrintInvoiceModal 
-    /*
-    const customer = customers.find((c) => c.id === invoice.customerId);
-    const primaryRGB = getPrimaryRGB(companySettings.primaryColor || 'emerald');
-
-    doc.setDrawColor(200, 200, 200);
-    doc.setLineWidth(0.3);
-    doc.rect(5, 5, 200, 287);
-
-    // Add Watermark
-    let watermarkConfig = companySettings.invoiceWatermark || "None";
-    let watermarkText = "";
-    if (watermarkConfig === "Custom") watermarkText = companySettings.invoiceWatermarkText || "";
-    else if (watermarkConfig === "Company Name") watermarkText = companySettings.name;
-    else if (watermarkConfig === "Status") watermarkText = invoice.status.toUpperCase();
-    
-    if (watermarkText) {
-      doc.setFontSize(watermarkText.length > 15 ? 40 : 80);
-      doc.setTextColor(240, 240, 240); // very light grey
-      doc.setFont("helvetica", "bold");
-      doc.text(watermarkText, 105, 160, { align: "center", angle: 45 });
-    }
-
-    // Header strip - top colored border
-    doc.setFillColor(primaryRGB[0], primaryRGB[1], primaryRGB[2]); // theme color
-    doc.rect(0, 0, 210, 8, 'F');
-    
-    // Top right label
-    doc.setFontSize(28);
-    doc.setTextColor(primaryRGB[0], primaryRGB[1], primaryRGB[2]);
-    doc.text(invoice.type === "GST" ? "TAX INVOICE" : "INVOICE", 195, 25, { align: "right" });
-
-    // Company info (Left)
-    doc.setFontSize(20);
-    doc.setTextColor(15, 23, 42); // zinc-900
-    doc.setFont("helvetica", "bold");
-    doc.text(companySettings.name, 14, 25);
-    
-    doc.setFontSize(10);
-    doc.setTextColor(71, 85, 105);
-    doc.setFont("helvetica", "normal");
-    const addressLines = doc.splitTextToSize(companySettings.address || '', 80);
-    doc.text(addressLines, 14, 32);
-    let currentY = 32 + (addressLines.length * 5);
-    if (companySettings.phone) {
-      doc.text(`Phone: ${companySettings.phone}`, 14, currentY);
-      currentY += 5;
-    }
-    if (invoice.type === "GST" && companySettings.gstin) {
-      doc.text(`GSTIN: ${companySettings.gstin}`, 14, currentY);
-      currentY += 5;
-    }
-
-    // Invoice info (Right)
-    doc.setFontSize(10);
-    const rightInfoY = 40;
-    doc.setTextColor(71, 85, 105);
-    doc.text(`Invoice No:`, 140, rightInfoY);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(15, 23, 42);
-    doc.text(invoice.invoiceNo, 195, rightInfoY, { align: "right" });
-    
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(71, 85, 105);
-    doc.text(`Invoice Date:`, 140, rightInfoY + 6);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(15, 23, 42);
-    doc.text(new Date(invoice.date).toLocaleDateString("en-IN"), 195, rightInfoY + 6, { align: "right" });
-
-    const invoiceShowDueDate = companySettings.invoiceShowDueDate !== false;
-    if (invoiceShowDueDate) {
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(71, 85, 105);
-      doc.text(`Due Date:`, 140, rightInfoY + 12);
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(15, 23, 42);
-      // Assuming due 15 days later if paid is not strict
-      const dueDate = new Date(invoice.date);
-      dueDate.setDate(dueDate.getDate() + 15);
-      doc.text(dueDate.toLocaleDateString("en-IN"), 195, rightInfoY + 12, { align: "right" });
-    }
-
-    const statusY = rightInfoY + (invoiceShowDueDate ? 18 : 12);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(71, 85, 105);
-    doc.text(`Status:`, 140, statusY);
-    doc.setFont("helvetica", "bold");
-    if (invoice.status === 'Paid') doc.setTextColor(16, 185, 129); // green
-    else if (invoice.status === 'Cancelled') doc.setTextColor(244, 63, 94); // red
-    else doc.setTextColor(primaryRGB[0], primaryRGB[1], primaryRGB[2]); // theme
-    doc.text(invoice.status, 195, statusY, { align: "right" });
-
-    // Bill To (Left below company info)
-    const billToY = Math.max(currentY + 15, 65);
-    
-    doc.setFillColor(primaryRGB[0], primaryRGB[1], primaryRGB[2]);
-    doc.rect(14, billToY - 5, 85, 6, 'F');
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(255, 255, 255);
-    doc.text(`BILL TO`, 16, billToY - 0.5);
-    
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(15, 23, 42);
-    doc.text(customer?.name || "Cash Customer", 14, billToY + 6);
-    
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(71, 85, 105);
-    let customerY = billToY + 12;
-    if (customer?.phone) {
-      doc.text(`Phone: ${customer.phone}`, 14, customerY);
-      customerY += 5;
-    }
-    customerY += 2; // Small padding
-
-    // Table
-    const tableColumn = ["#", "Item Description"];
-    if (invoice.type === "GST") tableColumn.push("HSN/SAC", "GST%");
-    tableColumn.push("Qty", "Rate", "Amount");
-    if (invoice.type === "GST") tableColumn.push("CGST", "SGST", "Total");
-
-    const tableRows = invoice.items.map((item, index) => {
-      const row = [(index + 1).toString(), item.materialType];
-      if (invoice.type === "GST") row.push(item.hsnCode || "-", (item.gstRate || 0).toString() + "%");
-      row.push(item.quantity.toString(), item.rate.toFixed(2), item.amount.toFixed(2));
-      if (invoice.type === "GST") {
-        const gstAmount = item.amount * ((item.gstRate || 0) / 100);
-        const cgst = gstAmount / 2;
-        const sgst = gstAmount / 2;
-        const total = item.amount + cgst + sgst;
-        row.push(cgst.toFixed(2), sgst.toFixed(2), total.toFixed(2));
-      }
-      return row;
-    });
-
-    const tableStartY = Math.max(customerY + 10, billToY + 20);
-
-    autoTable(doc, {
-      startY: tableStartY,
-      head: [tableColumn],
-      body: tableRows,
-      theme: 'grid',
-      headStyles: { fillColor: primaryRGB as [number, number, number], textColor: 255, fontStyle: 'bold' },
-      styles: { fontSize: 8, cellPadding: 4, textColor: [15, 23, 42], lineWidth: 0.1, lineColor: [226, 232, 240] },
-      alternateRowStyles: { fillColor: [248, 250, 252] },
-      columnStyles: invoice.type === "GST" ? {
-        0: { cellWidth: 10, halign: 'center' },
-        2: { halign: 'center' },
-        3: { halign: 'center' },
-        4: { halign: 'right' }, 
-        5: { halign: 'right' }, 
-        6: { halign: 'right' }, 
-        7: { halign: 'right' }, 
-        8: { halign: 'right' }, 
-        9: { halign: 'right', fontStyle: 'bold' } 
-      } : {
-        0: { cellWidth: 10, halign: 'center' },
-        2: { halign: 'right' },
-        3: { halign: 'right' },
-        4: { halign: 'right', fontStyle: 'bold' },
-      }
-    });
-
-    const finalY = (doc as any).lastAutoTable.finalY;
-    const bottomY = Math.max(finalY + 15, 220); // anchor at bottom but allow pushing down
-    
-    // Line to box the footer
-    doc.setDrawColor(200, 200, 200);
-    doc.line(5, bottomY - 5, 205, bottomY - 5);
-    
-    // Bottom Section Grid
-    // We will place amount in words and bank details on the left, and grand totals on the right.
-    
-    // Totals Box (Right Side)
-    // We use a small table for totals for clean alignment
-    const totalsColumns = ["", ""];
-    const totalsRows = [];
-    totalsRows.push(["Sub Total:", invoice.subTotal.toFixed(2)]);
-    if (invoice.type === "GST") {
-      totalsRows.push(["CGST:", invoice.cgst.toFixed(2)]);
-      totalsRows.push(["SGST:", invoice.sgst.toFixed(2)]);
-    }
-    
-    autoTable(doc, {
-      startY: bottomY,
-      margin: { left: 130 },
-      tableWidth: 66,
-      head: [],
-      body: totalsRows,
-      theme: 'plain',
-      styles: { fontSize: 9, cellPadding: 2, textColor: [71, 85, 105], halign: 'right' },
-      columnStyles: {
-        0: { fontStyle: 'normal' },
-        1: { fontStyle: 'bold', textColor: [15, 23, 42] }
-      }
-    });
-
-    const currentTotalsY = (doc as any).lastAutoTable.finalY + 2;
-    doc.setFillColor(241, 245, 249);
-    doc.rect(130, currentTotalsY, 66, 8, 'F');
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(15, 23, 42);
-    doc.text("Grand Total:", 135, currentTotalsY + 5.5);
-    doc.text(`Rs. ${invoice.total.toFixed(2)}`, 194, currentTotalsY + 5.5, { align: 'right' });
-
-
-    // Left side: Words, Bank Details, Terms
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(15, 23, 42);
-    doc.text("Amount in Words:", 14, bottomY + 3);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(71, 85, 105);
-    const amountWords = toWords.convert(invoice.total);
-    const amountWordsLines = doc.splitTextToSize(amountWords + " Only", 100);
-    doc.text(amountWordsLines, 14, bottomY + 8);
-
-    let termsY = bottomY + 15 + (amountWordsLines.length * 4);
-    
-    // Bank Details
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(15, 23, 42);
-    doc.text("Bank Details", 14, termsY);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(71, 85, 105);
-    doc.text(`Bank Name: ${companySettings.bankName || 'N/A'}`, 14, termsY + 5);
-    doc.text(`A/C No: ${companySettings.accountNumber || 'N/A'}`, 14, termsY + 10);
-    doc.text(`IFSC: ${companySettings.ifscCode || 'N/A'}`, 14, termsY + 15);
-    doc.text(`Branch: ${companySettings.branchName || 'N/A'}`, 14, termsY + 20);
-
-    // Terms
-    let conditionY = termsY + 30;
-    
-    // Authorized Signatory on the right
-    const signY = conditionY - 5;
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(15, 23, 42);
-    doc.text(`For ${companySettings.name}`, 196, signY, { align: 'right' });
-    
-    doc.setDrawColor(203, 213, 225);
-    doc.line(146, signY + 15, 196, signY + 15);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(100, 116, 139);
-    doc.text("Authorized Signatory", 196, signY + 20, { align: 'right' });
-
-        
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(primaryRGB[0], primaryRGB[1], primaryRGB[2]); // theme colored terms header looks premium
-    doc.text("Terms & Conditions", 14, conditionY);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(100, 116, 139);
-    doc.text("1. Subject to local jurisdiction.", 14, conditionY + 5);
-    doc.text("2. Delayed payments will incur interest @18% p.a.", 14, conditionY + 10);
-    doc.text("3. Make all cheques payable to the company name above.", 14, conditionY + 15);
-
-    // Footer
-    doc.setFont("helvetica", "bolditalic");
-    doc.setFontSize(10);
-    doc.setTextColor(primaryRGB[0], primaryRGB[1], primaryRGB[2]);
-    doc.text(companySettings.receiptFooter || "Thank You For Your Business!", 105, 285, { align: "center" });
-
-    // Bottom decorative bar
-    doc.setFillColor(primaryRGB[0], primaryRGB[1], primaryRGB[2]); // theme color
-    doc.rect(0, 292, 210, 5, 'F');
-
-    doc.save(`${invoice.invoiceNo}.pdf`);
-    */
   };
-
   const exportData = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(invoices, null, 2));
+    // Generate CSV for Chartered Accountant
+    const headers = [
+      "Invoice No",
+      "Date",
+      "Type",
+      "Customer Name",
+      "SubTotal",
+      "CGST",
+      "SGST",
+      "Total Amount",
+      "Status"
+    ];
+
+    const csvRows = [headers.join(",")];
+
+    filteredInvoices.forEach(inv => {
+      const customerName = customers.find(c => c.id === inv.customerId)?.name || "Cash Customer";
+      const row = [
+        inv.invoiceNo,
+        new Date(inv.date).toLocaleDateString("en-IN"),
+        inv.type,
+        `"${customerName}"`,
+        inv.subTotal.toFixed(2),
+        inv.cgst.toFixed(2),
+        inv.sgst.toFixed(2),
+        inv.total.toFixed(2),
+        inv.status
+      ];
+      csvRows.push(row.join(","));
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8," + encodeURIComponent(csvRows.join("\n"));
     const dlAnchorElem = document.createElement('a');
-    dlAnchorElem.setAttribute("href", dataStr);
-    dlAnchorElem.setAttribute("download", `invoices_export_${new Date().getTime()}.json`);
+    dlAnchorElem.setAttribute("href", csvContent);
+    dlAnchorElem.setAttribute("download", `invoices_export_${new Date().toISOString().split('T')[0]}.csv`);
     dlAnchorElem.click();
   };
 
@@ -558,8 +349,14 @@ export function Invoices() {
   };
 
   const filteredInvoices = invoices.filter(
-    (inv) => activeTab === "All" || inv.type === activeTab,
-  );
+    (inv) => {
+      const matchTab = activeTab === "All" || inv.type === activeTab;
+      const matchCustomer = filterCustomerId === "All" || inv.customerId === filterCustomerId;
+      const matchStart = !startDate || inv.date >= startDate;
+      const matchEnd = !endDate || inv.date <= endDate;
+      return matchTab && matchCustomer && matchStart && matchEnd;
+    }
+  ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
     <div className="space-y-6">
@@ -575,7 +372,7 @@ export function Invoices() {
         <div className="flex flex-wrap gap-2 md:gap-3">
           <label className="flex-1 md:flex-none justify-center flex items-center px-4 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 dark:bg-zinc-900/50 transition-colors shadow-sm font-medium cursor-pointer">
             <Upload className="w-4 h-4 mr-2 shrink-0" />
-            <span className="whitespace-nowrap">Import</span>
+            <span className="whitespace-nowrap">Import JSON</span>
             <input type="file" accept=".json" className="hidden" onChange={importData} />
           </label>
           <button 
@@ -583,7 +380,7 @@ export function Invoices() {
             className="flex-1 md:flex-none justify-center flex items-center px-4 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 dark:bg-zinc-900/50 transition-colors shadow-sm font-medium"
           >
             <Download className="w-4 h-4 mr-2 shrink-0" />
-            <span className="whitespace-nowrap">Export</span>
+            <span className="whitespace-nowrap">Export to Excel</span>
           </button>
           <button
             onClick={openCreateModal}
@@ -610,6 +407,37 @@ export function Invoices() {
               {tab} Invoices
             </button>
           ))}
+        </div>
+
+        <div className="border-b border-zinc-100 dark:border-zinc-700 px-4 py-3 bg-white dark:bg-zinc-800 flex flex-wrap gap-4 items-center text-sm">
+          <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+            <span className="text-zinc-500 font-medium">Customer:</span>
+            <select
+              value={filterCustomerId}
+              onChange={(e) => setFilterCustomerId(e.target.value)}
+              className="flex-1 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="All">All Customers</option>
+              <option value="CASH">Cash Customer</option>
+              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center gap-2 flex-1 min-w-[280px]">
+            <span className="text-zinc-500 font-medium">Date Range:</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-primary-500"
+            />
+            <span className="text-zinc-400">to</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
         </div>
 
         {/* Mobile View */}
@@ -654,7 +482,7 @@ export function Invoices() {
                         {customers.find((c) => c.id === inv.customerId)?.name || "Cash Customer"}
                      </div>
                      <div className="font-bold text-zinc-900 dark:text-white text-lg">
-                        ₹{inv.total.toLocaleString()}
+                        â‚¹{inv.total.toLocaleString()}
                      </div>
                   </div>
 
@@ -717,7 +545,7 @@ export function Invoices() {
                       "Cash Customer"}
                   </td>
                   <td className="py-4 px-6 font-semibold text-zinc-900 dark:text-white text-right">
-                    ₹{inv.total.toLocaleString()}
+                    â‚¹{inv.total.toLocaleString()}
                   </td>
                   <td className="py-4 px-6 text-center">
                     <select
@@ -770,8 +598,8 @@ export function Invoices() {
       </div>
 
       {showGenerateModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-zinc-800 rounded-2xl max-w-3xl w-full mx-2 max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center md:p-4 z-50 overflow-hidden">
+          <div className="bg-white dark:bg-zinc-800 md:rounded-2xl max-w-3xl w-full h-full md:h-auto md:max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col">
             <div className="p-3 md:p-5 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50 sticky top-0 z-10">
               <h3 className="font-bold font-display text-lg text-zinc-900 dark:text-white">
                 {editingInvoiceId ? "Edit Invoice" : "Generate Invoice"}
@@ -780,7 +608,7 @@ export function Invoices() {
                 onClick={() => setShowGenerateModal(false)}
                 className="p-2 hover:bg-zinc-200 rounded-full text-zinc-500 dark:text-zinc-400 transition-colors"
               >
-                ✕
+                âœ•
               </button>
             </div>
 
@@ -805,12 +633,14 @@ export function Invoices() {
                   </label>
                   <select
                     value={newInvoice.type}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const newType = e.target.value as any;
                       setNewInvoice({
                         ...newInvoice,
-                        type: e.target.value as any,
-                      })
-                    }
+                        type: newType,
+                        invoiceNo: !editingInvoiceId ? generateInvoiceNoForType(newType) : newInvoice.invoiceNo,
+                      });
+                    }}
                     className="w-full border border-zinc-300 dark:border-zinc-600 dark:border-zinc-600 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm bg-white dark:bg-zinc-800"
                   >
                     <option value="GST">GST Invoice</option>
@@ -836,6 +666,78 @@ export function Invoices() {
                   />
                 </div>
               </div>
+
+              {unbilledSlips.length > 0 && (
+                <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl overflow-hidden">
+                  <div className="bg-zinc-50 dark:bg-zinc-900/50 px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 font-semibold text-sm text-zinc-700 dark:text-zinc-200 flex justify-between items-center">
+                    <span>Select Slips to Bill</span>
+                    <button
+                      onClick={() => {
+                        const itemsMap = new Map<string, InvoiceItem>();
+                        selectedSlipIds.forEach(id => {
+                           const slip = unbilledSlips.find(s => s.id === id);
+                           if (slip) {
+                              const mat = slip.materialType;
+                              if (!itemsMap.has(mat)) {
+                                 itemsMap.set(mat, {
+                                    materialType: mat,
+                                    quantity: 0,
+                                    rate: slip.ratePerUnit || materials.find(m => m.name === mat)?.defaultPrice || 0,
+                                    amount: 0,
+                                    hsnCode: materials.find(m => m.name === mat)?.hsnCode || "25171010",
+                                    gstRate: materials.find(m => m.name === mat)?.gstRate || 5
+                                 });
+                              }
+                              const item = itemsMap.get(mat)!;
+                              item.quantity += slip.quantity;
+                              item.amount += slip.totalAmount;
+                           }
+                        });
+                        const newItems = Array.from(itemsMap.values()).map(item => {
+                          item.rate = item.quantity > 0 ? Number((item.amount / item.quantity).toFixed(2)) : 0;
+                          return item;
+                        });
+                        setNewInvoice(prev => ({ ...prev, items: newItems }));
+                      }}
+                      className="text-xs bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg transition-colors font-medium shadow-sm"
+                    >
+                      Generate Items
+                    </button>
+                  </div>
+                  <div className="p-2 max-h-48 overflow-y-auto bg-white dark:bg-zinc-800 space-y-1">
+                    {unbilledSlips.map(slip => (
+                      <label key={slip.id} className="flex items-center space-x-3 p-2 hover:bg-zinc-50 dark:hover:bg-zinc-700/50 rounded-lg cursor-pointer transition-colors border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700">
+                        <input
+                          type="checkbox"
+                          checked={selectedSlipIds.includes(slip.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedSlipIds(prev => [...prev, slip.id]);
+                            } else {
+                              setSelectedSlipIds(prev => prev.filter(id => id !== slip.id));
+                            }
+                          }}
+                          className="rounded text-primary-600 focus:ring-primary-500 bg-zinc-100 dark:bg-zinc-700 border-zinc-300 dark:border-zinc-600"
+                        />
+                        <div className="flex-1 flex justify-between items-center text-sm">
+                          <div>
+                            <span className="font-medium text-zinc-900 dark:text-white mr-2">{new Date(slip.date).toLocaleDateString()}</span>
+                            <span className="text-zinc-500 dark:text-zinc-400">{slip.vehicleNo}</span>
+                          </div>
+                          <div className="flex space-x-4">
+                            <span className="text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded text-xs">
+                              {slip.materialType}
+                            </span>
+                            <span className="font-medium text-zinc-900 dark:text-white">
+                              {slip.quantity} {slip.measurementType.includes("Brass") ? "Brass" : "Ton"}
+                            </span>
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl overflow-hidden">
                 <div className="bg-zinc-50 dark:bg-zinc-900/50 px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 font-semibold text-sm text-zinc-700 dark:text-zinc-200">
@@ -947,16 +849,16 @@ export function Invoices() {
                           <button onClick={() => setNewInvoice({...newInvoice, items: newInvoice.items?.filter((_, i) => i !== idx)})} className="absolute top-3 right-3 text-rose-500 hover:text-rose-700 font-medium bg-white dark:bg-zinc-800 rounded px-2 py-0.5 text-xs">Remove</button>
                           <div className="font-bold text-zinc-900 dark:text-white pr-14">{it.materialType}</div>
                           <div className="text-zinc-600 dark:text-zinc-400 mt-1">
-                             {it.quantity} x ₹{it.rate} = ₹{it.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                             {it.quantity} x â‚¹{it.rate} = â‚¹{it.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                           </div>
                           {newInvoice.type === "GST" && (
                             <div className="text-xs text-zinc-500 mt-1 flex gap-2">
                                <span>HSN: {it.hsnCode}</span>
-                               <span>GST: {it.gstRate}% (₹{gstAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })})</span>
+                               <span>GST: {it.gstRate}% (â‚¹{gstAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })})</span>
                             </div>
                           )}
                           <div className="mt-2 text-right font-bold text-zinc-900 dark:text-white border-t border-zinc-200 dark:border-zinc-700/50 pt-2">
-                             Total: ₹{total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                             Total: â‚¹{total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                           </div>
                         </div>
                       )
@@ -1021,16 +923,16 @@ export function Invoices() {
                               </>
                             )}
                             <td className="py-2 px-4">{it.quantity}</td>
-                            <td className="py-2 px-4">₹{it.rate}</td>
-                            <td className="py-2 px-4 text-right">₹{it.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                            <td className="py-2 px-4">â‚¹{it.rate}</td>
+                            <td className="py-2 px-4 text-right">â‚¹{it.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                             {newInvoice.type === "GST" && (
                               <>
-                                <td className="py-2 px-4 text-right">₹{cgst.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
-                                <td className="py-2 px-4 text-right">₹{sgst.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                                <td className="py-2 px-4 text-right">â‚¹{cgst.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                                <td className="py-2 px-4 text-right">â‚¹{sgst.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                               </>
                             )}
                             <td className="py-2 px-4 text-right font-medium text-zinc-900 dark:text-white">
-                              ₹{total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                              â‚¹{total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                             </td>
                             <td className="py-2 px-4 text-right">
                               <button 
@@ -1048,7 +950,7 @@ export function Invoices() {
                       <tr>
                         <td colSpan={newInvoice.type === "GST" ? 8 : 4} className="py-3 px-4 text-right font-medium text-zinc-600 dark:text-zinc-300">Subtotal:</td>
                         <td className="py-3 px-4 text-right font-bold text-zinc-900 dark:text-white">
-                          ₹{Math.round(newInvoice.items.reduce((sum, item) => sum + item.amount, 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          â‚¹{Math.round(newInvoice.items.reduce((sum, item) => sum + item.amount, 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                         </td>
                         <td></td>
                       </tr>
@@ -1057,14 +959,14 @@ export function Invoices() {
                           <tr>
                             <td colSpan={8} className="py-1 px-4 text-right text-sm text-zinc-500 dark:text-zinc-400">Total CGST:</td>
                             <td className="py-1 px-4 text-right text-sm text-zinc-700 dark:text-zinc-200">
-                              ₹{Math.round(newInvoice.items.reduce((sum, item) => sum + (item.amount * ((item.gstRate || 0) / 100)) / 2, 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                              â‚¹{Math.round(newInvoice.items.reduce((sum, item) => sum + (item.amount * ((item.gstRate || 0) / 100)) / 2, 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                             </td>
                             <td></td>
                           </tr>
                           <tr>
                             <td colSpan={8} className="py-1 px-4 text-right text-sm text-zinc-500 dark:text-zinc-400">Total SGST:</td>
                             <td className="py-1 px-4 text-right text-sm text-zinc-700 dark:text-zinc-200">
-                              ₹{Math.round(newInvoice.items.reduce((sum, item) => sum + (item.amount * ((item.gstRate || 0) / 100)) / 2, 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                              â‚¹{Math.round(newInvoice.items.reduce((sum, item) => sum + (item.amount * ((item.gstRate || 0) / 100)) / 2, 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                             </td>
                             <td></td>
                           </tr>
@@ -1073,7 +975,7 @@ export function Invoices() {
                       <tr className="border-t border-zinc-200 dark:border-zinc-700">
                         <td colSpan={newInvoice.type === "GST" ? 8 : 4} className="py-3 px-4 text-right font-bold text-zinc-900 dark:text-white">Grand Total:</td>
                         <td className="py-3 px-4 text-right font-bold text-primary-600">
-                          ₹{(() => {
+                          â‚¹{(() => {
                             let sub = 0, cgst = 0, sgst = 0;
                             newInvoice.items.forEach(it => {
                               sub += it.amount;

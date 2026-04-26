@@ -30,7 +30,7 @@ export function Vehicles() {
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     const newVehicle: Vehicle = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substring(2, 11),
       vehicleNo: formData.vehicleNo,
       ownerName: formData.ownerName,
       driverName: formData.driverName,
@@ -60,12 +60,12 @@ export function Vehicles() {
 
   const filteredVehicles = useMemo(() => {
     if (!searchTerm) return vehicles;
-    const term = searchTerm.toLowerCase();
+    const term = searchTerm.toLowerCase().replace(/\s+/g, '');
     return vehicles.filter(
       (v) =>
-        v.vehicleNo.toLowerCase().includes(term) ||
-        v.ownerName.toLowerCase().includes(term) ||
-        (v.driverName && v.driverName.toLowerCase().includes(term))
+        v.vehicleNo.toLowerCase().replace(/\s+/g, '').includes(term) ||
+        v.ownerName.toLowerCase().replace(/\s+/g, '').includes(term) ||
+        (v.driverName && v.driverName.toLowerCase().replace(/\s+/g, '').includes(term))
     );
   }, [vehicles, searchTerm]);
 

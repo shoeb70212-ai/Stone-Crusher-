@@ -26,18 +26,29 @@ export interface VehicleMeasurement {
   tareWeight?: number; // in tons
 }
 
-export type MaterialType =
-  | "10mm"
-  | "20mm"
-  | "40mm"
-  | "Dust"
-  | "GSB"
-  | "Boulders";
+export type MaterialType = string;
 
 export type SlipStatus = "Pending" | "Loaded" | "Tallied";
 
 export type DeliveryMode = "Company Vehicle" | "Third-Party Vehicle";
 export type MeasurementType = "Volume (Brass)" | "Weight (Tonnes)";
+
+export interface Material {
+  id: string;
+  name: string;
+  defaultPrice: number;
+  unit: string;
+  hsnCode?: string;
+  gstRate?: number;
+}
+
+export interface UserAccount {
+  id: string;
+  name: string;
+  email: string;
+  role: "Admin" | "Partner" | "Manager";
+  status: "Active" | "Inactive";
+}
 
 export interface CompanySettings {
   name: string;
@@ -54,12 +65,15 @@ export interface CompanySettings {
   primaryColor?: "emerald" | "blue" | "violet" | "rose" | "amber";
   slipFormat?: "A4" | "Thermal-80mm" | "Thermal-58mm";
   invoiceFormat?: "A4" | "Thermal-80mm" | "Thermal-58mm";
+  invoiceTemplate?: "Classic" | "Modern" | "Minimal";
   invoiceShowDueDate?: boolean;
   invoiceWatermark?: "None" | "Company Name" | "Status" | "Custom";
   invoiceWatermarkText?: string;
   invoiceColor?: string;
   expenseCategories?: string[];
   termsAndConditions?: string;
+  materials?: Material[];
+  users?: UserAccount[];
 }
 
 export interface InvoiceItem {
@@ -83,6 +97,7 @@ export interface Invoice {
   sgst: number;
   total: number;
   status: "Pending" | "Paid" | "Cancelled";
+  slipIds?: string[];
 }
 
 export interface Slip {

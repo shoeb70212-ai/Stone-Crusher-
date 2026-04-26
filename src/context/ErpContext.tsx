@@ -117,7 +117,21 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     ifscCode: "HDFC0001234",
     branchName: "Industrial Area Branch",
     slipFormat: "Thermal-80mm",
-    expenseCategories: ["Diesel", "Maintenance", "Salaries", "Rent", "Office Supplies", "Electricity"]
+    invoiceTemplate: "Classic",
+    expenseCategories: ["Diesel", "Maintenance", "Salaries", "Rent", "Office Supplies", "Electricity"],
+    materials: [
+      { id: "1", name: "10mm", defaultPrice: 450, unit: "Ton", hsnCode: "25171010", gstRate: 5 },
+      { id: "2", name: "20mm", defaultPrice: 480, unit: "Ton", hsnCode: "25171010", gstRate: 5 },
+      { id: "3", name: "40mm", defaultPrice: 400, unit: "Ton", hsnCode: "25171010", gstRate: 5 },
+      { id: "4", name: "Dust", defaultPrice: 350, unit: "Ton", hsnCode: "25171010", gstRate: 5 },
+      { id: "5", name: "GSB", defaultPrice: 300, unit: "Ton", hsnCode: "25171020", gstRate: 5 },
+      { id: "6", name: "Boulders", defaultPrice: 250, unit: "Ton", hsnCode: "25169090", gstRate: 5 },
+    ],
+    users: [
+      { id: "1", name: "Admin User", email: "admin@crushtrack.com", role: "Admin", status: "Active" },
+      { id: "2", name: "Operations Manager", email: "manager@crushtrack.com", role: "Manager", status: "Active" },
+      { id: "3", name: "Partner", email: "partner@crushtrack.com", role: "Partner", status: "Active" },
+    ]
   });
   const [userRole, setUserRole] = useState<UserRole>("Admin");
   const [isLoaded, setIsLoaded] = useState(false);
@@ -230,22 +244,6 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     setSlips((prev) =>
       prev.map((s) => {
         if (s.id === id) {
-          if (status === "Tallied" && s.status !== "Tallied") {
-            if (s.customerId === "CASH") {
-              // Cash sale -> Automatically log income
-              const newTx: Transaction = {
-                id: "tx_" + Math.random().toString(36).substr(2, 9),
-                date: new Date().toISOString(),
-                type: "Income",
-                amount: s.totalAmount,
-                category: "Cash Sale",
-                description: `Slip #${s.id} - ${s.materialType}`,
-                slipId: s.id,
-              };
-              setTransactions((txs) => [...txs, newTx]);
-            }
-            // Removed auto-income for credit customers to prevent double-counting/incorrect balance
-          }
           return { ...s, status };
         }
         return s;
@@ -288,9 +286,9 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     const cust = customers.find((c) => c.id === customerId);
     if (!cust) return 0;
     
-    // 1. Un-billed but Tallied Slips (these are pending invoices but are already delivered)
+    // 1. Un-billed Slips (these are pending invoices but are already delivered/loading)
     const custSlips = slips.filter(
-      (s) => s.customerId === customerId && s.status === "Tallied" && !s.invoiceId,
+      (s) => s.customerId === customerId && (s.status === "Tallied" || s.status === "Pending") && !s.invoiceId,
     );
     const slipTotal = custSlips.reduce((sum, s) => sum + s.totalAmount, 0);
 

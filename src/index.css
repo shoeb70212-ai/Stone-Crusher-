@@ -92,6 +92,8 @@
 
 body {
   @apply font-sans bg-zinc-50 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
 }
 
 /* Custom scrollbar for webkit */

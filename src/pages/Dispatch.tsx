@@ -22,7 +22,7 @@ import { EditSlipForm } from "../components/forms/EditSlipForm";
 import { PrintSlipModal } from "../components/forms/PrintSlipModal";
 
 export function Dispatch() {
-  const { slips, customers, vehicles, updateSlipStatus } =
+  const { slips, customers, vehicles, updateSlipStatus, companySettings } =
     useErp();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSlip, setEditingSlip] = useState<Slip | null>(null);
@@ -126,12 +126,9 @@ export function Dispatch() {
               className="text-sm border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
             >
               <option value="All">All Materials</option>
-              <option value="10mm">10mm</option>
-              <option value="20mm">20mm</option>
-              <option value="40mm">40mm</option>
-              <option value="Dust">Dust</option>
-              <option value="GSB">GSB</option>
-              <option value="Boulders">Boulders</option>
+              {(companySettings.materials || []).map((m) => (
+                <option key={m.id || m.name} value={m.name}>{m.name}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -380,8 +377,8 @@ export function Dispatch() {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-zinc-800 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl">
+        <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center md:p-4 z-50 overflow-hidden">
+          <div className="bg-white dark:bg-zinc-800 md:rounded-2xl w-full h-full md:h-auto max-w-2xl md:max-h-[90vh] overflow-y-auto shadow-xl flex flex-col">
             <div className="px-4 py-3 md:px-6 md:py-4 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50 sticky top-0">
               <h3 className="text-lg font-bold text-zinc-900 dark:text-white">
                 New Dispatch Slip
@@ -399,8 +396,8 @@ export function Dispatch() {
       )}
 
       {editingSlip && (
-        <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-zinc-800 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl">
+        <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center md:p-4 z-50 overflow-hidden">
+          <div className="bg-white dark:bg-zinc-800 md:rounded-2xl w-full h-full md:h-auto max-w-2xl md:max-h-[90vh] overflow-y-auto shadow-xl flex flex-col">
             <div className="px-4 py-3 md:px-6 md:py-4 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50 sticky top-0">
               <h3 className="text-lg font-bold text-zinc-900 dark:text-white">
                 Edit Dispatch Slip

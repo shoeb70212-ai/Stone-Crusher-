@@ -1,6 +1,9 @@
 import React, { useState, useMemo } from "react";
 import { useErp } from "../context/ErpContext";
 import {
+  Search,
+  ChevronDown,
+  ChevronUp,
   Users,
   Plus,
   X,
@@ -24,6 +27,24 @@ export function Customers() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
     null,
   );
+  
+  const [searchTerm, setSearchTerm] = useState("");
+  const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
+
+  const toggleExpand = (id: string) => {
+    setExpandedCustomerId(prev => prev === id ? null : id);
+  };
+
+  const filteredCustomers = useMemo(() => {
+    if (!searchTerm) return customers;
+    const term = searchTerm.toLowerCase().replace(/\s+/g, '');
+    return customers.filter(
+      (c) =>
+        c.name.toLowerCase().replace(/\s+/g, '').includes(term) ||
+        (c.phone && c.phone.replace(/\s+/g, '').includes(term)) ||
+        (c.gstin && c.gstin.toLowerCase().replace(/\s+/g, '').includes(term))
+    );
+  }, [customers, searchTerm]);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -46,7 +67,7 @@ export function Customers() {
       });
     } else {
       const newCustomer: Customer = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: Math.random().toString(36).substring(2, 11),
         name: formData.name,
         phone: formData.phone,
         address: formData.address,
@@ -127,7 +148,7 @@ export function Customers() {
 
     // Add Slips (Purchases/Charges)
     slips
-      .filter((s) => s.customerId === selectedCustomer.id && s.status === "Tallied")
+      .filter((s) => s.customerId === selectedCustomer.id && (s.status === "Tallied" || s.status === "Pending"))
       .forEach((s) => {
         historyItems.push({
           id: s.id,
@@ -242,160 +263,104 @@ export function Customers() {
         </button>
       </div>
 
-      <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 overflow-hidden">
-        {/* Mobile View */}
-        <div className="md:hidden divide-y divide-zinc-100 dark:divide-zinc-700/50">
-          {customers.length === 0 ? (
-            <div className="py-12 text-center text-zinc-500 dark:text-zinc-400">
-               No customers found.
-            </div>
-          ) : (
-            customers.map((c) => {
-              const bal = getCustomerBalance(c.id);
-              return (
-                <div key={c.id} className="p-4 bg-white dark:bg-zinc-800 space-y-3">
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 shrink-0">
-                        <UserIcon className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="font-bold text-zinc-900 dark:text-white">{c.name}</div>
-                        <div className="flex items-center text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                          <Phone className="w-3 h-3 mr-1" /> {c.phone}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-2 text-sm bg-zinc-50 dark:bg-zinc-900/50 p-3 rounded-lg border border-zinc-100 dark:border-zinc-700/50">
-                    <div>
-                      <span className="text-zinc-500 text-xs block">Opening</span>
-                      <span className="font-medium dark:text-zinc-200">₹{c.openingBalance.toLocaleString()}</span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 text-xs block">Balance</span>
-                      <span
-                        className={`font-bold tracking-tight ${
-                          bal > 0
-                            ? "text-red-600 dark:text-red-400"
-                            : bal < 0
-                              ? "text-primary-600 dark:text-primary-400"
-                              : "text-zinc-700 dark:text-zinc-200"
-                        }`}
-                      >
-                        ₹{Math.abs(bal).toLocaleString()} {bal > 0 ? "Dr" : bal < 0 ? "Cr" : ""}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-end pt-1 gap-2">
-                    <button onClick={() => setSelectedCustomer(c)} className="text-xs bg-primary-50 hover:bg-primary-100 text-primary-700 px-3 py-2 rounded-lg font-medium flex items-center flex-1 justify-center">
-                      <FileText className="w-3.5 h-3.5 mr-1.5" /> Statement
-                    </button>
-                    <button onClick={() => openEditModal(c)} className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-lg font-medium flex items-center justify-center border border-indigo-100">
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* Desktop View */}
-        <div className="hidden md:block p-0 sm:p-4 md:p-6">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left ">
-              <thead className="text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-900/50 uppercase rounded-lg">
-                <tr>
-                  <th className="px-4 py-4 md:py-3 rounded-tl-lg md:rounded-l-lg">
-                    Name
-                  </th>
-                  <th className="px-4 py-4 md:py-3">Contact</th>
-                  <th className="px-4 py-4 md:py-3">Opening Bal.</th>
-                  <th className="px-4 py-4 md:py-3 text-right">
-                    Current Balance
-                  </th>
-                  <th className="px-4 py-4 md:py-3 text-right rounded-tr-lg md:rounded-r-lg">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {customers.map((c) => {
-                  const bal = getCustomerBalance(c.id);
-                  return (
-                    <tr
-                      key={c.id}
-                      className="border-b border-zinc-50 dark:border-zinc-700/50 last:border-0 hover:bg-zinc-50 dark:hover:bg-zinc-800"
-                    >
-                      <td className="px-4 py-4 font-bold text-zinc-900 dark:text-white flex items-center">
-                        <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 mr-3 shrink-0">
-                          <UserIcon className="w-4 h-4" />
-                        </div>
-                        {c.name}
-                      </td>
-                      <td className="px-4 py-4 text-zinc-600 dark:text-zinc-300">
-                        <div className="flex items-center">
-                          <Phone className="w-3 h-3 mr-1 text-zinc-400 dark:text-zinc-500" />
-                          {c.phone}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-zinc-500 dark:text-zinc-400 font-medium tracking-tight">
-                        ₹ {c.openingBalance.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <span
-                          className={`font-bold tracking-tight px-2.5 py-1 rounded-full text-xs ${
-                            bal > 0
-                              ? "bg-red-50 text-red-700"
-                              : bal < 0
-                                ? "bg-primary-50 text-primary-700"
-                                : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200"
-                          }`}
-                        >
-                          ₹ {Math.abs(bal).toLocaleString()}{" "}
-                          {bal > 0 ? "Dr" : bal < 0 ? "Cr" : ""}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <div className="flex items-center justify-end space-x-2">
-                          <button
-                            onClick={() => setSelectedCustomer(c)}
-                            title="Statement"
-                            className="text-primary-600 hover:text-primary-700 font-semibold bg-primary-50 hover:bg-primary-100 p-2 rounded-lg transition-colors flex items-center"
-                          >
-                            <FileText className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => openEditModal(c)}
-                            title="Edit Customer"
-                            className="text-indigo-600 hover:text-indigo-700 font-semibold bg-indigo-50 hover:bg-indigo-100 p-2 rounded-lg transition-colors flex items-center"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => removeCustomer(c.id)}
-                            title="Delete Customer"
-                            className="text-rose-600 hover:text-rose-700 font-semibold bg-rose-50 hover:bg-rose-100 p-2 rounded-lg transition-colors flex items-center"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      {/* Search Bar */}
+      <div className="bg-white dark:bg-zinc-800 p-4 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <Search className="w-5 h-5 text-zinc-400" />
           </div>
+          <input
+            type="text"
+            placeholder="Search customers by name, phone, or GSTIN..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-zinc-800 dark:text-white"
+          />
         </div>
       </div>
 
+      <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 overflow-hidden divide-y divide-zinc-100 dark:divide-zinc-700/50">
+        {filteredCustomers.length === 0 ? (
+          <div className="py-12 text-center text-zinc-500 dark:text-zinc-400">
+             No customers found.
+          </div>
+        ) : (
+          filteredCustomers.map((c) => {
+            const bal = getCustomerBalance(c.id);
+            const isExpanded = expandedCustomerId === c.id;
+
+            return (
+              <div key={c.id} className="flex flex-col transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                {/* Header (Always Visible) */}
+                <div 
+                  onClick={() => toggleExpand(c.id)}
+                  className="p-4 cursor-pointer flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-4 flex-1">
+                    <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 shrink-0">
+                      <UserIcon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-zinc-900 dark:text-white">{c.name}</div>
+                      <div className="flex items-center text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                        <Phone className="w-3.5 h-3.5 mr-1" /> {c.phone || 'No phone'}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <div className="text-xs text-zinc-500 dark:text-zinc-400">Balance</div>
+                      <span className={`font-bold tracking-tight text-sm md:text-base ${
+                          bal > 0 ? "text-red-600 dark:text-red-400" : bal < 0 ? "text-primary-600 dark:text-primary-400" : "text-zinc-700 dark:text-zinc-200"
+                      }`}>
+                        ₹{Math.abs(bal).toLocaleString()} {bal > 0 ? "Dr" : bal < 0 ? "Cr" : ""}
+                      </span>
+                    </div>
+                    {isExpanded ? <ChevronUp className="w-5 h-5 text-zinc-400" /> : <ChevronDown className="w-5 h-5 text-zinc-400" />}
+                  </div>
+                </div>
+
+                {/* Expanded Details */}
+                {isExpanded && (
+                  <div className="px-4 pb-4 pt-2 border-t border-zinc-100 dark:border-zinc-700/50 bg-zinc-50 dark:bg-zinc-900/20">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                       <div>
+                         <span className="text-xs text-zinc-500 block">Opening Balance</span>
+                         <span className="text-sm font-medium dark:text-zinc-200">₹{c.openingBalance.toLocaleString()} {c.openingBalance > 0 ? "Dr" : c.openingBalance < 0 ? "Cr" : ""}</span>
+                       </div>
+                       <div>
+                         <span className="text-xs text-zinc-500 block">GSTIN</span>
+                         <span className="text-sm font-medium dark:text-zinc-200 uppercase">{c.gstin || 'N/A'}</span>
+                       </div>
+                       <div className="sm:col-span-2">
+                         <span className="text-xs text-zinc-500 block">Address</span>
+                         <span className="text-sm font-medium dark:text-zinc-200">{c.address || 'N/A'}</span>
+                       </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 justify-end">
+                      <button onClick={(e) => { e.stopPropagation(); setSelectedCustomer(c); }} className="text-sm bg-primary-50 hover:bg-primary-100 text-primary-700 px-4 py-2 rounded-lg font-medium flex items-center">
+                        <FileText className="w-4 h-4 mr-1.5" /> Statement
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); openEditModal(c); }} className="text-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-4 py-2 rounded-lg font-medium flex items-center border border-indigo-100">
+                        <Edit2 className="w-4 h-4 mr-1.5" /> Edit
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); removeCustomer(c.id); }} className="text-sm bg-rose-50 hover:bg-rose-100 text-rose-700 px-4 py-2 rounded-lg font-medium flex items-center border border-rose-100">
+                        <Trash2 className="w-4 h-4 mr-1.5" /> Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
       {isModalOpen && (
-        <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-zinc-800 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-xl">
+        <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center md:p-4 z-50 overflow-hidden">
+          <div className="bg-white dark:bg-zinc-800 md:rounded-2xl w-full h-full md:h-auto max-w-lg md:max-h-[90vh] overflow-y-auto shadow-xl flex flex-col">
             <div className="px-4 py-3 md:px-6 md:py-4 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50 sticky top-0">
               <h3 className="text-lg font-bold text-zinc-900 dark:text-white">
                 {editingDataId ? "Edit Customer" : "Add New Customer"}
@@ -513,8 +478,8 @@ export function Customers() {
       )}
 
       {selectedCustomer && (
-        <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-[#f8fafc] rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-xl flex flex-col relative">
+        <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center md:p-4 z-50 overflow-hidden">
+          <div className="bg-[#f8fafc] md:rounded-2xl w-full h-full md:h-auto max-w-4xl md:max-h-[90vh] overflow-hidden shadow-xl flex flex-col relative">
             <div className="px-4 py-3 md:px-6 md:py-4 border-b border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 flex justify-between items-center shrink-0">
               <div>
                 <h3 className="text-xl font-bold text-zinc-900 dark:text-white">
