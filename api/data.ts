@@ -1,18 +1,15 @@
-import express from 'express';
-import { createServer as createViteServer } from 'vite';
-import puppeteer from 'puppeteer';
-import path from 'path';
 import { Pool } from 'pg';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/crusher',
+  connectionString: process.env.DATABASE_URL,
 });
 
-// Initialize Schema
+// Initialize Schema (runs once per cold start)
+let dbInitialized = false;
+
 async function initDb() {
+  if (dbInitialized) return;
   await pool.query(`
     CREATE TABLE IF NOT EXISTS customers (id TEXT PRIMARY KEY, name TEXT, phone TEXT, "openingBalance" DOUBLE PRECISION);
     CREATE TABLE IF NOT EXISTS vehicles (id TEXT PRIMARY KEY, "vehicleNo" TEXT, "ownerName" TEXT, "ownerPhone" TEXT, "driverName" TEXT, "driverPhone" TEXT, "defaultMeasurementType" TEXT, measurement JSONB);
@@ -23,7 +20,6 @@ async function initDb() {
     CREATE TABLE IF NOT EXISTS settings (id TEXT PRIMARY KEY, data JSONB);
   `);
 
-  // Helper to seed default settings if missing
   const { rows } = await pool.query('SELECT * FROM settings WHERE id = $1', ['global']);
   if (rows.length === 0) {
     await pool.query('INSERT INTO settings (id, data) VALUES ($1, $2)', ['global', JSON.stringify({
@@ -40,18 +36,31 @@ async function initDb() {
       expenseCategories: ["Diesel", "Maintenance", "Salaries", "Rent", "Office Supplies", "Electricity"]
     })]);
   }
+  dbInitialized = true;
 }
 
-async function startServer() {
-  await initDb();
-  
-  const app = express();
-  const PORT = 3000;
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Add CORS headers for local Vercel dev if needed, or Vercel handles it
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
 
-  app.use(express.json({ limit: '10mb' }));
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
-  // Data API
-  app.get('/api/data', async (req, res) => {
+  try {
+    await initDb();
+  } catch (error) {
+    console.error("Failed to initialize DB:", error);
+    return res.status(500).json({ error: "Failed to initialize database" });
+  }
+
+  if (req.method === 'GET') {
     try {
       const [
         customersRes,
@@ -80,14 +89,14 @@ async function startServer() {
         tasks: tasksRes.rows.map(t => ({ ...t, completed: !!t.completed })),
         companySettings: typeof settingsRes.rows[0]?.data === 'string' ? JSON.parse(settingsRes.rows[0].data) : settingsRes.rows[0]?.data
       };
-      res.json(data);
+      return res.status(200).json(data);
     } catch (error) {
       console.error(error);
-      res.status(500).json({ error: "Failed to fetch data" });
+      return res.status(500).json({ error: "Failed to fetch data" });
     }
-  });
+  }
 
-  app.post('/api/data', async (req, res) => {
+  if (req.method === 'POST') {
     const { customers, slips, transactions, vehicles, invoices, tasks, companySettings } = req.body;
     
     const client = await pool.connect();
@@ -95,85 +104,55 @@ async function startServer() {
     try {
       await client.query('BEGIN');
       
-      // Clear tables
       await client.query('DELETE FROM customers');
-      for (const c of customers) {
+      for (const c of customers || []) {
         await client.query('INSERT INTO customers (id, name, phone, "openingBalance") VALUES ($1, $2, $3, $4)', [c.id, c.name, c.phone, c.openingBalance]);
       }
 
       await client.query('DELETE FROM vehicles');
-      for (const v of vehicles) {
+      for (const v of vehicles || []) {
         await client.query('INSERT INTO vehicles (id, "vehicleNo", "ownerName", "ownerPhone", "driverName", "driverPhone", "defaultMeasurementType", measurement) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [v.id, v.vehicleNo, v.ownerName, v.ownerPhone, v.driverName, v.driverPhone, v.defaultMeasurementType, JSON.stringify(v.measurement)]);
       }
 
       await client.query('DELETE FROM slips');
-      for (const s of slips) {
+      for (const s of slips || []) {
         await client.query('INSERT INTO slips (id, date, "vehicleNo", "driverName", "driverPhone", "materialType", "deliveryMode", "measurementType", measurement, quantity, "ratePerUnit", "freightAmount", "totalAmount", "amountPaid", "customerId", status, notes, "operatorName", "loaderName", "invoiceId") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)', [s.id, s.date, s.vehicleNo, s.driverName, s.driverPhone, s.materialType, s.deliveryMode, s.measurementType, JSON.stringify(s.measurement), s.quantity, s.ratePerUnit, s.freightAmount, s.totalAmount, s.amountPaid, s.customerId, s.status, s.notes, s.operatorName, s.loaderName, s.invoiceId]);
       }
 
       await client.query('DELETE FROM transactions');
-      for (const t of transactions) {
+      for (const t of transactions || []) {
         await client.query('INSERT INTO transactions (id, date, type, amount, category, description, "customerId", "slipId") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [t.id, t.date, t.type, t.amount, t.category, t.description, t.customerId, t.slipId]);
       }
 
       await client.query('DELETE FROM invoices');
-      for (const i of invoices) {
+      for (const i of invoices || []) {
         await client.query('INSERT INTO invoices (id, "invoiceNo", date, "customerId", type, items, "subTotal", cgst, sgst, total, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)', [i.id, i.invoiceNo, i.date, i.customerId, i.type, JSON.stringify(i.items), i.subTotal, i.cgst, i.sgst, i.total, i.status]);
       }
 
       await client.query('DELETE FROM tasks');
-      for (const t of tasks) {
+      for (const t of tasks || []) {
         await client.query('INSERT INTO tasks (id, title, completed, "createdAt") VALUES ($1, $2, $3, $4)', [t.id, t.title, t.completed ? 1 : 0, t.createdAt]);
       }
 
-      // Update settings
-      const { rows } = await client.query('SELECT id FROM settings WHERE id = $1', ['global']);
-      if (rows.length > 0) {
-        await client.query('UPDATE settings SET data = $1 WHERE id = $2', [JSON.stringify(companySettings), 'global']);
-      } else {
-        await client.query('INSERT INTO settings (id, data) VALUES ($1, $2)', ['global', JSON.stringify(companySettings)]);
+      if (companySettings) {
+        const { rows } = await client.query('SELECT id FROM settings WHERE id = $1', ['global']);
+        if (rows.length > 0) {
+          await client.query('UPDATE settings SET data = $1 WHERE id = $2', [JSON.stringify(companySettings), 'global']);
+        } else {
+          await client.query('INSERT INTO settings (id, data) VALUES ($1, $2)', ['global', JSON.stringify(companySettings)]);
+        }
       }
 
       await client.query('COMMIT');
-      res.json({ success: true });
+      return res.status(200).json({ success: true });
     } catch (error) {
       await client.query('ROLLBACK');
       console.error("Sync failed:", error);
-      res.status(500).json({ error: "Sync failed" });
+      return res.status(500).json({ error: "Sync failed" });
     } finally {
       client.release();
     }
-  });
-
-  // PDF Generation API
-  app.post('/api/pdf', async (req, res) => {
-    try {
-      const { html, format } = req.body;
-      const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      
-      let width = '210mm', height = '297mm';
-      if (format === 'Thermal-80mm') width = '80mm';
-      else if (format === 'Thermal-58mm') width = '58mm';
-
-      const pdf = await page.pdf({ width, height, printBackground: true });
-      await browser.close();
-      res.contentType("application/pdf").send(Buffer.from(pdf));
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath), (req, res) => res.sendFile(path.join(distPath, 'index.html')));
   }
 
-  app.listen(PORT, "0.0.0.0", () => console.log(`Server running on http://localhost:${PORT}`));
+  return res.status(405).json({ error: "Method not allowed" });
 }
-
-startServer();

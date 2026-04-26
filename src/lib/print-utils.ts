@@ -54,9 +54,12 @@ export function printHtml(htmlContent: string, format: string) {
 }
 
 export async function openPdfBackend(htmlContent: string, format: string) {
+  // Use html2pdf.js dynamically so we don't break SSR (even though this is Vite)
+  const html2pdf = (await import('html2pdf.js')).default;
+  
   let cssRules = '';
-  document.querySelectorAll('style').forEach(node => {
-     cssRules += node.innerHTML + '\n';
+  document.querySelectorAll('style, link[rel="stylesheet"]').forEach(node => {
+     cssRules += node.outerHTML + '\n';
   });
 
   const fullHtml = `
@@ -65,17 +68,16 @@ export async function openPdfBackend(htmlContent: string, format: string) {
       <head>
         <title>Print</title>
         <script src="https://cdn.tailwindcss.com"></script>
+        ${cssRules}
         <style>
-          ${cssRules}
           @media print {
             @page { margin: 0; }
           }
           body { 
             margin: 0; 
             padding: ${format === 'A4' ? '20px' : '10px'}; 
-            -webkit-print-color-adjust: exact; 
-            print-color-adjust: exact;
             background-color: white !important;
+            color: black;
           }
         </style>
       </head>
@@ -85,29 +87,34 @@ export async function openPdfBackend(htmlContent: string, format: string) {
     </html>
   `;
 
+  const opt = {
+    margin:       [0, 0],
+    filename:     'document.pdf',
+    image:        { type: 'jpeg', quality: 0.98 },
+    html2canvas:  { scale: 2, useCORS: true, logging: false },
+    jsPDF:        { unit: 'in', format: format === 'A4' ? 'a4' : [3.15, 11], orientation: 'portrait' }
+  };
+
   try {
-     const res = await fetch('/api/pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html: fullHtml, format })
-     });
-
-     if (!res.ok) throw new Error("Failed to generate PDF on server");
-
-     const blob = await res.blob();
-     const url = window.URL.createObjectURL(blob);
+     const element = document.createElement('div');
+     element.innerHTML = fullHtml;
+     
+     const pdfBlob = await html2pdf().set(opt).from(element).outputPdf('blob');
+     const url = window.URL.createObjectURL(pdfBlob);
      window.open(url, '_blank');
   } catch (error) {
      console.error("PDF generation failed:", error);
-     alert("Failed to build PDF on server. Falling back to native print.");
+     alert("Failed to build PDF. Falling back to native print.");
      printHtml(htmlContent, format);
   }
 }
 
 export async function downloadPdfBackend(htmlContent: string, format: string, filename: string) {
+  const html2pdf = (await import('html2pdf.js')).default;
+  
   let cssRules = '';
-  document.querySelectorAll('style').forEach(node => {
-     cssRules += node.innerHTML + '\n';
+  document.querySelectorAll('style, link[rel="stylesheet"]').forEach(node => {
+     cssRules += node.outerHTML + '\n';
   });
 
   const fullHtml = `
@@ -116,17 +123,16 @@ export async function downloadPdfBackend(htmlContent: string, format: string, fi
       <head>
         <title>Print</title>
         <script src="https://cdn.tailwindcss.com"></script>
+        ${cssRules}
         <style>
-          ${cssRules}
           @media print {
             @page { margin: 0; }
           }
           body { 
             margin: 0; 
             padding: ${format === 'A4' ? '20px' : '10px'}; 
-            -webkit-print-color-adjust: exact; 
-            print-color-adjust: exact;
             background-color: white !important;
+            color: black;
           }
         </style>
       </head>
@@ -136,24 +142,19 @@ export async function downloadPdfBackend(htmlContent: string, format: string, fi
     </html>
   `;
 
+  const opt = {
+    margin:       [0, 0],
+    filename:     filename,
+    image:        { type: 'jpeg', quality: 0.98 },
+    html2canvas:  { scale: 2, useCORS: true, logging: false },
+    jsPDF:        { unit: 'in', format: format === 'A4' ? 'a4' : [3.15, 11], orientation: 'portrait' }
+  };
+
   try {
-     const res = await fetch('/api/pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html: fullHtml, format })
-     });
-
-     if (!res.ok) throw new Error("Failed to generate PDF on server");
-
-     const blob = await res.blob();
-     const url = window.URL.createObjectURL(blob);
-     const a = document.createElement('a');
-     a.href = url;
-     a.download = filename;
-     document.body.appendChild(a);
-     a.click();
-     window.URL.revokeObjectURL(url);
-     document.body.removeChild(a);
+     const element = document.createElement('div');
+     element.innerHTML = fullHtml;
+     
+     await html2pdf().set(opt).from(element).save();
   } catch (error) {
      console.error("PDF download failed:", error);
      alert("Failed to download PDF. Falling back to native print.");
