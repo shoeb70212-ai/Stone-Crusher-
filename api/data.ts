@@ -15,9 +15,26 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 // Database connection
 // ---------------------------------------------------------------------------
 
+/**
+ * Pool configured for Supabase Supavisor in **Transaction mode**.
+ *
+ * Key settings for serverless (Vercel) compatibility:
+ * - `ssl.rejectUnauthorized: false` — Supabase uses a self-signed cert.
+ * - `statement_timeout` — prevents runaway queries from holding connections.
+ * - `max: 5` — serverless functions should keep pool small; Supavisor
+ *   handles the heavy lifting of connection multiplexing.
+ *
+ * IMPORTANT: The DATABASE_URL must be the **Transaction Pooler** string
+ * from Supabase (port 6543, host *.pooler.supabase.com), NOT the direct
+ * connection (port 5432, host db.*.supabase.co). Direct connections
+ * require IPv6 which Vercel's serverless runtime does not support.
+ */
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
+  max: 5,
+  idleTimeoutMillis: 20_000,
+  connectionTimeoutMillis: 10_000,
 });
 
 // ---------------------------------------------------------------------------
