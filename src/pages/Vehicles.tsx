@@ -8,7 +8,7 @@ import { PrintSlipModal } from "../components/forms/PrintSlipModal";
 import { Printer } from "lucide-react";
 
 export function Vehicles() {
-  const { vehicles, addVehicle, updateVehicle, slips } = useErp();
+  const { vehicles, addVehicle, updateVehicle, slips, companySettings } = useErp();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [printSlip, setPrintSlip] = useState<Slip | null>(null);
