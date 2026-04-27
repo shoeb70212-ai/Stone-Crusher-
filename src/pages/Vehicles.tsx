@@ -8,7 +8,7 @@ import { PrintSlipModal } from "../components/forms/PrintSlipModal";
 import { Printer } from "lucide-react";
 
 export function Vehicles() {
-  const { vehicles, addVehicle, slips } = useErp();
+  const { vehicles, addVehicle, updateVehicle, slips } = useErp();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [printSlip, setPrintSlip] = useState<Slip | null>(null);
@@ -69,6 +69,15 @@ export function Vehicles() {
     );
   }, [vehicles, searchTerm]);
 
+  // Sort: active first
+  const sortedVehicles = useMemo(() => {
+    return [...filteredVehicles].sort((a, b) => {
+      const aActive = a.isActive !== false ? 0 : 1;
+      const bActive = b.isActive !== false ? 0 : 1;
+      return aActive - bActive;
+    });
+  }, [filteredVehicles]);
+
   const vehicleHistory = useMemo(() => {
     if (!selectedVehicle) return [];
 
@@ -99,7 +108,7 @@ export function Vehicles() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h2 className="text-xl md:text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
+          <h2 className="text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
             Vehicles Directory
           </h2>
           <p className="text-zinc-500 dark:text-zinc-400 mt-1">
@@ -128,12 +137,15 @@ export function Vehicles() {
         <div className="p-0 md:p-5">
           {/* Mobile list view */}
           <div className="md:hidden divide-y divide-zinc-100 dark:divide-zinc-800">
-            {filteredVehicles.map((v) => (
+            {sortedVehicles.map((v) => (
               <div key={v.id} className="p-4 flex flex-col gap-2">
                 <div className="flex justify-between items-start">
                    <div className="font-bold text-zinc-900 dark:text-white text-lg">{v.vehicleNo}</div>
                    <span className={`px-2 py-1 rounded text-xs font-semibold ${v.defaultMeasurementType === "Volume (Brass)" ? "bg-indigo-50 text-indigo-700" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200"}`}>
                       {v.defaultMeasurementType}
+                   </span>
+                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${v.isActive !== false ? "bg-green-100 text-green-700" : "bg-zinc-100 text-zinc-500"}`}>
+                     {v.isActive !== false ? "Active" : "Inactive"}
                    </span>
                 </div>
                 <div className="text-sm text-zinc-600 dark:text-zinc-300">
@@ -147,13 +159,19 @@ export function Vehicles() {
                 </div>
                 <button
                   onClick={() => setSelectedVehicle(v)}
-                  className="mt-2 text-indigo-600 hover:text-indigo-800 font-medium px-3 py-2 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors inline-flex items-center justify-center text-sm w-full"
+                  className="mt-2 text-indigo-600 hover:text-indigo-800 font-medium px-3 py-2 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors inline-flex items-center justify-center text-sm flex-1"
                 >
-                  <FileText className="w-4 h-4 mr-2" /> View Trip History
+                  <FileText className="w-4 h-4 mr-2" /> Trips
+                </button>
+                <button
+                  onClick={() => updateVehicle({ ...v, isActive: v.isActive === false })}
+                  className={`mt-2 font-medium px-3 py-2 rounded-lg transition-colors inline-flex items-center justify-center text-sm flex-1 ${v.isActive !== false ? "text-rose-600 bg-rose-50 hover:bg-rose-100" : "text-emerald-600 bg-emerald-50 hover:bg-emerald-100"}`}
+                >
+                  {v.isActive !== false ? "Deactivate" : "Activate"}
                 </button>
               </div>
             ))}
-            {filteredVehicles.length === 0 && (
+            {sortedVehicles.length === 0 && (
               <div className="p-8 text-center text-zinc-500">No vehicles found.</div>
             )}
           </div>
@@ -167,11 +185,12 @@ export function Vehicles() {
                   <th className="px-4 py-3">Owner / Driver</th>
                   <th className="px-4 py-3">Type</th>
                   <th className="px-4 py-3">Dimensions</th>
+                  <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 rounded-r-lg text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredVehicles.map((v) => (
+                {sortedVehicles.map((v) => (
                   <tr
                     key={v.id}
                     className="border-b border-zinc-50 dark:border-zinc-700/50 last:border-0 hover:bg-zinc-50 dark:hover:bg-zinc-800"
@@ -199,17 +218,28 @@ export function Vehicles() {
                         ? `${v.measurement.lengthFeet}' × ${v.measurement.widthFeet}' × ${v.measurement.heightFeet}'`
                         : `Tare Weight: ${v.measurement.tareWeight} Tons`}
                     </td>
-                    <td className="px-4 py-4 text-right align-top">
+                    <td className="px-4 py-4 align-top">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${v.isActive !== false ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"}`}>
+                        {v.isActive !== false ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 text-right align-top space-x-2">
                       <button
                         onClick={() => setSelectedVehicle(v)}
                         className="text-indigo-600 hover:text-indigo-800 font-medium px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors inline-flex items-center whitespace-nowrap"
                       >
                         <FileText className="w-4 h-4 mr-1.5" /> Trips
                       </button>
+                      <button
+                        onClick={() => updateVehicle({ ...v, isActive: v.isActive === false })}
+                        className={`font-medium px-3 py-1.5 rounded-lg transition-colors inline-flex items-center whitespace-nowrap ${v.isActive !== false ? "text-rose-600 bg-rose-50 hover:bg-rose-100" : "text-emerald-600 bg-emerald-50 hover:bg-emerald-100"}`}
+                      >
+                        {v.isActive !== false ? "Deactivate" : "Activate"}
+                      </button>
                     </td>
                   </tr>
                 ))}
-                {filteredVehicles.length === 0 && (
+                {sortedVehicles.length === 0 && (
                   <tr>
                     <td colSpan={5} className="p-8 text-center text-zinc-500">No vehicles found.</td>
                   </tr>

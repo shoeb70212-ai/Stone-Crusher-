@@ -6,7 +6,6 @@ import {
   TrendingUp,
   Wallet,
   Printer,
-  FileText
 } from "lucide-react";
 import {
   endOfDay,
@@ -206,7 +205,7 @@ export function Dashboard() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h2 className="text-xl md:text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
+          <h2 className="text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
             Dashboard
           </h2>
           <p className="text-zinc-500 dark:text-zinc-400 mt-1">
@@ -309,7 +308,7 @@ export function Dashboard() {
               <div key={slip.id} className="bg-zinc-50 dark:bg-zinc-900/50 p-3 rounded-xl flex flex-col gap-2 border border-zinc-100 dark:border-zinc-700/50 hover:border-primary-200 dark:hover:border-primary-900/30 transition-colors group">
                  <div className="flex justify-between items-center">
                     <span className="font-bold text-zinc-900 dark:text-white uppercase tracking-wide text-sm">{slip.vehicleNo}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${slip.status === "Tallied" ? "bg-primary-100 text-primary-700" : slip.status === "Loaded" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${slip.status === "Tallied" ? "bg-primary-100 text-primary-700" : slip.status === "Loaded" ? "bg-blue-100 text-blue-700" : slip.status === "Cancelled" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
                       {slip.status}
                     </span>
                  </div>

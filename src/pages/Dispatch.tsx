@@ -15,7 +15,8 @@ import {
   Printer,
   Building2,
   User,
-  Edit2
+  Edit2,
+  Ban
 } from "lucide-react";
 import { CreateSlipForm } from "../components/forms/CreateSlipForm";
 import { EditSlipForm } from "../components/forms/EditSlipForm";
@@ -61,7 +62,7 @@ export function Dispatch() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h2 className="text-xl md:text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
+          <h2 className="text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
             Dispatch & Slips
           </h2>
           <p className="text-zinc-500 dark:text-zinc-400 mt-1">
@@ -200,7 +201,7 @@ export function Dispatch() {
                            #{slip.id} • {new Date(slip.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         </div>
                       </div>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${slip.status === "Tallied" ? "bg-primary-100 text-primary-700" : slip.status === "Loaded" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${slip.status === "Tallied" ? "bg-primary-100 text-primary-700" : slip.status === "Loaded" ? "bg-blue-100 text-blue-700" : slip.status === "Cancelled" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
                         {slip.status}
                       </span>
                     </div>
@@ -228,9 +229,14 @@ export function Dispatch() {
                     
                     <div className="flex justify-end pt-2 gap-2 border-t border-zinc-100 dark:border-zinc-700/50">
                        {slip.status === "Pending" && (
-                         <button onClick={() => updateSlipStatus(slip.id, "Loaded")} className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded font-medium hover:bg-blue-100">
-                           Mark Loaded
-                         </button>
+                         <>
+                           <button onClick={() => updateSlipStatus(slip.id, "Loaded")} className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded font-medium hover:bg-blue-100">
+                             Mark Loaded
+                           </button>
+                           <button onClick={() => confirm("Are you sure you want to cancel this slip?") && updateSlipStatus(slip.id, "Cancelled")} className="text-xs bg-rose-50 text-rose-600 px-3 py-1.5 rounded font-medium hover:bg-rose-100">
+                             Cancel
+                           </button>
+                         </>
                        )}
                        {slip.status === "Loaded" && (
                          <button onClick={() => updateSlipStatus(slip.id, "Tallied")} className="text-xs bg-primary-50 text-primary-600 px-3 py-1.5 rounded font-medium hover:bg-primary-100">
@@ -329,7 +335,9 @@ export function Dispatch() {
                               ? "bg-primary-100 text-primary-700"
                               : slip.status === "Loaded"
                                 ? "bg-blue-100 text-blue-700"
-                                : "bg-amber-100 text-amber-700"
+                                : slip.status === "Cancelled"
+                                  ? "bg-rose-100 text-rose-700"
+                                  : "bg-amber-100 text-amber-700"
                           }`}
                         >
                           {slip.status}
@@ -337,12 +345,21 @@ export function Dispatch() {
                       </td>
                       <td className="px-4 py-4 text-right space-x-2">
                         {slip.status === "Pending" && (
-                          <button
-                            onClick={() => updateSlipStatus(slip.id, "Loaded")}
-                            className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded font-medium hover:bg-blue-100"
-                          >
-                            Mark Loaded
-                          </button>
+                          <>
+                            <button
+                              onClick={() => updateSlipStatus(slip.id, "Loaded")}
+                              className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded font-medium hover:bg-blue-100"
+                            >
+                              Mark Loaded
+                            </button>
+                            <button
+                              onClick={() => confirm("Are you sure you want to cancel this slip?") && updateSlipStatus(slip.id, "Cancelled")}
+                              className="text-zinc-400 dark:text-zinc-500 hover:text-rose-600 dark:text-rose-400 p-1.5"
+                              title="Cancel Slip"
+                            >
+                              <Ban className="w-4 h-4" />
+                            </button>
+                          </>
                         )}
                         {slip.status === "Loaded" && (
                           <button

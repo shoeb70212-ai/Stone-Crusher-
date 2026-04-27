@@ -13,12 +13,14 @@ import {
   Edit2,
   ListFilter,
   IndianRupee,
+  Download,
 } from "lucide-react";
 import { format, parseISO, isSameDay } from "date-fns";
 import { CreateSlipForm } from "../components/forms/CreateSlipForm";
 import { EditSlipForm } from "../components/forms/EditSlipForm";
 import { PrintSlipModal } from "../components/forms/PrintSlipModal";
 import { Slip } from "../types";
+import { downloadCSV } from "../lib/export-utils";
 
 export function Daybook() {
   const { transactions, slips, customers, companySettings, addTransaction, addCustomer } =
@@ -131,6 +133,38 @@ export function Daybook() {
     };
   }, [startDate, endDate, transactions, slips]);
 
+  /** Export the combined daybook feed as CSV */
+  const handleExportDaybook = () => {
+    const rows = dailyData.combinedFeed.map((item) => {
+      if (item.feedType === "slip") {
+        const cust = customers.find((c) => c.id === item.customerId);
+        return {
+          date: new Date(item.date).toLocaleDateString(),
+          time: new Date(item.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          type: "Dispatch",
+          description: `${item.materialType} - ${item.vehicleNo}`,
+          customer: cust?.name || "Cash",
+          amount: item.totalAmount,
+        };
+      } else {
+        const cust = customers.find((c) => c.id === item.customerId);
+        return {
+          date: new Date(item.date).toLocaleDateString(),
+          time: new Date(item.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          type: item.type,
+          description: `${item.category}${item.description ? " - " + item.description : ""}`,
+          customer: cust?.name || "-",
+          amount: item.amount,
+        };
+      }
+    });
+    downloadCSV(
+      rows,
+      { date: "Date", time: "Time", type: "Type", description: "Description", customer: "Customer", amount: "Amount (₹)" },
+      `Daybook_${startDate}_to_${endDate}`
+    );
+  };
+
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 h-full">
       {/* Left Column: Data & Activity Log */}
@@ -164,6 +198,13 @@ export function Daybook() {
               />
             </div>
           </div>
+          <button
+            onClick={handleExportDaybook}
+            className="flex items-center justify-center w-full sm:w-auto gap-1.5 px-4 py-2.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-sm font-semibold rounded-xl hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors shadow-sm"
+          >
+            <Download className="w-4 h-4" />
+            Export CSV
+          </button>
         </div>
 
         {/* Hero Metrics */}

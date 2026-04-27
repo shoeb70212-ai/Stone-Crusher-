@@ -1,13 +1,67 @@
 import React, { useState } from "react";
 import { useErp } from "../context/ErpContext";
-import { Building2, Users, Receipt, Save, Check, Palette, Truck } from "lucide-react";
+import { Building2, Users, Receipt, Save, Check, Palette, Truck, X, Mail, Download, Upload, Database, Trash2 } from "lucide-react";
 
 export function Settings() {
-  const { userRole, companySettings, updateCompanySettings, vehicles, updateVehicle } = useErp();
+  const { userRole, companySettings, updateCompanySettings, vehicles, updateVehicle, purgeInactiveRecords } = useErp();
   const [activeTab, setActiveTab] = useState<"general" | "categories" | "users" | "materials" | "appearance" | "invoicing">(
     "general",
   );
   const [isSaved, setIsSaved] = useState(false);
+  
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [inviteFormData, setInviteFormData] = useState({ name: "", email: "", role: "Partner" });
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleDownloadBackup = async () => {
+    try {
+      const res = await fetch('/api/data');
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `crushtrack-backup-${new Date().toISOString().split('T')[0]}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Failed to download backup');
+    }
+  };
+
+  const handleRestoreBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!confirm('WARNING: This will overwrite all current data. Are you sure?')) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const content = event.target?.result as string;
+        const data = JSON.parse(content);
+        
+        const res = await fetch('/api/data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+
+        if (res.ok) {
+          alert('Backup restored successfully! The application will now reload.');
+          window.location.reload();
+        } else {
+          alert('Failed to save restored data to server.');
+        }
+      } catch (err) {
+        alert('Invalid backup file.');
+      }
+    };
+    reader.readAsText(file);
+  };
 
   // Local state for editing to prevent immediate context updates until save
   const [localSettings, setLocalSettings] = useState({
@@ -33,10 +87,29 @@ export function Settings() {
     setTimeout(() => setIsSaved(false), 2000);
   };
 
+  const handleInviteUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newUsers = [...(localSettings.users || [])];
+    newUsers.push({
+      id: Math.random().toString(36).substring(2, 11),
+      name: inviteFormData.name,
+      email: inviteFormData.email,
+      role: inviteFormData.role as any,
+      status: "Active"
+    });
+    setLocalSettings({ ...localSettings, users: newUsers });
+    // In a real app, this would trigger an email send via backend
+    alert(`Mock invite sent to ${inviteFormData.email}! They have been added to the system.`);
+    setIsInviteModalOpen(false);
+    setInviteFormData({ name: "", email: "", role: "Partner" });
+    handleSave(); // Auto-save when inviting a user
+  };
+
   return (
+    <>
     <div className="space-y-6 max-w-5xl">
       <div>
-        <h2 className="text-xl md:text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
+        <h2 className="text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
           Settings
         </h2>
         <p className="text-zinc-500 dark:text-zinc-400 mt-1">
@@ -474,6 +547,82 @@ export function Settings() {
               </div>
             </div>
 
+            <h4 className="text-md font-semibold text-zinc-900 dark:text-white mt-8 mb-4 border-b border-zinc-100 dark:border-zinc-700 pb-2">
+              Database Management
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:p-6">
+              <div className="p-4 border border-zinc-200 dark:border-zinc-700 rounded-xl bg-zinc-50 dark:bg-zinc-800/50">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 flex items-center justify-center">
+                    <Download className="w-4 h-4" />
+                  </div>
+                  <h5 className="font-semibold text-zinc-900 dark:text-white">Backup Database</h5>
+                </div>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+                  Download a complete JSON backup of all your customers, vehicles, slips, and settings.
+                </p>
+                <button
+                  onClick={handleDownloadBackup}
+                  className="px-4 py-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 text-sm font-medium rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors w-full flex justify-center items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Download Backup
+                </button>
+              </div>
+
+              <div className="p-4 border border-rose-200 dark:border-rose-900/50 rounded-xl bg-rose-50/50 dark:bg-rose-900/10">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400 flex items-center justify-center">
+                    <Database className="w-4 h-4" />
+                  </div>
+                  <h5 className="font-semibold text-rose-900 dark:text-rose-400">Restore Database</h5>
+                </div>
+                <p className="text-sm text-rose-600 dark:text-rose-400/80 mb-4">
+                  Upload a previously saved JSON backup. This will overwrite all current data.
+                </p>
+                <input 
+                  type="file" 
+                  accept=".json" 
+                  ref={fileInputRef}
+                  className="hidden" 
+                  onChange={handleRestoreBackup} 
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium rounded-lg transition-colors w-full flex justify-center items-center gap-2"
+                >
+                  <Upload className="w-4 h-4" />
+                  Restore Backup
+                </button>
+              </div>
+
+              {userRole === "Admin" && (
+                <div className="p-4 border border-red-200 dark:border-red-900/50 rounded-xl bg-red-50/50 dark:bg-red-900/10 md:col-span-2">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-8 h-8 rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 flex items-center justify-center">
+                      <Trash2 className="w-4 h-4" />
+                    </div>
+                    <h5 className="font-semibold text-red-900 dark:text-red-400">Administrative Cleanup</h5>
+                  </div>
+                  <p className="text-sm text-red-600 dark:text-red-400/80 mb-4">
+                    Permanently delete all inactive (soft-deleted) customers and vehicles from the database. This action cannot be undone.
+                  </p>
+                  <button
+                    onClick={() => {
+                      if (confirm("Are you absolutely sure? This will permanently delete all inactive records.")) {
+                        purgeInactiveRecords();
+                        alert("Inactive records have been purged successfully.");
+                      }
+                    }}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors w-full sm:w-auto flex justify-center items-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Purge Inactive Records
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div className="flex justify-end pt-4 border-t border-zinc-100 dark:border-zinc-700">
               <button
                 onClick={handleSave}
@@ -498,20 +647,11 @@ export function Settings() {
                 User Roles & Permissions
               </h3>
               <button 
-                onClick={() => {
-                  const newUsers = [...(localSettings.users || [])];
-                  newUsers.push({
-                    id: Math.random().toString(36).substring(2, 11),
-                    name: "New User",
-                    email: "new@crushtrack.com",
-                    role: "Partner",
-                    status: "Active"
-                  });
-                  setLocalSettings({ ...localSettings, users: newUsers });
-                }}
-                className="text-sm font-medium text-primary-600 hover:text-primary-700 bg-primary-50 px-4 py-2 rounded-lg transition-colors"
+                onClick={() => setIsInviteModalOpen(true)}
+                className="text-sm font-medium text-primary-600 hover:text-primary-700 bg-primary-50 px-4 py-2 rounded-lg transition-colors flex items-center"
               >
-                + Invite User
+                <Mail className="w-4 h-4 mr-2" />
+                Invite User
               </button>
             </div>
             <div className="overflow-x-auto">
@@ -1037,5 +1177,85 @@ export function Settings() {
         )}
       </div>
     </div>
+
+      {/* Invite User Modal */}
+      {isInviteModalOpen && (
+        <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-zinc-800 rounded-2xl w-full max-w-md shadow-xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50">
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2">
+                <Mail className="w-5 h-5 text-primary-600" />
+                Invite Team Member
+              </h3>
+              <button
+                onClick={() => setIsInviteModalOpen(false)}
+                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleInviteUser} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">
+                  Full Name
+                </label>
+                <input
+                  required
+                  type="text"
+                  value={inviteFormData.name}
+                  onChange={(e) => setInviteFormData({...inviteFormData, name: e.target.value})}
+                  placeholder="e.g. Jane Doe"
+                  className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">
+                  Email Address
+                </label>
+                <input
+                  required
+                  type="email"
+                  value={inviteFormData.email}
+                  onChange={(e) => setInviteFormData({...inviteFormData, email: e.target.value})}
+                  placeholder="jane@example.com"
+                  className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">
+                  Assign Role
+                </label>
+                <select
+                  value={inviteFormData.role}
+                  onChange={(e) => setInviteFormData({...inviteFormData, role: e.target.value})}
+                  className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none bg-white dark:bg-zinc-800"
+                >
+                  <option value="Admin">Admin (Full Access)</option>
+                  <option value="Manager">Manager (Operations & Settings)</option>
+                  <option value="Partner">Partner (View Only / Basic)</option>
+                </select>
+              </div>
+              
+              <div className="pt-4 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsInviteModalOpen(false)}
+                  className="px-4 py-2 text-zinc-600 dark:text-zinc-300 font-medium hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-primary-600 text-white font-medium hover:bg-primary-700 rounded-lg transition-colors flex items-center shadow-sm"
+                >
+                  Send Invite
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

@@ -36,14 +36,22 @@ export function Customers() {
   };
 
   const filteredCustomers = useMemo(() => {
-    if (!searchTerm) return customers;
-    const term = searchTerm.toLowerCase().replace(/\s+/g, '');
-    return customers.filter(
-      (c) =>
-        c.name.toLowerCase().replace(/\s+/g, '').includes(term) ||
-        (c.phone && c.phone.replace(/\s+/g, '').includes(term)) ||
-        (c.gstin && c.gstin.toLowerCase().replace(/\s+/g, '').includes(term))
-    );
+    let filtered = customers;
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase().replace(/\s+/g, '');
+      filtered = filtered.filter(
+        (c) =>
+          c.name.toLowerCase().replace(/\s+/g, '').includes(term) ||
+          (c.phone && c.phone.replace(/\s+/g, '').includes(term)) ||
+          (c.gstin && c.gstin.toLowerCase().replace(/\s+/g, '').includes(term))
+      );
+    }
+    // Show active first, then inactive
+    return filtered.sort((a, b) => {
+      const aActive = a.isActive !== false ? 0 : 1;
+      const bActive = b.isActive !== false ? 0 : 1;
+      return aActive - bActive;
+    });
   }, [customers, searchTerm]);
 
   const [formData, setFormData] = useState({
@@ -101,14 +109,6 @@ export function Customers() {
   };
 
   const removeCustomer = (id: string) => {
-    const hasSlips = slips.some(s => s.customerId === id);
-    const hasInvoices = invoices.some(i => i.customerId === id);
-    const hasTxs = transactions.some(t => t.customerId === id);
-    
-    if (hasSlips || hasInvoices || hasTxs) {
-        alert("Cannot delete customer: They have existing slips, invoices, or transactions. Please settle accounts and use 'Mark Inactive' (not currently supported) instead of deletion.");
-        return;
-    }
     setCustomerToDelete(id);
   };
 
@@ -247,7 +247,7 @@ export function Customers() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h2 className="text-xl md:text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
+          <h2 className="text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
             Customers Directory
           </h2>
           <p className="text-zinc-500 dark:text-zinc-400 mt-1">
@@ -317,6 +317,9 @@ export function Customers() {
                         ₹{Math.abs(bal).toLocaleString()} {bal > 0 ? "Dr" : bal < 0 ? "Cr" : ""}
                       </span>
                     </div>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${c.isActive !== false ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"}`}>
+                      {c.isActive !== false ? "Active" : "Inactive"}
+                    </span>
                     {isExpanded ? <ChevronUp className="w-5 h-5 text-zinc-400" /> : <ChevronDown className="w-5 h-5 text-zinc-400" />}
                   </div>
                 </div>
@@ -346,8 +349,8 @@ export function Customers() {
                       <button onClick={(e) => { e.stopPropagation(); openEditModal(c); }} className="text-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-4 py-2 rounded-lg font-medium flex items-center border border-indigo-100">
                         <Edit2 className="w-4 h-4 mr-1.5" /> Edit
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); removeCustomer(c.id); }} className="text-sm bg-rose-50 hover:bg-rose-100 text-rose-700 px-4 py-2 rounded-lg font-medium flex items-center border border-rose-100">
-                        <Trash2 className="w-4 h-4 mr-1.5" /> Delete
+                      <button onClick={(e) => { e.stopPropagation(); removeCustomer(c.id); }} className={`text-sm px-4 py-2 rounded-lg font-medium flex items-center border ${c.isActive !== false ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-100" : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-100"}`}>
+                        {c.isActive !== false ? (<><Trash2 className="w-4 h-4 mr-1.5" /> Deactivate</>) : (<><Plus className="w-4 h-4 mr-1.5" /> Reactivate</>)}
                       </button>
                     </div>
                   </div>
@@ -613,12 +616,21 @@ export function Customers() {
 
       <ConfirmationModal
         isOpen={!!customerToDelete}
-        title="Delete Customer"
-        message="Are you sure you want to delete this customer? This action cannot be undone."
-        confirmText="Delete"
+        title={customers.find(c => c.id === customerToDelete)?.isActive !== false ? "Deactivate Customer" : "Reactivate Customer"}
+        message={customers.find(c => c.id === customerToDelete)?.isActive !== false
+          ? "This customer will be hidden from dropdowns but all their financial history (slips, invoices, transactions) will be preserved."
+          : "This customer will be made active again and appear in dropdowns."}
+        confirmText={customers.find(c => c.id === customerToDelete)?.isActive !== false ? "Deactivate" : "Reactivate"}
         onConfirm={() => {
           if (customerToDelete) {
-            deleteCustomer(customerToDelete);
+            const cust = customers.find(c => c.id === customerToDelete);
+            if (cust) {
+              if (cust.isActive !== false) {
+                deleteCustomer(customerToDelete);
+              } else {
+                updateCustomer({ ...cust, isActive: true });
+              }
+            }
           }
         }}
         onCancel={() => setCustomerToDelete(null)}

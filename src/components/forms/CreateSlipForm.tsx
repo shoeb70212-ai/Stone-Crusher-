@@ -467,7 +467,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
             Customer Name
           </label>
           <Combobox
-            options={customers.map((c) => ({ label: c.name, value: c.id }))}
+            options={customers.filter(c => c.isActive !== false).map((c) => ({ label: c.name, value: c.id }))}
             value={formData.customerId === "CASH" ? "" : formData.customerId}
             allowCreate
             onChange={(val) => {

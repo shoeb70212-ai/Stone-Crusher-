@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { useErp } from "../context/ErpContext";
 import { TransactionType, Transaction, Customer, Invoice } from "../types";
 import {
@@ -6,9 +6,13 @@ import {
   X,
   IndianRupee,
   CreditCard,
-  ArrowRightLeft,
   UserCircle,
+  Download,
+  Calendar,
+  FileText,
 } from "lucide-react";
+import { format, parseISO, startOfMonth } from "date-fns";
+import { downloadCSV, downloadLedgerStatementPdf } from "../lib/export-utils";
 
 export function Ledger() {
   const { transactions, customers, slips, invoices, companySettings, addTransaction, addCustomer, getCustomerBalance } =
@@ -21,6 +25,21 @@ export function Ledger() {
   const [viewCustomerLedger, setViewCustomerLedger] = useState<Customer | null>(
     null,
   );
+
+  // Date-range filter state for the Transactions tab
+  const [txStartDate, setTxStartDate] = useState(() =>
+    format(startOfMonth(new Date()), "yyyy-MM-dd")
+  );
+  const [txEndDate, setTxEndDate] = useState(() =>
+    format(new Date(), "yyyy-MM-dd")
+  );
+
+  // Date-range filter state for the Customer Ledger Statement modal
+  const [stmtStartDate, setStmtStartDate] = useState("");
+  const [stmtEndDate, setStmtEndDate] = useState("");
+
+  // Reference to statement table for PDF export
+  const statementRef = useRef<HTMLDivElement>(null);
 
   const [txFormData, setTxFormData] = useState({
     type: "Expense" as TransactionType,
@@ -71,18 +90,83 @@ export function Ledger() {
     setCustFormData({ name: "", phone: "", openingBalance: "0" });
   };
 
-  const totalCashIn = transactions
+  /** Transactions filtered by the selected date range */
+  const filteredTransactions = useMemo(() => {
+    const start = new Date(txStartDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(txEndDate);
+    end.setHours(23, 59, 59, 999);
+    return transactions.filter((t) => {
+      const d = parseISO(t.date);
+      return d >= start && d <= end;
+    });
+  }, [transactions, txStartDate, txEndDate]);
+
+  const totalCashIn = filteredTransactions
     .filter((t) => t.type === "Income")
     .reduce((sum, t) => sum + t.amount, 0);
-  const totalExpense = transactions
+  const totalExpense = filteredTransactions
     .filter((t) => t.type === "Expense")
     .reduce((sum, t) => sum + t.amount, 0);
+
+  /** Export the filtered transactions as a CSV file */
+  const handleExportTransactions = () => {
+    downloadCSV(
+      filteredTransactions.map((tx) => {
+        const cust = customers.find((c) => c.id === tx.customerId);
+        return {
+          date: new Date(tx.date).toLocaleDateString(),
+          time: new Date(tx.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          type: tx.type,
+          category: tx.category,
+          description: tx.description,
+          customer: cust?.name || "-",
+          amount: tx.amount,
+        };
+      }),
+      {
+        date: "Date",
+        time: "Time",
+        type: "Type",
+        category: "Category",
+        description: "Description",
+        customer: "Customer",
+        amount: "Amount (₹)",
+      },
+      `Transactions_${txStartDate}_to_${txEndDate}`
+    );
+  };
+
+  /** Export the customer ledger statement as a CSV file */
+  const handleExportCustomerCSV = (cust: Customer, entries: Array<{ date: Date; desc: string; debit: number; credit: number }>) => {
+    let running = cust.openingBalance;
+    const rows = [
+      { date: "-", particulars: "Opening Balance", debit: cust.openingBalance > 0 ? cust.openingBalance : "", credit: cust.openingBalance < 0 ? Math.abs(cust.openingBalance) : "", balance: `${Math.abs(cust.openingBalance)} ${cust.openingBalance < 0 ? "Cr" : "Dr"}` },
+      ...entries.map((e) => {
+        running = running + e.debit - e.credit;
+        return {
+          date: e.date.toLocaleDateString(),
+          particulars: e.desc,
+          debit: e.debit > 0 ? e.debit : "",
+          credit: e.credit > 0 ? e.credit : "",
+          balance: `${Math.abs(running)} ${running < 0 ? "Cr" : running > 0 ? "Dr" : ""}`,
+        };
+      }),
+    ];
+    downloadCSV(rows, { date: "Date", particulars: "Particulars", debit: "Debit (₹)", credit: "Credit (₹)", balance: "Balance (₹)" }, `Ledger_${cust.name.replace(/\s+/g, "_")}`);
+  };
+
+  /** Download the customer ledger statement as a PDF */
+  const handleExportCustomerPDF = async (custName: string) => {
+    if (!statementRef.current) return;
+    await downloadLedgerStatementPdf(custName, statementRef.current.innerHTML);
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h2 className="text-xl md:text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
+          <h2 className="text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
             Ledger & Finance
           </h2>
           <p className="text-zinc-500 dark:text-zinc-400 mt-1">
@@ -105,6 +189,36 @@ export function Ledger() {
             <span className="whitespace-nowrap text-sm md:text-base">New Transaction</span>
           </button>
         </div>
+      </div>
+
+      {/* Date-range filter for Transactions */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-white dark:bg-zinc-800 p-3 rounded-xl border border-zinc-100 dark:border-zinc-700 shadow-sm">
+        <div className="flex items-center gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">
+          <Calendar className="w-4 h-4 text-primary-500" />
+          <span>Period:</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={txStartDate}
+            onChange={(e) => setTxStartDate(e.target.value)}
+            className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
+          />
+          <span className="text-zinc-400">to</span>
+          <input
+            type="date"
+            value={txEndDate}
+            onChange={(e) => setTxEndDate(e.target.value)}
+            className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
+          />
+        </div>
+        <button
+          onClick={handleExportTransactions}
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-sm font-semibold rounded-lg hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors shadow-sm"
+        >
+          <Download className="w-4 h-4" />
+          Export CSV
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:p-6">
@@ -155,10 +269,10 @@ export function Ledger() {
             <>
             {/* Mobile list view */}
             <div className="md:hidden divide-y divide-zinc-100 dark:divide-zinc-800">
-               {transactions.length === 0 && (
-                 <div className="p-8 text-center text-zinc-500">No transactions recorded.</div>
+               {filteredTransactions.length === 0 && (
+                 <div className="p-8 text-center text-zinc-500">No transactions in this period.</div>
                )}
-               {transactions.slice().reverse().map((tx) => {
+               {filteredTransactions.slice().reverse().map((tx) => {
                   const cust = customers.find((c) => c.id === tx.customerId);
                   return (
                     <div key={tx.id} className="p-4 flex flex-col gap-2">
@@ -193,7 +307,7 @@ export function Ledger() {
                   </tr>
                 </thead>
                 <tbody>
-                  {transactions
+                  {filteredTransactions
                     .slice()
                     .reverse()
                     .map((tx) => {
@@ -596,7 +710,59 @@ export function Ledger() {
         </div>
       )}
 
-      {viewCustomerLedger && (
+      {viewCustomerLedger && (() => {
+        // Collect all entries for this customer
+        const allEntries: Array<{ date: Date; desc: string; debit: number; credit: number }> = [];
+
+        slips
+          .filter((s) => s.customerId === viewCustomerLedger.id && s.status === "Tallied")
+          .forEach((s) => {
+            allEntries.push({
+              date: new Date(s.date),
+              desc: s.invoiceId
+                ? `Ref #${s.id.slice(0, 5).toUpperCase()} - ${s.materialType} Delivery (Billed)`
+                : `Ref #${s.id.slice(0, 5).toUpperCase()} - ${s.materialType} Delivery`,
+              debit: s.invoiceId ? 0 : s.totalAmount,
+              credit: 0,
+            });
+          });
+
+        invoices
+          .filter((inv) => inv.customerId === viewCustomerLedger.id && inv.status !== "Cancelled")
+          .forEach((inv) => {
+            allEntries.push({
+              date: new Date(inv.date),
+              desc: `Inv #${inv.invoiceNo}`,
+              debit: inv.total,
+              credit: 0,
+            });
+          });
+
+        transactions
+          .filter((t) => t.customerId === viewCustomerLedger.id)
+          .forEach((t) => {
+            allEntries.push({
+              date: new Date(t.date),
+              desc: t.category + (t.description ? ` (${t.description})` : ""),
+              debit: t.type === "Expense" ? t.amount : 0,
+              credit: t.type === "Income" ? t.amount : 0,
+            });
+          });
+
+        allEntries.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+        // Apply optional date filter for the statement
+        const filteredEntries = (stmtStartDate && stmtEndDate)
+          ? allEntries.filter((e) => {
+              const start = new Date(stmtStartDate); start.setHours(0, 0, 0, 0);
+              const end = new Date(stmtEndDate); end.setHours(23, 59, 59, 999);
+              return e.date >= start && e.date <= end;
+            })
+          : allEntries;
+
+        let runningBalance = viewCustomerLedger.openingBalance;
+
+        return (
         <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white dark:bg-zinc-800 rounded-2xl w-full max-w-4xl shadow-xl flex flex-col max-h-[90vh]">
             <div className="px-4 py-3 md:px-6 md:py-4 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50 rounded-t-2xl">
@@ -609,14 +775,49 @@ export function Ledger() {
                 </p>
               </div>
               <button
-                onClick={() => setViewCustomerLedger(null)}
+                onClick={() => { setViewCustomerLedger(null); setStmtStartDate(""); setStmtEndDate(""); }}
                 className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:text-zinc-300"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
 
-            <div className="p-3 md:p-5 overflow-auto flex-1 w-full">
+            {/* Date filter + export bar */}
+            <div className="px-4 py-2 md:px-6 border-b border-zinc-100 dark:border-zinc-700 flex flex-wrap items-center gap-2 bg-white dark:bg-zinc-800">
+              <Calendar className="w-4 h-4 text-primary-500 shrink-0" />
+              <input
+                type="date"
+                value={stmtStartDate}
+                onChange={(e) => setStmtStartDate(e.target.value)}
+                className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-xs font-medium text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
+              />
+              <span className="text-zinc-400 text-xs">to</span>
+              <input
+                type="date"
+                value={stmtEndDate}
+                onChange={(e) => setStmtEndDate(e.target.value)}
+                className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-xs font-medium text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
+              />
+              {(stmtStartDate || stmtEndDate) && (
+                <button onClick={() => { setStmtStartDate(""); setStmtEndDate(""); }} className="text-xs text-rose-500 hover:text-rose-700 font-medium">Clear</button>
+              )}
+              <div className="ml-auto flex gap-2">
+                <button
+                  onClick={() => handleExportCustomerCSV(viewCustomerLedger, filteredEntries)}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-xs font-semibold rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" /> CSV
+                </button>
+                <button
+                  onClick={() => handleExportCustomerPDF(viewCustomerLedger.name)}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs font-semibold rounded-lg hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors"
+                >
+                  <FileText className="w-3.5 h-3.5" /> PDF
+                </button>
+              </div>
+            </div>
+
+            <div className="p-3 md:p-5 overflow-auto flex-1 w-full" ref={statementRef}>
               <table className="w-full text-sm text-left ">
                 <thead className="text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-900/50 uppercase rounded-lg">
                   <tr>
@@ -654,116 +855,41 @@ export function Ledger() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       {viewCustomerLedger.openingBalance < 0
-                        ? Math.abs(
-                            viewCustomerLedger.openingBalance,
-                          ).toLocaleString()
+                        ? Math.abs(viewCustomerLedger.openingBalance).toLocaleString()
                         : "-"}
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-zinc-900 dark:text-white">
-                      {Math.abs(
-                        viewCustomerLedger.openingBalance,
-                      ).toLocaleString()}{" "}
+                      {Math.abs(viewCustomerLedger.openingBalance).toLocaleString()}{" "}
                       {viewCustomerLedger.openingBalance < 0 ? "Cr" : "Dr"}
                     </td>
                   </tr>
 
-                  {(() => {
-                    // Collect entries
-                    const entries: Array<{
-                      date: Date;
-                      desc: string;
-                      debit: number;
-                      credit: number;
-                    }> = [];
-
-                    // 1. Tallied slips
-                    slips
-                      .filter(
-                        (s) =>
-                          s.customerId === viewCustomerLedger.id &&
-                          s.status === "Tallied",
-                      )
-                      .forEach((s) => {
-                        entries.push({
-                          date: new Date(s.date),
-                          desc: s.invoiceId ? `Ref #${s.id.slice(0, 5).toUpperCase()} - ${s.materialType} Delivery (Billed)` : `Ref #${s.id.slice(0, 5).toUpperCase()} - ${s.materialType} Delivery`,
-                          debit: s.invoiceId ? 0 : s.totalAmount, // Customer owes us for this material only if it isn't covered by an invoice
-                          credit: 0,
-                        });
-                      });
-
-                    // 2. Invoices
-                    invoices
-                      .filter(
-                        (inv) =>
-                          inv.customerId === viewCustomerLedger.id &&
-                          inv.status !== "Cancelled",
-                      )
-                      .forEach((inv) => {
-                        entries.push({
-                          date: new Date(inv.date),
-                          desc: `Inv #${inv.invoiceNo}`,
-                          debit: inv.total, // Customer owes us for this invoice
-                          credit: 0,
-                        });
-                      });
-
-                    // 3. Transactions
-                    transactions
-                      .filter((t) => t.customerId === viewCustomerLedger.id)
-                      .forEach((t) => {
-                        entries.push({
-                          date: new Date(t.date),
-                          desc:
-                            t.category +
-                            (t.description ? ` (${t.description})` : ""),
-                          debit: t.type === "Expense" ? t.amount : 0, // We paid/refunded them (they owe us more)
-                          credit: t.type === "Income" ? t.amount : 0, // They paid us (credit against their balance)
-                        });
-                      });
-
-                    // Sort chronological
-                    entries.sort((a, b) => a.date.getTime() - b.date.getTime());
-
-                    let runningBalance = viewCustomerLedger.openingBalance;
-
-                    return entries.map((entry, idx) => {
-                      runningBalance =
-                        runningBalance + entry.debit - entry.credit;
-
-                      return (
-                        <tr
-                          key={idx}
-                          className="border-b border-zinc-50 dark:border-zinc-700/50 hover:bg-zinc-50 dark:hover:bg-zinc-800"
-                        >
-                          <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">
-                            {entry.date.toLocaleDateString()}
-                          </td>
-                          <td className="px-4 py-3 text-zinc-900 dark:text-white">
-                            {entry.desc}
-                          </td>
-                          <td className="px-4 py-3 text-right text-rose-600 font-medium">
-                            {entry.debit > 0
-                              ? entry.debit.toLocaleString()
-                              : "-"}
-                          </td>
-                          <td className="px-4 py-3 text-right text-primary-600 font-medium">
-                            {entry.credit > 0
-                              ? entry.credit.toLocaleString()
-                              : "-"}
-                          </td>
-                          <td className="px-4 py-3 text-right font-bold text-zinc-900 dark:text-white">
-                            {Math.abs(runningBalance).toLocaleString()}{" "}
-                            {runningBalance < 0
-                              ? "Cr"
-                              : runningBalance > 0
-                                ? "Dr"
-                                : ""}
-                          </td>
-                        </tr>
-                      );
-                    });
-                  })()}
+                  {filteredEntries.map((entry, idx) => {
+                    runningBalance = runningBalance + entry.debit - entry.credit;
+                    return (
+                      <tr
+                        key={idx}
+                        className="border-b border-zinc-50 dark:border-zinc-700/50 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                      >
+                        <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">
+                          {entry.date.toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-3 text-zinc-900 dark:text-white">
+                          {entry.desc}
+                        </td>
+                        <td className="px-4 py-3 text-right text-rose-600 font-medium">
+                          {entry.debit > 0 ? entry.debit.toLocaleString() : "-"}
+                        </td>
+                        <td className="px-4 py-3 text-right text-primary-600 font-medium">
+                          {entry.credit > 0 ? entry.credit.toLocaleString() : "-"}
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-zinc-900 dark:text-white">
+                          {Math.abs(runningBalance).toLocaleString()}{" "}
+                          {runningBalance < 0 ? "Cr" : runningBalance > 0 ? "Dr" : ""}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -782,9 +908,7 @@ export function Ledger() {
                   }
                 >
                   ₹{" "}
-                  {Math.abs(
-                    getCustomerBalance(viewCustomerLedger.id),
-                  ).toLocaleString()}{" "}
+                  {Math.abs(getCustomerBalance(viewCustomerLedger.id)).toLocaleString()}{" "}
                   {getCustomerBalance(viewCustomerLedger.id) < 0
                     ? "(Cr)"
                     : getCustomerBalance(viewCustomerLedger.id) > 0
@@ -795,7 +919,8 @@ export function Ledger() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

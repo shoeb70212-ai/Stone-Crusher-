@@ -1,3 +1,18 @@
+// ---------------------------------------------------------------------------
+// Domain types for the CrushTrack stone-crusher ERP system.
+//
+// Naming conventions:
+//   - Entity interfaces use PascalCase singular nouns (e.g. `Customer`).
+//   - String unions are used instead of enums for JSON serialisation safety.
+//   - Fields marked `isActive?: boolean` follow the soft-delete pattern —
+//     omitting the field or setting it to `true` means active.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Master Data
+// ---------------------------------------------------------------------------
+
+/** A registered vehicle that loads material at the crusher site. */
 export interface Vehicle {
   id: string;
   vehicleNo: string;
@@ -5,35 +20,62 @@ export interface Vehicle {
   ownerPhone?: string;
   driverName?: string;
   driverPhone?: string;
+  /** Determines which measurement panel the slip form opens by default. */
   defaultMeasurementType: MeasurementType;
+  /** Saved dimensions used to pre-fill the slip form for this vehicle. */
   measurement: VehicleMeasurement;
   isActive?: boolean;
 }
 
+/** A customer account that accumulates a running ledger balance. */
 export interface Customer {
   id: string;
   name: string;
   phone: string;
   address?: string;
   gstin?: string;
-  openingBalance: number; // Positive: Customer owes money (Debit), Negative: Balance in advance (Credit)
+  /**
+   * Carried-forward balance from prior accounting period.
+   * Positive = customer owes money (Debit).
+   * Negative = advance paid / credit balance.
+   */
+  openingBalance: number;
+  isActive?: boolean;
 }
 
+/** Physical dimensions or weights captured per vehicle loading. */
 export interface VehicleMeasurement {
   lengthFeet?: number;
   widthFeet?: number;
   heightFeet?: number;
-  grossWeight?: number; // in tons
-  tareWeight?: number; // in tons
+  grossWeight?: number; // in tonnes
+  tareWeight?: number;  // in tonnes
 }
 
+// ---------------------------------------------------------------------------
+// Operational Enums (string unions)
+// ---------------------------------------------------------------------------
+
+/** Free-form material name — kept as `string` because crusher owners define custom names. */
 export type MaterialType = string;
 
-export type SlipStatus = "Pending" | "Loaded" | "Tallied";
+/** Workflow states for a dispatch slip. */
+export type SlipStatus = "Pending" | "Loaded" | "Tallied" | "Cancelled";
 
+/** Whether the material is delivered in the company's own truck or a customer/third-party truck. */
 export type DeliveryMode = "Company Vehicle" | "Third-Party Vehicle";
+
+/** How the loaded quantity is measured — by volume (brass) or by weight (tonnes). */
 export type MeasurementType = "Volume (Brass)" | "Weight (Tonnes)";
 
+/** Direction of a financial transaction in the Daybook / Ledger. */
+export type TransactionType = "Income" | "Expense";
+
+// ---------------------------------------------------------------------------
+// Material & User (sub-records of CompanySettings)
+// ---------------------------------------------------------------------------
+
+/** A material/product sold by the crusher, with pricing and GST metadata. */
 export interface Material {
   id: string;
   name: string;
@@ -44,6 +86,7 @@ export interface Material {
   isActive?: boolean;
 }
 
+/** A system user with role-based access. */
 export interface UserAccount {
   id: string;
   name: string;
@@ -52,6 +95,11 @@ export interface UserAccount {
   status: "Active" | "Inactive";
 }
 
+// ---------------------------------------------------------------------------
+// Company Settings (singleton)
+// ---------------------------------------------------------------------------
+
+/** Global configuration for the crusher business — persisted as a single document. */
 export interface CompanySettings {
   name: string;
   address: string;
@@ -59,12 +107,18 @@ export interface CompanySettings {
   gstin: string;
   receiptFooter: string;
   logo?: string;
+
+  // Bank details (printed on invoices)
   bankName?: string;
   accountNumber?: string;
   ifscCode?: string;
   branchName?: string;
+
+  // UI preferences
   theme?: "light" | "dark" | "system";
   primaryColor?: "emerald" | "blue" | "violet" | "rose" | "amber";
+
+  // Print / invoice layout
   slipFormat?: "A4" | "Thermal-80mm" | "Thermal-58mm";
   invoiceFormat?: "A4" | "Thermal-80mm" | "Thermal-58mm";
   invoiceTemplate?: "Classic" | "Modern" | "Minimal";
@@ -72,12 +126,19 @@ export interface CompanySettings {
   invoiceWatermark?: "None" | "Company Name" | "Status" | "Custom";
   invoiceWatermarkText?: string;
   invoiceColor?: string;
+
+  // Master lists
   expenseCategories?: string[];
   termsAndConditions?: string;
   materials?: Material[];
   users?: UserAccount[];
 }
 
+// ---------------------------------------------------------------------------
+// Invoice
+// ---------------------------------------------------------------------------
+
+/** A single line-item on an invoice. */
 export interface InvoiceItem {
   materialType: string;
   quantity: number;
@@ -87,6 +148,7 @@ export interface InvoiceItem {
   gstRate?: number;
 }
 
+/** A GST or cash invoice generated for a customer. */
 export interface Invoice {
   id: string;
   invoiceNo: string;
@@ -99,12 +161,18 @@ export interface Invoice {
   sgst: number;
   total: number;
   status: "Pending" | "Paid" | "Cancelled";
+  /** IDs of the dispatch slips included in this invoice. */
   slipIds?: string[];
 }
 
+// ---------------------------------------------------------------------------
+// Dispatch Slip
+// ---------------------------------------------------------------------------
+
+/** A single vehicle dispatch record — the core transactional unit of the system. */
 export interface Slip {
   id: string;
-  date: string; // ISO string
+  date: string; // ISO-8601 string
   vehicleNo: string;
   driverName?: string;
   driverPhone?: string;
@@ -112,21 +180,29 @@ export interface Slip {
   deliveryMode: DeliveryMode;
   measurementType: MeasurementType;
   measurement: VehicleMeasurement;
-  quantity: number; // The computed Brass Volume OR Net Weight
+  /** Computed brass volume or net weight depending on `measurementType`. */
+  quantity: number;
   ratePerUnit: number;
-  freightAmount: number; // Transport charges if Company Vehicle
-  totalAmount: number; // rate * qty + freight
+  /** Transport/freight charges — non-zero only for Company Vehicle mode. */
+  freightAmount: number;
+  /** Final billable amount: (rate × qty) + freight. */
+  totalAmount: number;
   amountPaid?: number;
-  customerId: string; // "CASH" if no regular customer
+  /** `"CASH"` for walk-in customers without an account. */
+  customerId: string;
   status: SlipStatus;
   notes: string;
   operatorName?: string;
   loaderName?: string;
-  invoiceId?: string; // Optional reference to an Invoice
+  /** Set when this slip is included on a formal invoice. */
+  invoiceId?: string;
 }
 
-export type TransactionType = "Income" | "Expense";
+// ---------------------------------------------------------------------------
+// Supporting Entities
+// ---------------------------------------------------------------------------
 
+/** A lightweight to-do item shown on the Dashboard checklist. */
 export interface Task {
   id: string;
   title: string;
@@ -134,13 +210,16 @@ export interface Task {
   createdAt: string;
 }
 
+/** A financial transaction recorded in the Daybook / Ledger. */
 export interface Transaction {
   id: string;
-  date: string; // ISO string
+  date: string; // ISO-8601 string
   type: TransactionType;
   amount: number;
   category: string;
   description: string;
-  customerId?: string; // If related to a customer ledger
-  slipId?: string; // If generated from a slip
+  /** Present when this transaction is linked to a specific customer's ledger. */
+  customerId?: string;
+  /** Present when this transaction was auto-generated from a dispatch slip. */
+  slipId?: string;
 }

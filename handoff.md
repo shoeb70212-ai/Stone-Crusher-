@@ -1,46 +1,57 @@
-# Project Handoff: CrushTrack ERP
+# Project Handoff: CrushTrack ERP - Technical Deep-Dive
 
-## 1. Current State
-The project is a production-stabilized ERP for stone crushers. It has transitioned from a local-first SQLite architecture to a cloud-ready PostgreSQL/Vercel architecture, but now includes a **local developer simulator** to allow offline work.
+## 1. System Architecture Overview
+The system is built as a **Local-First, Sync-Second** application. It uses a custom sync engine to bridge the gap between high-frequency site operations (slips/weighbridge) and centralized management.
 
-## 2. Development Workflow
+## 2. Recent Technical Hardening
 
-### Local Development (Simulated)
-- **Command**: `npm run dev`
-- **Mechanism**: Runs `server.ts` which uses a local `local-data.json` file as the database.
-- **Benefits**: Fast, offline-capable, and preserves all your data without needing PostgreSQL.
+### 🔒 Authentication System
+- **Mechanism**: The app uses a "Mock-Auth" strategy designed for easy transition to Firebase/Supabase Auth.
+- **Location**: `src/components/Login.tsx` and protected in `App.tsx`.
+- **Validation**:
+  - Checks `companySettings.users` for an email match.
+  - If no users are found (fresh install), it falls back to `admin@admin.com` / `admin123`.
+- **Handoff Note**: To migrate to a real provider, simply swap the `handleLogin` logic in `Login.tsx`. The rest of the app already consumes the `userRole` from the context.
 
-### Production Deployment
-- **Backend**: Hosted on Vercel (`api/data.ts`).
-- **Database**: PostgreSQL (Supabase/Neon).
-- **Environment Variable**: Requires `DATABASE_URL` in Vercel settings.
-- **Sync Strategy**: The frontend sends the entire application state in a single payload to `/api/data`, which then overwrites the corresponding tables in a single SQL transaction.
+### ⚡ Delta-Sync Engine (PATCH Implementation)
+This is the most critical part of the recent hardening phase.
+- **Concept**: Instead of sending the full database state on every change (which causes collisions and "data jumping"), we now send only incremental updates.
+- **The Queue**: `ErpContext.tsx` maintains a `syncQueueRef`. When a user saves a slip, it's added to the queue.
+- **Sync Trigger**: A 1.5s debounced timeout (`triggerSync`) sends a `PATCH` request to the server.
+- **Payload Structure**:
+  ```json
+  {
+    "updates": { "slips": [{ ... }], "vehicles": [{ ... }] },
+    "deletions": { "transactions": ["id-123"] }
+  }
+  ```
+- **Backend (PostgreSQL)**: The `/api/data` handler in `api/data.ts` uses dynamic query generation to perform `INSERT ... ON CONFLICT (id) DO UPDATE`. This ensures that if two users are working on different slips, they **will not** overwrite each other's work.
 
-## 3. Key Technical Decisions
+## 3. Important Design Tokens & Utilities
 
-### Dimension Parsing (`Feet.Inches`)
-In the stone crusher industry, `5.6` means **5 feet 6 inches** (5.5 feet). 
-- **Utility**: `parseFeetInches` in `src/lib/utils.ts`.
-- **Usage**: Always use this when calculating Volume (Brass). Never use `parseFloat`.
+### Industry Units
+- **Brass Volume**: Always uses `(L * W * H) / 100`.
+- **Dimension Input**: Workers enter `5.6` to mean 5ft 6in. **CRITICAL**: Use `parseFeetInches(val)` from `src/lib/utils.ts` for all calculations. Never use `parseFloat` directly on dimension inputs.
 
-### Invoice Numbering
-- The system prevents numbering collisions by scanning the existing database for the highest numeric suffix for a given invoice type (GST/CASH) and incrementing it. 
-- Deleted invoices no longer cause the system to reuse old numbers if a higher one exists.
+### Soft Deletions
+- For `Vehicles` and `Materials`, we use an `isActive: boolean` flag.
+- **Why**: Deleting a material used in a slip from 6 months ago would break the ledger. Always filter UI lists by `isActive !== false` but keep the data in the state/DB.
 
-### PDF Generation
-- **Library**: `html2pdf.js`.
-- **Method**: Client-side rendering.
-- **Reason**: Bypasses Vercel's 50MB execution limit and provides instant previews without server round-trips.
+## 4. Current Status of Features
 
-## 4. Pending Features / Roadmap
+| Feature | Status | Notes |
+| :--- | :--- | :--- |
+| **Auth Layer** | ✅ Done | Secured with role-based routing. |
+| **Delta Sync** | ✅ Done | PATCH based, collision-safe. |
+| **Vehicle Master** | ✅ Done | Dynamic selection in Dispatch. |
+| **Material Master** | ✅ Done | Dynamic pricing and activation. |
+| **PDF Billing** | ✅ Done | Supports Thermal & A4 formats. |
+| **Mobile App** | 🚧 Pending | Capacitor wrapping required. |
 
-- [x] **Vehicle CRUD**: Full integration of the vehicle master data into the dispatch forms.
-- [x] **Soft Deletions**: Ensure historical data integrity by marking master data as "Inactive" instead of deleting it.
-- [x] **Auth Layer**: Secured the app with a local offline-first login interceptor, protecting the views. Easily swappable to Firebase.
-- [x] **Optimistic Sync (Delta Sync)**: Refactored `ErpContext`, `server.ts`, and `api/data.ts` to use a queue-based `PATCH` sync strategy. This avoids wiping and replacing the full database by only sending dynamic UPSERTs for modified data.
-- [ ] **Capacitor Mobile App**: Finalize the Android wrapper.
+## 5. Next Steps for Development
+1. **Admin User Management**: Add a screen under Settings to allow the Admin to manage the `companySettings.users` array (Add/Delete/Deactivate).
+2. **Production Deployment Check**: After deploying to Vercel, monitor the PostgreSQL logs to ensure the dynamic `PATCH` queries are performing efficiently under load.
+3. **Ledger Filters**: Add date-range filtering to the Ledger and Customer Statement views to handle high-volume accounts.
 
-## 5. Troubleshooting
-- **Database Connection Issues (Vercel)**: Ensure `DATABASE_URL` is set to the Supabase Transaction Pooler (Port 6543). We have updated the connection logic to reject unauthorized SSL, which should resolve the `ENOTFOUND` errors.
-- **Port Conflict**: If port 5173 is busy, the server will error. Close any existing Vite processes.
-- **Data Reset**: To reset the local database, simply delete `local-data.json` and restart the server.
+---
+*End of Handoff - Documented by Antigravity AI*
