@@ -41,7 +41,8 @@
 - **Frontend**: React 19, Vite, Tailwind CSS 4.
 - **Backend**: Vercel Serverless Functions (Node.js).
 - **Database**: PostgreSQL (Production) / Local JSON Simulation (Dev).
-- **State Management**: React Context API with Optimistic UI updates.
+- **State Management**: React Context API with Optimistic Delta Sync via custom PATCH endpoint.
+- **Security**: Local-first Authentication interceptor (easily swappable with Firebase/Supabase).
 - **PDF Engine**: `html2pdf.js` for lightweight, client-side rendering.
 
 ---

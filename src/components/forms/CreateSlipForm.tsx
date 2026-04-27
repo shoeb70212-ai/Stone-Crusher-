@@ -249,7 +249,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
             Vehicle Number
           </label>
           <Combobox
-            options={vehicles.map((v) => ({ label: v.vehicleNo, value: v.vehicleNo }))}
+            options={vehicles.filter(v => v.isActive !== false).map((v) => ({ label: v.vehicleNo, value: v.vehicleNo }))}
             value={formData.vehicleNo}
             allowCreate
             onChange={(val) => {
@@ -342,9 +342,11 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
           }
           className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
         >
-          {companySettings.materials?.map((m) => (
-            <option key={m.id} value={m.name}>{m.name}</option>
-          ))}
+          {(companySettings.materials || [])
+            .filter(m => m.isActive !== false)
+            .map((mat) => (
+              <option key={mat.id} value={mat.name}>{mat.name}</option>
+            ))}
         </select>
       </div>
 

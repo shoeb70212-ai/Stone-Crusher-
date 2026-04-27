@@ -5,7 +5,7 @@ import { Combobox } from "../ui/Combobox";
 import { parseFeetInches } from "../../lib/utils";
 
 export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSuccess: () => void, onCancel: () => void }) {
-  const { customers, updateSlip, slips, transactions, addTransaction, updateTransaction, deleteTransaction, companySettings } = useErp();
+  const { vehicles, addVehicle, updateVehicle, customers, updateSlip, slips, transactions, addTransaction, updateTransaction, deleteTransaction, companySettings } = useErp();
   const [formData, setFormData] = useState({
     vehicleNo: slip.vehicleNo || "",
     driverName: slip.driverName || "",
@@ -105,6 +105,35 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
       return;
     }
 
+    // Auto-update or add vehicle
+    if (formData.vehicleNo) {
+      const existingVehicle = vehicles.find(v => v.vehicleNo === formData.vehicleNo);
+      if (existingVehicle) {
+        if (formData.driverName !== existingVehicle.driverName || formData.driverPhone !== existingVehicle.driverPhone) {
+          updateVehicle({
+            ...existingVehicle,
+            driverName: formData.driverName,
+            driverPhone: formData.driverPhone,
+          });
+        }
+      } else {
+         addVehicle({
+            id: Math.random().toString(36).substring(2, 11),
+            vehicleNo: formData.vehicleNo.toUpperCase(),
+            ownerName: formData.driverName || '',
+            driverName: formData.driverName,
+            driverPhone: formData.driverPhone,
+            defaultMeasurementType: formData.measurementType,
+            measurement: {
+                lengthFeet: parseFloat(formData.lengthFeet) || undefined,
+                widthFeet: parseFloat(formData.widthFeet) || undefined,
+                heightFeet: parseFloat(formData.heightFeet) || undefined,
+                tareWeight: parseFloat(formData.tareWeight) || undefined,
+            }
+         });
+      }
+    }
+
     const updatedSlip: Slip = {
       ...slip,
       vehicleNo: formData.vehicleNo,
@@ -181,29 +210,71 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
 
   return (
     <form onSubmit={handleUpdate} className="p-4 md:p-5 space-y-4">
+      {/* Vehicle Info Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-1">
-          <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Vehicle Number</label>
+        <div className="space-y-1 relative col-span-2">
+          <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+            Vehicle Number
+          </label>
           <Combobox
-            options={[]} // We could populate vehicles here but for editing slip just allow text editing
+            options={vehicles.filter(v => v.isActive !== false).map((v) => ({ label: v.vehicleNo, value: v.vehicleNo }))}
             value={formData.vehicleNo}
             allowCreate
-            onChange={(val) => setFormData({ ...formData, vehicleNo: val.toUpperCase() })}
-            placeholder="Vehicle No..."
+            onChange={(val) => {
+              const v = vehicles.find((vehicle) => vehicle.vehicleNo === val);
+              if (v) {
+                setFormData({
+                  ...formData,
+                  vehicleNo: v.vehicleNo.toUpperCase(),
+                  driverName: v.driverName || "",
+                  driverPhone: v.driverPhone || "",
+                  measurementType: v.defaultMeasurementType,
+                  lengthFeet: v.measurement.lengthFeet?.toString() || "",
+                  widthFeet: v.measurement.widthFeet?.toString() || "",
+                  heightFeet: v.measurement.heightFeet?.toString() || "",
+                  tareWeight: v.measurement.tareWeight?.toString() || "",
+                });
+              } else {
+                setFormData({
+                  ...formData,
+                  vehicleNo: val.toUpperCase(),
+                });
+              }
+            }}
+            placeholder="MH 14 AB 1234 or Search Vehicle..."
           />
         </div>
+
         <div className="space-y-1">
-           <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Driver</label>
-           <input
-             type="text"
-             value={formData.driverName}
-             onChange={(e) => setFormData({ ...formData, driverName: e.target.value })}
-             placeholder="Driver Name..."
-             className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none"
-           />
+          <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+            Driver Name
+          </label>
+          <input
+            type="text"
+            value={formData.driverName}
+            onChange={(e) =>
+              setFormData({ ...formData, driverName: e.target.value })
+            }
+            className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+            Driver Phone
+          </label>
+          <input
+            type="tel"
+            value={formData.driverPhone}
+            onChange={(e) =>
+              setFormData({ ...formData, driverPhone: e.target.value })
+            }
+            className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none"
+          />
         </div>
       </div>
 
+      {/* Material & Measurement Section */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="space-y-1">
           <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Material Type</label>
@@ -212,8 +283,10 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
             onChange={(e) => setFormData({ ...formData, materialType: e.target.value })}
             className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white dark:bg-zinc-900"
           >
-            {companySettings.materials?.map((m) => (
-              <option key={m.id} value={m.name}>{m.name}</option>
+            {(companySettings.materials || [])
+            .filter(m => m.isActive !== false)
+            .map((mat) => (
+              <option key={mat.id} value={mat.name}>{mat.name}</option>
             ))}
           </select>
         </div>
@@ -241,6 +314,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
         </div>
       </div>
 
+      {/* Dimensions / Weights Section */}
       {formData.measurementType === "Volume (Brass)" ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1">
@@ -269,6 +343,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
         </div>
       )}
 
+      {/* Customer & Rate Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-1">
           <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Customer Name</label>
@@ -296,6 +371,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
         </div>
       </div>
 
+      {/* Operator & Loader Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-1">
           <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Operator</label>
@@ -319,7 +395,8 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
         </div>
       </div>
       
-      {formData.deliveryMode === "Third-Party Vehicle" && formData.customerId !== "CASH" && (
+      {/* Freight Section */}
+      {freightVisible && (
         <div className="space-y-1">
           <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Freight Charge (₹)</label>
           <input
@@ -333,7 +410,8 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+      {/* Payment Section */}
+      <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
         <div className="space-y-1">
           <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
             Amount Paid (₹)
@@ -346,12 +424,13 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
             onChange={(e) =>
               setFormData({ ...formData, amountPaid: e.target.value })
             }
-            className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+            className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none"
             placeholder="0"
           />
         </div>
       </div>
 
+      {/* Summary Section */}
       <div className="p-4 rounded-xl border-2 border-primary-500 bg-white dark:bg-zinc-800 shadow-sm flex items-center justify-between mt-6">
         <div>
           <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">
@@ -379,6 +458,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
         </div>
       </div>
 
+      {/* Actions */}
       <div className="flex justify-end gap-3 mt-6">
         <button
           type="button"

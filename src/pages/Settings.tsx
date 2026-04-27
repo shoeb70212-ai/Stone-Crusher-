@@ -673,6 +673,9 @@ export function Settings() {
                     <th className="py-3 px-4 text-sm font-semibold text-zinc-600 dark:text-zinc-300">
                       GST Rate (%)
                     </th>
+                    <th className="py-3 px-4 text-sm font-semibold text-zinc-600 dark:text-zinc-300">
+                      Status
+                    </th>
                     <th className="py-3 px-4 text-sm font-semibold text-zinc-600 dark:text-zinc-300 text-right">
                       Actions
                     </th>
@@ -758,15 +761,22 @@ export function Settings() {
                           className="w-16 border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 rounded px-2 py-1 text-sm outline-none focus:border-primary-500 text-zinc-900 dark:text-white"
                         />
                       </td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${material.isActive !== false ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"}`}>
+                          {material.isActive !== false ? "Active" : "Inactive"}
+                        </span>
+                      </td>
                       <td className="py-3 px-4 text-right">
                         <button 
                           onClick={() => {
-                            const newMats = (localSettings.materials || []).filter(m => m.id !== material.id);
+                            const newMats = (localSettings.materials || []).map(m => 
+                              m.id === material.id ? { ...m, isActive: m.isActive === false } : m
+                            );
                             setLocalSettings({ ...localSettings, materials: newMats });
                           }}
-                          className="text-rose-600 hover:text-rose-900 dark:text-rose-400 dark:hover:text-rose-300 text-sm font-medium"
+                          className={`${material.isActive !== false ? "text-rose-600 hover:text-rose-900 dark:text-rose-400" : "text-emerald-600 hover:text-emerald-900 dark:text-emerald-400"} text-sm font-medium`}
                         >
-                          Remove
+                          {material.isActive !== false ? "Deactivate" : "Activate"}
                         </button>
                       </td>
                     </tr>
@@ -811,6 +821,12 @@ export function Settings() {
                     <th className="py-3 px-4 text-sm font-semibold text-zinc-600 dark:text-zinc-300">
                       Default Measurement
                     </th>
+                    <th className="py-3 px-4 text-sm font-semibold text-zinc-600 dark:text-zinc-300">
+                      Status
+                    </th>
+                    <th className="py-3 px-4 text-sm font-semibold text-zinc-600 dark:text-zinc-300 text-right">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100 dark:divide-zinc-700/50">
@@ -853,6 +869,21 @@ export function Settings() {
                       </td>
                       <td className="py-3 px-4 text-zinc-500 dark:text-zinc-400 text-sm">
                         {vehicle.defaultMeasurementType}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${vehicle.isActive !== false ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"}`}>
+                          {vehicle.isActive !== false ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <button 
+                          onClick={() => {
+                            updateVehicle({ ...vehicle, isActive: vehicle.isActive === false });
+                          }}
+                          className={`${vehicle.isActive !== false ? "text-rose-600 hover:text-rose-900 dark:text-rose-400" : "text-emerald-600 hover:text-emerald-900 dark:text-emerald-400"} text-sm font-medium`}
+                        >
+                          {vehicle.isActive !== false ? "Deactivate" : "Activate"}
+                        </button>
                       </td>
                     </tr>
                   ))}

@@ -62,6 +62,41 @@ async function startServer() {
     }
   });
 
+  app.patch('/api/data', (req, res) => {
+    try {
+      const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
+      const { updates, deletions } = req.body;
+      
+      if (updates) {
+        for (const [table, items] of Object.entries(updates)) {
+          if (table === 'companySettings') {
+            data.companySettings = items;
+          } else {
+            if (!data[table]) data[table] = [];
+            for (const item of (items as any[])) {
+              const idx = data[table].findIndex((i: any) => i.id === item.id);
+              if (idx >= 0) data[table][idx] = item;
+              else data[table].push(item);
+            }
+          }
+        }
+      }
+
+      if (deletions) {
+        for (const [table, ids] of Object.entries(deletions)) {
+          if (data[table]) {
+            data[table] = data[table].filter((i: any) => !(ids as string[]).includes(i.id));
+          }
+        }
+      }
+
+      fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to patch data' });
+    }
+  });
+
   // Create Vite server in middleware mode
   const vite = await createViteServer({
     server: { middlewareMode: true },

@@ -7,6 +7,7 @@ export interface Vehicle {
   driverPhone?: string;
   defaultMeasurementType: MeasurementType;
   measurement: VehicleMeasurement;
+  isActive?: boolean;
 }
 
 export interface Customer {
@@ -40,6 +41,7 @@ export interface Material {
   unit: string;
   hsnCode?: string;
   gstRate?: number;
+  isActive?: boolean;
 }
 
 export interface UserAccount {

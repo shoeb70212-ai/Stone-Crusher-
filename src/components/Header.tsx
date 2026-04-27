@@ -72,6 +72,16 @@ export function Header({ onMenuClick }: HeaderProps) {
                   {role}
                 </button>
               ))}
+              <div className="border-t border-zinc-100 dark:border-zinc-700 my-1"></div>
+              <button
+                onClick={() => {
+                  localStorage.removeItem('erp_auth_token');
+                  window.location.reload();
+                }}
+                className="w-full text-left px-4 py-2 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+              >
+                Sign Out
+              </button>
             </div>
           )}
         </div>

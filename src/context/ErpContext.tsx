@@ -3,6 +3,7 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useRef,
   ReactNode,
 } from "react";
 import { Customer, Slip, Transaction, Vehicle, Invoice, CompanySettings, Task } from "../types";
@@ -18,6 +19,7 @@ interface ErpState {
   tasks: Task[];
   companySettings: CompanySettings;
   updateCompanySettings: (settings: CompanySettings) => void;
+  toggleMaterialActive: (id: string) => void;
   updateInvoice: (id: string, updates: Partial<Invoice>) => void;
   userRole: UserRole;
   setUserRole: (role: UserRole) => void;
@@ -35,6 +37,7 @@ interface ErpState {
   deleteTask: (id: string) => void;
   addVehicle: (vehicle: Vehicle) => void;
   updateVehicle: (vehicle: Vehicle) => void;
+  deleteVehicle: (id: string) => void;
   addInvoice: (invoice: Invoice) => void;
   getCustomerBalance: (customerId: string) => number;
 }
@@ -167,7 +170,57 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     loadData();
   }, []);
 
-  // Sync to Server
+  // Delta Sync Queue
+  const syncQueueRef = useRef<{
+    updates: Record<string, any>;
+    deletions: Record<string, string[]>;
+  }>({ updates: {}, deletions: {} });
+
+  const syncTimeoutRef = useRef<NodeJS.Timeout>();
+
+  const triggerSync = () => {
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    syncTimeoutRef.current = setTimeout(async () => {
+      const payload = { ...syncQueueRef.current };
+      
+      // If nothing to sync, return
+      if (Object.keys(payload.updates).length === 0 && Object.keys(payload.deletions).length === 0) return;
+      
+      // Clear queue for next batch
+      syncQueueRef.current = { updates: {}, deletions: {} };
+
+      try {
+        await fetch('/api/data', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch (error) {
+        console.error("Failed to delta sync to server:", error);
+      }
+    }, 1500); // 1.5s debounce for delta sync
+  };
+
+  const queueUpdate = (table: string, item: any) => {
+    if (table === 'companySettings') {
+      syncQueueRef.current.updates.companySettings = item;
+    } else {
+      const existing = syncQueueRef.current.updates[table] || [];
+      const filtered = existing.filter((i: any) => i.id !== item.id);
+      syncQueueRef.current.updates[table] = [...filtered, item];
+    }
+    triggerSync();
+  };
+
+  const queueDelete = (table: string, id: string) => {
+    const existing = syncQueueRef.current.deletions[table] || [];
+    if (!existing.includes(id)) {
+      syncQueueRef.current.deletions[table] = [...existing, id];
+    }
+    triggerSync();
+  };
+
+  // Local backup only
   useEffect(() => {
     if (!isLoaded) return;
 
@@ -181,104 +234,143 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       companySettings
     };
 
-    // Save to local backup just in case
     localStorage.setItem("erp_data_backup", JSON.stringify(data));
-
-    const sync = async () => {
-      try {
-        await fetch('/api/data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        });
-      } catch (error) {
-        console.error("Failed to sync to server:", error);
-      }
-    };
-
-    const timer = setTimeout(sync, 1000); // Debounce sync
-    return () => clearTimeout(timer);
   }, [customers, slips, transactions, vehicles, invoices, tasks, companySettings, isLoaded]);
 
   useEffect(() => {
     localStorage.setItem("erp_userRole", JSON.stringify(userRole));
   }, [userRole]);
 
-  const addVehicle = (vehicle: Vehicle) =>
-    setVehicles((prev) => [...prev, vehicle]);
+  const addVehicle = (vehicle: Vehicle) => {
+    const newVehicle = { ...vehicle, isActive: vehicle.isActive ?? true };
+    setVehicles([...vehicles, newVehicle]);
+    queueUpdate('vehicles', newVehicle);
+  };
 
-  const updateVehicle = (vehicle: Vehicle) =>
-    setVehicles((prev) =>
-      prev.map((v) => (v.id === vehicle.id ? vehicle : v)),
-    );
+  const updateVehicle = (updated: Vehicle) => {
+    setVehicles(vehicles.map((v) => (v.id === updated.id ? updated : v)));
+    queueUpdate('vehicles', updated);
+  };
 
-  const addInvoice = (invoice: Invoice) =>
+  const deleteVehicle = (id: string) => {
+    setVehicles(vehicles.map((v) => {
+      if (v.id === id) {
+        const deleted = { ...v, isActive: false };
+        queueUpdate('vehicles', deleted);
+        return deleted;
+      }
+      return v;
+    }));
+  };
+
+  const addInvoice = (invoice: Invoice) => {
     setInvoices((prev) => [...prev, invoice]);
+    queueUpdate('invoices', invoice);
+  };
 
-  const updateInvoice = (id: string, updates: Partial<Invoice>) =>
-    setInvoices((prev) =>
-      prev.map((inv) => (inv.id === id ? { ...inv, ...updates } : inv)),
+  const updateInvoice = (id: string, updates: Partial<Invoice>) => {
+    setInvoices((prev) => {
+      const newInvoices = prev.map((inv) => (inv.id === id ? { ...inv, ...updates } : inv));
+      const updated = newInvoices.find(i => i.id === id);
+      if (updated) queueUpdate('invoices', updated);
+      return newInvoices;
+    });
+  };
+
+  const updateCompanySettings = (settings: CompanySettings) => {
+    const updatedSettings = {
+      ...settings,
+      materials: (settings.materials || []).map(m => ({
+        ...m,
+        isActive: m.isActive ?? true
+      }))
+    };
+    setCompanySettings(updatedSettings);
+    queueUpdate('companySettings', updatedSettings);
+  };
+
+  const toggleMaterialActive = (id: string) => {
+    const updatedMaterials = (companySettings.materials || []).map(m => 
+      m.id === id ? { ...m, isActive: !m.isActive } : m
     );
-
-  const updateCompanySettings = (settings: CompanySettings) => setCompanySettings(settings);
-
-  const addCustomer = (customer: Customer) =>
+    const newSettings = { ...companySettings, materials: updatedMaterials };
+    setCompanySettings(newSettings);
+    queueUpdate('companySettings', newSettings);
+  };
+  const addCustomer = (customer: Customer) => {
     setCustomers((prev) => [...prev, customer]);
+    queueUpdate('customers', customer);
+  };
 
-  const updateCustomer = (customer: Customer) =>
-    setCustomers((prev) =>
-      prev.map((c) => (c.id === customer.id ? customer : c)),
-    );
+  const updateCustomer = (customer: Customer) => {
+    setCustomers((prev) => prev.map((c) => (c.id === customer.id ? customer : c)));
+    queueUpdate('customers', customer);
+  };
 
   const deleteCustomer = (id: string) => {
     setCustomers((prev) => prev.filter((c) => c.id !== id));
+    queueDelete('customers', id);
   };
 
   const addSlip = (slip: Slip) => {
     setSlips((prev) => [...prev, slip]);
-    // If it's a credit sale (assigned to customer), it should ideally reflect in balance after delivery/invoice
-    // We'll keep it simple: slips don't automatically deduct balance until a 'Transaction' is added or it's tallied
+    queueUpdate('slips', slip);
   };
 
   const updateSlipStatus = (id: string, status: Slip["status"]) => {
-    setSlips((prev) =>
-      prev.map((s) => {
-        if (s.id === id) {
-          return { ...s, status };
-        }
-        return s;
-      }),
-    );
+    setSlips((prev) => {
+      const newSlips = prev.map((s) => (s.id === id ? { ...s, status } : s));
+      const updated = newSlips.find(s => s.id === id);
+      if (updated) queueUpdate('slips', updated);
+      return newSlips;
+    });
   };
 
   const updateSlip = (id: string, updates: Partial<Slip>) => {
-    setSlips((prev) => prev.map((s) => (s.id === id ? { ...s, ...updates } : s)));
+    setSlips((prev) => {
+      const newSlips = prev.map((s) => (s.id === id ? { ...s, ...updates } : s));
+      const updated = newSlips.find(s => s.id === id);
+      if (updated) queueUpdate('slips', updated);
+      return newSlips;
+    });
   };
 
   const addTransaction = (transaction: Transaction) => {
     setTransactions((prev) => [...prev, transaction]);
+    queueUpdate('transactions', transaction);
   };
 
   const updateTransaction = (id: string, updates: Partial<Transaction>) => {
-    setTransactions((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
+    setTransactions((prev) => {
+      const newTxs = prev.map((t) => (t.id === id ? { ...t, ...updates } : t));
+      const updated = newTxs.find(t => t.id === id);
+      if (updated) queueUpdate('transactions', updated);
+      return newTxs;
+    });
   };
 
   const deleteTransaction = (id: string) => {
     setTransactions((prev) => prev.filter((t) => t.id !== id));
+    queueDelete('transactions', id);
   };
 
   const addTask = (task: Task) => {
     setTasks((prev) => [...prev, task]);
+    queueUpdate('tasks', task);
   };
 
   const toggleTask = (id: string) => {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)),
-    );
+    setTasks((prev) => {
+      const newTasks = prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t));
+      const updated = newTasks.find(t => t.id === id);
+      if (updated) queueUpdate('tasks', updated);
+      return newTasks;
+    });
   };
 
   const deleteTask = (id: string) => {
     setTasks((prev) => prev.filter((t) => t.id !== id));
+    queueDelete('tasks', id);
   };
 
   const getCustomerBalance = (customerId: string) => {
@@ -322,6 +414,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         tasks,
         companySettings,
         updateCompanySettings,
+        toggleMaterialActive,
         updateInvoice,
         userRole,
         setUserRole,
@@ -339,6 +432,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         deleteTask,
         addVehicle,
         updateVehicle,
+        deleteVehicle,
         addInvoice,
         getCustomerBalance,
       }}

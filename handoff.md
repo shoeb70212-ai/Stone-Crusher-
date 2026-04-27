@@ -34,12 +34,13 @@ In the stone crusher industry, `5.6` means **5 feet 6 inches** (5.5 feet).
 
 ## 4. Pending Features / Roadmap
 
-- [ ] **Vehicle CRUD**: Full integration of the vehicle master data into the dispatch forms.
-- [ ] **Auth Layer**: Secure the app with verified email/password login.
-- [ ] **Optimistic Sync**: Refactor the sync logic to handle partial updates (delta-sync) to improve performance for large datasets.
-- [ ] **Soft Deletions**: Ensure historical data integrity by marking master data as "Inactive" instead of deleting it.
+- [x] **Vehicle CRUD**: Full integration of the vehicle master data into the dispatch forms.
+- [x] **Soft Deletions**: Ensure historical data integrity by marking master data as "Inactive" instead of deleting it.
+- [x] **Auth Layer**: Secured the app with a local offline-first login interceptor, protecting the views. Easily swappable to Firebase.
+- [x] **Optimistic Sync (Delta Sync)**: Refactored `ErpContext`, `server.ts`, and `api/data.ts` to use a queue-based `PATCH` sync strategy. This avoids wiping and replacing the full database by only sending dynamic UPSERTs for modified data.
 - [ ] **Capacitor Mobile App**: Finalize the Android wrapper.
 
 ## 5. Troubleshooting
+- **Database Connection Issues (Vercel)**: Ensure `DATABASE_URL` is set to the Supabase Transaction Pooler (Port 6543). We have updated the connection logic to reject unauthorized SSL, which should resolve the `ENOTFOUND` errors.
 - **Port Conflict**: If port 5173 is busy, the server will error. Close any existing Vite processes.
 - **Data Reset**: To reset the local database, simply delete `local-data.json` and restart the server.
