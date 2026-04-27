@@ -117,6 +117,7 @@ export interface CompanySettings {
   // UI preferences
   theme?: "light" | "dark" | "system";
   primaryColor?: "emerald" | "blue" | "violet" | "rose" | "amber";
+  mobileLayout?: "Comfortable" | "Compact";
 
   // Print / invoice layout
   slipFormat?: "A4" | "Thermal-80mm" | "Thermal-58mm";

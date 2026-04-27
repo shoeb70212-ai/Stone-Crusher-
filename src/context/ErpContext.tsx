@@ -90,6 +90,7 @@ const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
   branchName: "Industrial Area Branch",
   slipFormat: "Thermal-80mm",
   invoiceTemplate: "Classic",
+  mobileLayout: "Comfortable",
   expenseCategories: ["Diesel", "Maintenance", "Salaries", "Rent", "Office Supplies", "Electricity"],
   materials: [
     { id: "1", name: "10mm", defaultPrice: 450, unit: "Ton", hsnCode: "25171010", gstRate: 5 },
@@ -130,7 +131,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function loadData() {
       try {
-        const res = await fetch("/api/data");
+        const API_URL = import.meta.env.VITE_API_URL || "";
+        const res = await fetch(`${API_URL}/api/data`);
         if (res.ok) {
           const data = await res.json();
           if (data.customers) setCustomers(data.customers);
@@ -193,7 +195,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       syncQueueRef.current = { updates: {}, deletions: {} };
 
       try {
-        await fetch("/api/data", {
+        const API_URL = import.meta.env.VITE_API_URL || "";
+        await fetch(`${API_URL}/api/data`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),

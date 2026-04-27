@@ -15,7 +15,8 @@ export function Settings() {
 
   const handleDownloadBackup = async () => {
     try {
-      const res = await fetch('/api/data');
+      const API_URL = import.meta.env.VITE_API_URL || "";
+      const res = await fetch(`${API_URL}/api/data`);
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -44,7 +45,8 @@ export function Settings() {
         const content = event.target?.result as string;
         const data = JSON.parse(content);
         
-        const res = await fetch('/api/data', {
+        const API_URL = import.meta.env.VITE_API_URL || "";
+        const res = await fetch(`${API_URL}/api/data`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
@@ -294,6 +296,30 @@ export function Settings() {
                   >
                     <div className={`w-4 h-4 rounded-full ${color.colorClass}`} />
                     {color.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">
+                Mobile Device Layout
+              </label>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4 max-w-xl">
+                Choose how data is displayed on small screens. "Comfortable" uses spaced-out cards (easier to tap), while "Compact" forces table views with horizontal scrolling (see more data at once without vertical scrolling).
+              </p>
+              <div className="flex gap-4">
+                {(["Comfortable", "Compact"] as const).map((layout) => (
+                  <button
+                    key={layout}
+                    onClick={() => setLocalSettings({...localSettings, mobileLayout: layout})}
+                    className={`px-4 py-2 rounded-lg border-2 font-medium transition-colors ${
+                      (localSettings.mobileLayout || "Comfortable") === layout
+                        ? "border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                        : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-600"
+                    }`}
+                  >
+                    {layout}
                   </button>
                 ))}
               </div>

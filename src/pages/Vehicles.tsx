@@ -136,7 +136,7 @@ export function Vehicles() {
       <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 overflow-hidden">
         <div className="p-0 md:p-5">
           {/* Mobile list view */}
-          <div className="md:hidden divide-y divide-zinc-100 dark:divide-zinc-800">
+          <div className={`${companySettings.mobileLayout === 'Compact' ? 'hidden' : 'md:hidden divide-y divide-zinc-100 dark:divide-zinc-800'}`}>
             {sortedVehicles.map((v) => (
               <div key={v.id} className="p-4 flex flex-col gap-2">
                 <div className="flex justify-between items-start">
@@ -177,7 +177,7 @@ export function Vehicles() {
           </div>
           
           {/* Desktop table view */}
-          <div className="hidden md:block overflow-x-auto">
+          <div className={`${companySettings.mobileLayout === 'Compact' ? 'block' : 'hidden md:block'} overflow-x-auto`}>
             <table className="w-full text-sm text-left align-middle">
               <thead className="text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-900/50 uppercase rounded-lg">
                 <tr>

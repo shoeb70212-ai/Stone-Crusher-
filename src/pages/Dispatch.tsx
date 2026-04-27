@@ -186,7 +186,7 @@ export function Dispatch() {
 
         <div className="p-3 md:p-5">
           {/* Mobile Card View */}
-          <div className="md:hidden space-y-4">
+          <div className={`${companySettings.mobileLayout === 'Compact' ? 'hidden' : 'md:hidden space-y-4'}`}>
             {filteredSlips.length === 0 ? (
               <div className="text-center text-sm text-zinc-500 py-8">No records found.</div>
             ) : (
@@ -253,7 +253,7 @@ export function Dispatch() {
           </div>
 
           {/* Desktop Table View */}
-          <div className="hidden md:block overflow-x-auto">
+          <div className={`${companySettings.mobileLayout === 'Compact' ? 'block' : 'hidden md:block'} overflow-x-auto`}>
             <table className="w-full text-sm text-left ">
               <thead className="text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-900/50 uppercase rounded-lg">
                 <tr>

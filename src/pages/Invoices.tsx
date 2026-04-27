@@ -441,7 +441,7 @@ export function Invoices() {
         </div>
 
         {/* Mobile View */}
-        <div className="md:hidden divide-y divide-zinc-100 dark:divide-zinc-700/50">
+        <div className={`${companySettings.mobileLayout === 'Compact' ? 'hidden' : 'md:hidden divide-y divide-zinc-100 dark:divide-zinc-700/50'}`}>
            {filteredInvoices.length === 0 ? (
               <div className="py-12 text-center text-zinc-500 dark:text-zinc-400">
                 <FileText className="w-12 h-12 text-zinc-300 mx-auto mb-3" />
@@ -507,7 +507,7 @@ export function Invoices() {
         </div>
 
         {/* Desktop View */}
-        <div className="hidden md:block overflow-x-auto">
+        <div className={`${companySettings.mobileLayout === 'Compact' ? 'block' : 'hidden md:block'} overflow-x-auto`}>
           <table className="w-full text-left border-collapse ">
             <thead>
               <tr className="bg-white dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700 text-zinc-400 dark:text-zinc-500">
