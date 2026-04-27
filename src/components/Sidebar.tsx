@@ -12,8 +12,7 @@ import {
   Receipt,
   ChevronLeft,
   ChevronRight,
-  CheckSquare,
-  Menu,
+  MoreHorizontal,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useErp } from "../context/ErpContext";
@@ -36,6 +35,14 @@ const navItems = [
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
+/** Items shown directly in the mobile bottom bar */
+const bottomBarItems = [
+  { id: "dashboard", label: "Home", icon: LayoutDashboard },
+  { id: "dispatch", label: "Slips", icon: Truck },
+  { id: "daybook", label: "Daybook", icon: CalendarDays },
+  { id: "invoices", label: "Invoices", icon: Receipt },
+];
+
 export function Sidebar({
   currentView,
   onChangeView,
@@ -44,6 +51,7 @@ export function Sidebar({
 }: SidebarProps) {
   const { userRole } = useErp();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
 
   const filteredNavItems = navItems.filter((item) => {
     if (
@@ -55,8 +63,15 @@ export function Sidebar({
     return true;
   });
 
+  const handleNavigate = (view: string) => {
+    onChangeView(view);
+    setIsOpen(false);
+    setIsMoreOpen(false);
+  };
+
   return (
     <>
+      {/* ── Desktop sidebar backdrop (mobile overlay) ── */}
       <div
         className={cn(
           "fixed inset-0 bg-black/50 z-20 md:hidden transition-opacity",
@@ -64,35 +79,39 @@ export function Sidebar({
         )}
         onClick={() => setIsOpen(false)}
       />
+
+      {/* ── Desktop Sidebar ── */}
       <aside
         className={cn(
           "fixed md:static inset-y-0 left-0 z-30 shrink-0 bg-white dark:bg-zinc-950 text-zinc-600 dark:text-zinc-300 flex flex-col border-r border-zinc-200 dark:border-zinc-800 transition-all duration-300",
           isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
-          isCollapsed ? "md:w-20 w-64" : "w-64"
+          isCollapsed ? "md:w-20 w-64" : "w-64",
         )}
       >
-        <div className="h-16 flex items-center justify-between px-5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
+        {/* Logo */}
+        <div className="h-14 md:h-16 flex items-center justify-between px-5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 shrink-0">
           <div className="flex items-center">
-            <Mountain className="text-primary-600 dark:text-primary-500 w-6 h-6 flex-shrink-0" />
+            <Mountain className="text-primary-600 dark:text-primary-500 w-6 h-6 shrink-0" />
             {!isCollapsed && (
               <h1 className="text-zinc-900 dark:text-white font-bold font-display text-lg tracking-wide uppercase ml-3 whitespace-nowrap hidden md:block">
                 CrushTrack
               </h1>
             )}
-            {/* Always show text on mobile since mobile is never collapsed */}
             <h1 className="text-zinc-900 dark:text-white font-bold font-display text-lg tracking-wide uppercase ml-3 whitespace-nowrap md:hidden">
               CrushTrack
             </h1>
           </div>
           <button
-            className="md:hidden text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+            className="md:hidden text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-1 rounded-lg active:scale-95 transition-transform"
             onClick={() => setIsOpen(false)}
+            aria-label="Close menu"
           >
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <nav className="flex-1 py-6 px-3 space-y-1 overflow-y-auto mt-2">
+        {/* Nav items */}
+        <nav className="flex-1 py-4 px-3 space-y-0.5 overflow-y-auto">
           {filteredNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentView === item.id;
@@ -101,16 +120,13 @@ export function Sidebar({
               <button
                 key={item.id}
                 title={isCollapsed ? item.label : undefined}
-                onClick={() => {
-                  onChangeView(item.id);
-                  setIsOpen(false);
-                }}
+                onClick={() => handleNavigate(item.id)}
                 className={cn(
-                  "w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group relative",
+                  "w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 group relative",
                   isActive
-                    ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm"
-                    : "hover:bg-zinc-50 dark:hover:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white",
-                  isCollapsed ? "justify-center" : "justify-start"
+                    ? "bg-primary-50 dark:bg-primary-500/10 text-primary-700 dark:text-primary-300"
+                    : "hover:bg-zinc-100 dark:hover:bg-zinc-800/60 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white",
+                  isCollapsed ? "justify-center" : "justify-start",
                 )}
               >
                 {isActive && (
@@ -118,90 +134,204 @@ export function Sidebar({
                 )}
                 <Icon
                   className={cn(
-                    "w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110",
-                    isActive ? "text-primary-500" : "text-zinc-400 group-hover:text-zinc-900 dark:group-hover:text-white",
-                    !isCollapsed && "mr-3"
+                    "w-5 h-5 shrink-0",
+                    isActive
+                      ? "text-primary-500"
+                      : "text-zinc-400 group-hover:text-zinc-700 dark:group-hover:text-white",
+                    !isCollapsed && "mr-3",
                   )}
                 />
                 {!isCollapsed && (
-                  <span className="truncate hidden md:block transition-transform duration-200 group-hover:translate-x-1">{item.label}</span>
+                  <span className="truncate hidden md:block">{item.label}</span>
                 )}
-                <span className="truncate md:hidden transition-transform duration-200 group-hover:translate-x-1">{item.label}</span>
+                <span className="truncate md:hidden">{item.label}</span>
               </button>
             );
           })}
         </nav>
 
-        <div className="p-4 border-t border-zinc-200 dark:border-zinc-800">
+        {/* Bottom section */}
+        <div className="p-3 border-t border-zinc-200 dark:border-zinc-800 shrink-0">
           {!isCollapsed && (
-             <div className="mb-4 px-3 text-xs font-semibold text-zinc-500 uppercase tracking-widest hidden md:block">
-               Role: {userRole}
-             </div>
+            <div className="mb-3 px-3 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest hidden md:block">
+              Role: {userRole}
+            </div>
           )}
-          <div className="mb-4 px-3 text-xs font-semibold text-zinc-500 uppercase tracking-widest md:hidden">
+          <div className="mb-3 px-3 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest md:hidden">
             Role: {userRole}
           </div>
-          
-          <button 
-            onClick={() => window.location.reload()}
+
+          <button
+            onClick={() => {
+              localStorage.removeItem("erp_auth_token");
+              window.location.reload();
+            }}
             title={isCollapsed ? "Logout" : undefined}
             className={cn(
-              "flex items-center text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white w-full rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all group",
-              isCollapsed ? "p-3 justify-center mb-4" : "px-3 py-2.5 mb-2"
+              "flex items-center text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 w-full rounded-xl hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all group active:scale-[0.98]",
+              isCollapsed ? "p-3 justify-center mb-3" : "px-3 py-2.5 mb-2",
             )}
           >
-            <LogOut className={cn("w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform", !isCollapsed && "mr-3")} />
-            {!isCollapsed && <span className="hidden md:inline">Logout</span>}
-            <span className="md:hidden">Logout</span>
+            <LogOut
+              className={cn(
+                "w-5 h-5 shrink-0",
+                !isCollapsed && "mr-3",
+              )}
+            />
+            {!isCollapsed && <span className="hidden md:inline">Sign Out</span>}
+            <span className="md:hidden">Sign Out</span>
           </button>
 
+          {/* Collapse toggle – desktop only */}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="hidden md:flex items-center justify-center w-full px-3 py-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-colors"
+            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {isCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+            {isCollapsed ? (
+              <ChevronRight className="w-5 h-5" />
+            ) : (
+              <ChevronLeft className="w-5 h-5" />
+            )}
           </button>
         </div>
       </aside>
 
-      {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-950 border-t border-zinc-200 dark:border-zinc-800 z-40 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-1 flex justify-between items-center shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]">
-        {[
-          { id: "dashboard", label: "Home", icon: LayoutDashboard },
-          { id: "dispatch", label: "Slips", icon: Truck },
-          { id: "invoices", label: "Invoices", icon: Receipt },
-          { id: "customers", label: "Users", icon: Users },
-        ].map((item) => {
+      {/* ═══════════════════════════════════════════════════════════
+          Mobile Bottom Navigation Bar
+          ═══════════════════════════════════════════════════════════ */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-t border-zinc-200 dark:border-zinc-800 z-40 flex items-stretch shadow-[0_-1px_0_0_rgba(0,0,0,0.06),0_-4px_16px_-4px_rgba(0,0,0,0.08)] pb-[env(safe-area-inset-bottom)]">
+        {bottomBarItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
           return (
             <button
               key={item.id}
-              onClick={() => {
-                onChangeView(item.id);
-                setIsOpen(false);
-              }}
+              onClick={() => handleNavigate(item.id)}
               className={cn(
-                "flex-1 flex flex-col items-center py-2 transition-colors",
-                isActive ? "text-primary-600 dark:text-primary-500" : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900"
+                "flex-1 flex flex-col items-center justify-center gap-1 py-2.5 min-h-[56px] transition-colors relative active:bg-zinc-50 dark:active:bg-zinc-900",
+                isActive
+                  ? "text-primary-600 dark:text-primary-400"
+                  : "text-zinc-500 dark:text-zinc-400",
               )}
+              aria-label={item.label}
             >
-              <Icon className="w-6 h-6 mb-1" strokeWidth={isActive ? 2.5 : 2} />
-              <span className="text-[10px] font-medium leading-none">{item.label}</span>
+              {isActive && (
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary-500 rounded-b-full" />
+              )}
+              <Icon
+                className="w-5 h-5"
+                strokeWidth={isActive ? 2.5 : 2}
+              />
+              <span
+                className={cn(
+                  "text-[10px] font-medium leading-none",
+                  isActive ? "font-semibold" : "",
+                )}
+              >
+                {item.label}
+              </span>
             </button>
           );
         })}
+
+        {/* "More" button */}
         <button
-          onClick={() => setIsOpen(true)}
+          onClick={() => setIsMoreOpen(true)}
           className={cn(
-            "flex-1 flex flex-col items-center py-2 transition-colors",
-            isOpen ? "text-primary-600 dark:text-primary-500" : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900"
+            "flex-1 flex flex-col items-center justify-center gap-1 py-2.5 min-h-[56px] transition-colors relative active:bg-zinc-50 dark:active:bg-zinc-900",
+            isMoreOpen
+              ? "text-primary-600 dark:text-primary-400"
+              : "text-zinc-500 dark:text-zinc-400",
           )}
+          aria-label="More"
         >
-          <Menu className="w-6 h-6 mb-1" strokeWidth={isOpen ? 2.5 : 2} />
+          <MoreHorizontal className="w-5 h-5" strokeWidth={2} />
           <span className="text-[10px] font-medium leading-none">More</span>
         </button>
       </nav>
+
+      {/* ═══════════════════════════════════════════════════════════
+          Mobile "More" Drawer (slide-up sheet)
+          ═══════════════════════════════════════════════════════════ */}
+      {isMoreOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setIsMoreOpen(false)}
+          />
+          {/* Sheet */}
+          <div className="relative bg-white dark:bg-zinc-900 rounded-t-2xl shadow-2xl pb-[env(safe-area-inset-bottom)]">
+            {/* Handle */}
+            <div className="flex justify-center pt-3 pb-2">
+              <div className="w-10 h-1 bg-zinc-300 dark:bg-zinc-600 rounded-full" />
+            </div>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 pb-3 border-b border-zinc-100 dark:border-zinc-800">
+              <div className="flex items-center gap-2">
+                <Mountain className="text-primary-500 w-5 h-5" />
+                <span className="font-bold text-zinc-900 dark:text-white text-base tracking-wide uppercase">
+                  CrushTrack
+                </span>
+              </div>
+              <button
+                onClick={() => setIsMoreOpen(false)}
+                className="p-2 rounded-xl text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors active:scale-95"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Nav grid */}
+            <div className="px-4 py-4 grid grid-cols-3 gap-3">
+              {filteredNavItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = currentView === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleNavigate(item.id)}
+                    className={cn(
+                      "flex flex-col items-center gap-2 py-4 px-2 rounded-2xl transition-all active:scale-95",
+                      isActive
+                        ? "bg-primary-50 dark:bg-primary-500/15 text-primary-600 dark:text-primary-400"
+                        : "bg-zinc-50 dark:bg-zinc-800/60 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700",
+                    )}
+                  >
+                    <Icon
+                      className="w-6 h-6"
+                      strokeWidth={isActive ? 2.5 : 2}
+                    />
+                    <span className="text-xs font-medium text-center leading-tight">
+                      {item.label.replace(" (Slips)", "")}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Role + sign out */}
+            <div className="px-4 pb-4 pt-1 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">
+                Role: {userRole}
+              </span>
+              <button
+                onClick={() => {
+                  localStorage.removeItem("erp_auth_token");
+                  window.location.reload();
+                }}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 rounded-xl hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors active:scale-95"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

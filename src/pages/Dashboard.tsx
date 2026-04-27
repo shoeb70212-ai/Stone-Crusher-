@@ -27,12 +27,14 @@ export function Dashboard() {
   const { slips, transactions, customers, invoices, getCustomerBalance } = useErp();
   const [printSlip, setPrintSlip] = useState<Slip | null>(null);
 
-  const [now] = useState(() => new Date());
-
   // Default to today since owner wants to see what's happening today
   const [dateRangeType, setDateRangeType] = useState<
     "today" | "week" | "month" | "year" | "custom"
-  >("today"); 
+  >("today");
+
+  // Recompute "now" each time the user changes the date range so the "today"
+  // filter stays correct even if the tab has been open since the previous day.
+  const now = useMemo(() => new Date(), [dateRangeType]);
 
   const [customStartDate, setCustomStartDate] = useState(
     startOfMonth(now).toISOString().split("T")[0],
@@ -202,90 +204,85 @@ export function Dashboard() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h2 className="text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
-            Dashboard
-          </h2>
-          <p className="text-zinc-500 dark:text-zinc-400 mt-1">
-            Performance overview for {getRangeLabel().toLowerCase()}.
-          </p>
-        </div>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto">
-          <div className="flex overflow-x-auto bg-zinc-100 dark:bg-zinc-800/80 p-1 rounded-xl w-full sm:w-auto hide-scrollbar">
-            {(["today", "week", "month", "year", "custom"] as const).map((type) => (
-              <button
-                key={type}
-                onClick={() => setDateRangeType(type as any)}
-                className={`flex-none px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                  dateRangeType === type
-                    ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm"
-                    : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:text-white"
-                }`}
-              >
-                {type.charAt(0).toUpperCase() + type.slice(1)}
-              </button>
-            ))}
+    <div className="space-y-4 md:space-y-6">
+      {/* Page header */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
+              Dashboard
+            </h2>
+            <p className="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
+              {getRangeLabel()} overview
+            </p>
           </div>
-          {dateRangeType === "custom" && (
-            <div className="flex items-center space-x-2 bg-white dark:bg-zinc-800 px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-sm">
-              <input
-                type="date"
-                value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
-                className="text-sm text-zinc-700 dark:text-zinc-200 outline-none bg-transparent w-28 md:w-auto"
-              />
-              <span className="text-zinc-400 dark:text-zinc-500 font-semibold text-xs">-</span>
-              <input
-                type="date"
-                value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
-                className="text-sm text-zinc-700 dark:text-zinc-200 outline-none bg-transparent w-28 md:w-auto"
-              />
-            </div>
-          )}
         </div>
+
+        {/* Date range pills – horizontally scrollable on mobile */}
+        <div className="flex gap-2 overflow-x-auto hide-scrollbar -mx-3 px-3 md:mx-0 md:px-0">
+          {(["today", "week", "month", "year", "custom"] as const).map((type) => (
+            <button
+              key={type}
+              onClick={() => setDateRangeType(type)}
+              className={`shrink-0 px-4 py-2 text-sm font-medium rounded-xl transition-colors ${
+                dateRangeType === type
+                  ? "bg-primary-600 text-white shadow-sm"
+                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+              }`}
+            >
+              {type.charAt(0).toUpperCase() + type.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        {dateRangeType === "custom" && (
+          <div className="flex items-center gap-2 bg-white dark:bg-zinc-800 px-3 py-2 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-sm self-start">
+            <input
+              type="date"
+              value={customStartDate}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomStartDate(e.target.value)}
+              className="text-sm text-zinc-700 dark:text-zinc-200 outline-none bg-transparent"
+            />
+            <span className="text-zinc-400 dark:text-zinc-500 font-semibold text-xs">–</span>
+            <input
+              type="date"
+              value={customEndDate}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomEndDate(e.target.value)}
+              className="text-sm text-zinc-700 dark:text-zinc-200 outline-none bg-transparent"
+            />
+          </div>
+        )}
       </div>
 
       {/* TOP 4 KEY METRICS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 lg:p-2 pb-2">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         {stats.map((stat, i) => {
           const Icon = stat.icon;
           return (
             <div
               key={i}
-              className="bg-white dark:bg-zinc-900/40 p-5 rounded-2xl shadow-sm border border-zinc-200/80 dark:border-zinc-800 flex flex-col gap-3 relative overflow-hidden group hover:shadow-md transition-all"
+              className="bg-white dark:bg-zinc-900/40 p-4 md:p-5 rounded-2xl shadow-sm border border-zinc-200/80 dark:border-zinc-800 flex flex-col gap-2 md:gap-3 relative overflow-hidden group hover:shadow-md transition-all active:scale-[0.98]"
             >
-              <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent dark:from-white/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="flex justify-between items-center z-10 w-full">
-                <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+              <div className="flex justify-between items-start">
+                <p className="text-xs md:text-sm font-medium text-zinc-500 dark:text-zinc-400 leading-tight">
                   {stat.label}
                 </p>
-                <div className={`p-2 rounded-xl ${stat.bg} shrink-0`}>
-                  <Icon className={`w-5 h-5 ${stat.color}`} />
+                <div className={`p-1.5 md:p-2 rounded-xl ${stat.bg} shrink-0`}>
+                  <Icon className={`w-4 h-4 md:w-5 md:h-5 ${stat.color}`} />
                 </div>
               </div>
-              <div className="z-10 w-full flex items-end justify-between">
-                <p className="text-2xl md:text-3xl font-semibold tracking-tight text-zinc-900 dark:text-white">
-                  {stat.value}
-                </p>
-              </div>
-              <div className="z-10 w-full group-hover:translate-x-1 transition-transform">
-                <p className="text-xs font-medium flex items-center gap-1.5">
-                   {stat.label !== "Market Receivables" ? (
-                       <>
-                       <span className={`px-1.5 py-0.5 rounded-md flex items-center ${stat.isPositive ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400"}`}>
-                         {stat.isPositive ? "↗" : "↘"} {stat.subValue}
-                       </span>
-                       </>
-                   ) : (
-                       <span className="text-zinc-500 dark:text-zinc-400">
-                         {stat.subValue}
-                       </span>
-                   )}
-                </p>
-              </div>
+              <p className="text-xl md:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
+                {stat.value}
+              </p>
+              <p className="text-[10px] md:text-xs font-medium">
+                {stat.label !== "Market Receivables" ? (
+                  <span className={`px-1.5 py-0.5 rounded-md inline-flex items-center gap-0.5 ${stat.isPositive ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400"}`}>
+                    {stat.isPositive ? "↗" : "↘"} {stat.subValue}
+                  </span>
+                ) : (
+                  <span className="text-zinc-500 dark:text-zinc-400">{stat.subValue}</span>
+                )}
+              </p>
             </div>
           );
         })}

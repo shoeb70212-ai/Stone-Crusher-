@@ -59,7 +59,7 @@ export function printHtml(htmlContent: string, format: string) {
 export async function openPdfBackend(htmlContent: string, format: string) {
   // Fix dynamic import for Vite
   const html2pdfModule = await import('html2pdf.js');
-  const html2pdf = html2pdfModule.default || html2pdfModule;
+  const html2pdf = (html2pdfModule.default || html2pdfModule) as typeof html2pdfModule.default;
   
   let cssRules = '';
   document.querySelectorAll('style, link[rel="stylesheet"]').forEach(node => {
@@ -96,11 +96,11 @@ export async function openPdfBackend(htmlContent: string, format: string) {
   `;
 
   const opt = {
-    margin:       [0, 0],
+    margin:       [0, 0] as [number, number],
     filename:     'document.pdf',
-    image:        { type: 'jpeg', quality: 0.98 },
+    image:        { type: 'jpeg' as const, quality: 0.98 },
     html2canvas:  { scale: 2, useCORS: true, logging: false },
-    jsPDF:        { unit: 'in', format: format === 'A4' ? 'a4' : [3.15, 11], orientation: 'portrait' }
+    jsPDF:        { unit: 'in', format: format === 'A4' ? 'a4' : ([3.15, 11] as [number, number]), orientation: 'portrait' as const }
   };
 
   try {

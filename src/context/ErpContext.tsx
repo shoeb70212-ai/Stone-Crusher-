@@ -190,8 +190,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       const hasDeletions = Object.keys(payload.deletions).length > 0;
       if (!hasUpdates && !hasDeletions) return;
 
-      // Reset queue before the async call so concurrent mutations go into
-      // the *next* batch rather than being silently dropped.
+      // Reset queue before the async call so concurrent mutations that arrive
+      // while this request is in-flight go into the *next* batch.
       syncQueueRef.current = { updates: {}, deletions: {} };
 
       try {
@@ -202,7 +202,33 @@ export function ErpProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify(payload),
         });
       } catch (error) {
-        console.error("Failed to delta sync to server:", error);
+        console.error("Failed to delta sync to server — re-queuing mutations:", error);
+        // Merge the failed payload back into the queue so the next triggerSync
+        // retries it rather than silently discarding the mutations.
+        for (const [table, items] of Object.entries(payload.updates)) {
+          if (table === "companySettings") {
+            syncQueueRef.current.updates.companySettings =
+              syncQueueRef.current.updates.companySettings ?? items;
+          } else {
+            const existing: any[] = syncQueueRef.current.updates[table] || [];
+            const retry = items as any[];
+            // Keep the re-queued version only if a newer update hasn't already
+            // replaced it (identified by id).
+            const merged = [...retry];
+            for (const cur of existing) {
+              if (!merged.find((m) => m.id === cur.id)) merged.push(cur);
+            }
+            syncQueueRef.current.updates[table] = merged;
+          }
+        }
+        for (const [table, ids] of Object.entries(payload.deletions)) {
+          const existing = syncQueueRef.current.deletions[table] || [];
+          const toRetry = ids as string[];
+          const merged = Array.from(new Set([...existing, ...toRetry]));
+          syncQueueRef.current.deletions[table] = merged;
+        }
+        // Schedule another attempt after a short back-off.
+        triggerSync();
       }
     }, 1500);
   };

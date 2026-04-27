@@ -43,6 +43,15 @@ async function startServer() {
     fs.writeFileSync(DATA_FILE, JSON.stringify(initialData, null, 2));
   }
 
+  // Tables that may be written via the API — prevents prototype pollution
+  // and arbitrary key injection from crafted payloads.
+  const ALLOWED_TABLES = new Set([
+    'customers', 'slips', 'transactions', 'vehicles', 'invoices', 'tasks', 'companySettings',
+  ]);
+
+  // Required top-level keys for a valid full-backup restore payload.
+  const REQUIRED_BACKUP_KEYS = ['customers', 'slips', 'transactions', 'vehicles', 'invoices', 'tasks', 'companySettings'];
+
   // API Endpoints
   app.get('/api/data', (req, res) => {
     try {
@@ -55,7 +64,19 @@ async function startServer() {
 
   app.post('/api/data', (req, res) => {
     try {
-      fs.writeFileSync(DATA_FILE, JSON.stringify(req.body, null, 2));
+      const body = req.body;
+      // Validate the backup structure before overwriting to prevent wiping data
+      // with an empty or malformed payload (e.g. from a corrupted file restore).
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return res.status(400).json({ error: 'Invalid backup: payload must be a JSON object.' });
+      }
+      const missingKeys = REQUIRED_BACKUP_KEYS.filter((k) => !(k in body));
+      if (missingKeys.length > 0) {
+        return res.status(400).json({
+          error: `Invalid backup: missing required keys: ${missingKeys.join(', ')}.`,
+        });
+      }
+      fs.writeFileSync(DATA_FILE, JSON.stringify(body, null, 2));
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: 'Failed to save data' });
@@ -66,9 +87,12 @@ async function startServer() {
     try {
       const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
       const { updates, deletions } = req.body;
-      
+
       if (updates) {
         for (const [table, items] of Object.entries(updates)) {
+          // Reject unknown table names to prevent prototype pollution.
+          if (!ALLOWED_TABLES.has(table)) continue;
+
           if (table === 'companySettings') {
             data.companySettings = items;
           } else {
@@ -84,6 +108,7 @@ async function startServer() {
 
       if (deletions) {
         for (const [table, ids] of Object.entries(deletions)) {
+          if (!ALLOWED_TABLES.has(table)) continue;
           if (data[table]) {
             data[table] = data[table].filter((i: any) => !(ids as string[]).includes(i.id));
           }

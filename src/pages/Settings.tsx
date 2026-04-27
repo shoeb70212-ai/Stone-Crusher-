@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { useErp } from "../context/ErpContext";
 import { Building2, Users, Receipt, Save, Check, Palette, Truck, X, Mail, Download, Upload, Database, Trash2 } from "lucide-react";
+import { hashPassword } from "../lib/auth";
+import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 
 export function Settings() {
   const { userRole, companySettings, updateCompanySettings, vehicles, updateVehicle, purgeInactiveRecords } = useErp();
@@ -10,8 +12,11 @@ export function Settings() {
   const [isSaved, setIsSaved] = useState(false);
   
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
-  const [inviteFormData, setInviteFormData] = useState({ name: "", email: "", role: "Partner" });
+  const [inviteFormData, setInviteFormData] = useState({ name: "", email: "", role: "Partner", password: "" });
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const pendingRestoreFileRef = React.useRef<string | null>(null);
+  const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false);
+  const [isPurgeConfirmOpen, setIsPurgeConfirmOpen] = useState(false);
 
   const handleDownloadBackup = async () => {
     try {
@@ -31,38 +36,65 @@ export function Settings() {
     }
   };
 
+  const REQUIRED_BACKUP_KEYS = ['customers', 'slips', 'transactions', 'vehicles', 'invoices', 'tasks', 'companySettings'];
+
   const handleRestoreBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!confirm('WARNING: This will overwrite all current data. Are you sure?')) {
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
 
     const reader = new FileReader();
-    reader.onload = async (event) => {
+    reader.onload = (event) => {
       try {
         const content = event.target?.result as string;
         const data = JSON.parse(content);
-        
-        const API_URL = import.meta.env.VITE_API_URL || "";
-        const res = await fetch(`${API_URL}/api/data`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        });
 
-        if (res.ok) {
-          alert('Backup restored successfully! The application will now reload.');
-          window.location.reload();
-        } else {
-          alert('Failed to save restored data to server.');
+        if (!data || typeof data !== 'object' || Array.isArray(data)) {
+          alert('Invalid backup file: payload must be a JSON object.');
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          return;
         }
-      } catch (err) {
-        alert('Invalid backup file.');
+        const missing = REQUIRED_BACKUP_KEYS.filter((k) => !(k in data));
+        if (missing.length > 0) {
+          alert(`Invalid backup file: missing required keys: ${missing.join(', ')}.`);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          return;
+        }
+
+        pendingRestoreFileRef.current = content;
+        setIsRestoreConfirmOpen(true);
+      } catch {
+        alert('Invalid backup file — could not parse JSON.');
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
     reader.readAsText(file);
+  };
+
+  const confirmRestore = async () => {
+    setIsRestoreConfirmOpen(false);
+    const content = pendingRestoreFileRef.current;
+    pendingRestoreFileRef.current = null;
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (!content) return;
+
+    try {
+      const data = JSON.parse(content);
+      const API_URL = import.meta.env.VITE_API_URL || "";
+      const res = await fetch(`${API_URL}/api/data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        alert('Backup restored successfully! The application will now reload.');
+        window.location.reload();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Failed to restore backup: ${err.error || 'Server error'}`);
+      }
+    } catch {
+      alert('Failed to restore backup.');
+    }
   };
 
   // Local state for editing to prevent immediate context updates until save
@@ -89,22 +121,28 @@ export function Settings() {
     setTimeout(() => setIsSaved(false), 2000);
   };
 
-  const handleInviteUser = (e: React.FormEvent) => {
+  const handleInviteUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (inviteFormData.password.length < 6) {
+      alert("Password must be at least 6 characters.");
+      return;
+    }
+    const passwordHash = await hashPassword(inviteFormData.password);
+    const role = inviteFormData.role as "Admin" | "Partner" | "Manager";
     const newUsers = [...(localSettings.users || [])];
     newUsers.push({
-      id: Math.random().toString(36).substring(2, 11),
+      id: crypto.randomUUID(),
       name: inviteFormData.name,
       email: inviteFormData.email,
-      role: inviteFormData.role as any,
-      status: "Active"
+      passwordHash,
+      role,
+      status: "Active",
     });
-    setLocalSettings({ ...localSettings, users: newUsers });
-    // In a real app, this would trigger an email send via backend
-    alert(`Mock invite sent to ${inviteFormData.email}! They have been added to the system.`);
+    const updated = { ...localSettings, users: newUsers };
+    setLocalSettings(updated);
+    updateCompanySettings(updated);
     setIsInviteModalOpen(false);
-    setInviteFormData({ name: "", email: "", role: "Partner" });
-    handleSave(); // Auto-save when inviting a user
+    setInviteFormData({ name: "", email: "", role: "Partner", password: "" });
   };
 
   return (
@@ -634,12 +672,7 @@ export function Settings() {
                     Permanently delete all inactive (soft-deleted) customers and vehicles from the database. This action cannot be undone.
                   </p>
                   <button
-                    onClick={() => {
-                      if (confirm("Are you absolutely sure? This will permanently delete all inactive records.")) {
-                        purgeInactiveRecords();
-                        alert("Inactive records have been purged successfully.");
-                      }
-                    }}
+                    onClick={() => setIsPurgeConfirmOpen(true)}
                     className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors w-full sm:w-auto flex justify-center items-center gap-2"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -1262,7 +1295,22 @@ export function Settings() {
                   <option value="Partner">Partner (View Only / Basic)</option>
                 </select>
               </div>
-              
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">
+                  Password
+                </label>
+                <input
+                  required
+                  type="password"
+                  minLength={6}
+                  value={inviteFormData.password}
+                  onChange={(e) => setInviteFormData({...inviteFormData, password: e.target.value})}
+                  placeholder="Min. 6 characters"
+                  className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                />
+              </div>
+
               <div className="pt-4 flex justify-end gap-3">
                 <button
                   type="button"
@@ -1282,6 +1330,33 @@ export function Settings() {
           </div>
         </div>
       )}
+
+      <ConfirmationModal
+        isOpen={isRestoreConfirmOpen}
+        title="Restore Backup"
+        message="WARNING: This will overwrite ALL current data with the backup file. This cannot be undone. Are you sure?"
+        confirmText="Yes, Restore"
+        isDestructive
+        onConfirm={confirmRestore}
+        onCancel={() => {
+          setIsRestoreConfirmOpen(false);
+          pendingRestoreFileRef.current = null;
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }}
+      />
+
+      <ConfirmationModal
+        isOpen={isPurgeConfirmOpen}
+        title="Purge Inactive Records"
+        message="This will permanently delete all inactive (soft-deleted) customers and vehicles. This action cannot be undone."
+        confirmText="Yes, Purge"
+        isDestructive
+        onConfirm={() => {
+          setIsPurgeConfirmOpen(false);
+          purgeInactiveRecords();
+        }}
+        onCancel={() => setIsPurgeConfirmOpen(false)}
+      />
     </>
   );
 }

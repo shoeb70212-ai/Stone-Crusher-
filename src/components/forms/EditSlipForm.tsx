@@ -48,13 +48,13 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
     calculatedQty * (parseFloat(formData.ratePerUnit) || 0) + appliedFreight
   );
 
-  const [prevCalculatedAmount, setPrevCalculatedAmount] = useState<number>(calculatedTotalAmount);
   const [manualTotalAmount, setManualTotalAmount] = useState<string>(Math.round(slip.totalAmount).toString());
 
-  if (calculatedTotalAmount !== prevCalculatedAmount) {
-    setPrevCalculatedAmount(calculatedTotalAmount);
+  // Sync the editable total whenever the calculated value changes due to
+  // dimension / rate / freight changes. useEffect avoids setState-during-render.
+  useEffect(() => {
     setManualTotalAmount(calculatedTotalAmount.toString());
-  }
+  }, [calculatedTotalAmount]);
 
   const finalAmount = parseFloat(manualTotalAmount) || 0;
 

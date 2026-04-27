@@ -30,40 +30,34 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
     loaderName: localStorage.getItem('lastLoaderName') || "",
   });
 
-  const DEFAULT_RATES: Record<string, number> = Object.fromEntries(
-    (companySettings.materials || []).map(m => [m.name, m.defaultPrice || 0])
-  );
-
   useEffect(() => {
-    if (formData.customerId && formData.materialType) {
-      const customerSlips = slips
-        .filter(s => s.customerId === formData.customerId)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      
-      let historicalRate = 0;
-      for (const s of customerSlips) {
-        if (s.materialType === formData.materialType) {
-          historicalRate = parseFloat(s.ratePerUnit as any);
-          break;
-        }
-      }
+    if (!formData.customerId || !formData.materialType) return;
 
-      if (historicalRate > 0) {
-        setFormData(prev => ({ 
-          ...prev, 
-          ratePerUnit: historicalRate.toString()
-        }));
-      } else {
-        const defaultRate = DEFAULT_RATES[formData.materialType];
-        if (defaultRate) {
-          setFormData(prev => ({ 
-            ...prev, 
-            ratePerUnit: defaultRate.toString()
-          }));
-        }
+    const defaultRates: Record<string, number> = Object.fromEntries(
+      (companySettings.materials || []).map((m) => [m.name, m.defaultPrice || 0]),
+    );
+
+    const customerSlips = slips
+      .filter((s) => s.customerId === formData.customerId)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    let historicalRate = 0;
+    for (const s of customerSlips) {
+      if (s.materialType === formData.materialType) {
+        historicalRate = s.ratePerUnit;
+        break;
       }
     }
-  }, [formData.customerId, formData.materialType]);
+
+    if (historicalRate > 0) {
+      setFormData((prev) => ({ ...prev, ratePerUnit: historicalRate.toString() }));
+    } else {
+      const defaultRate = defaultRates[formData.materialType];
+      if (defaultRate) {
+        setFormData((prev) => ({ ...prev, ratePerUnit: defaultRate.toString() }));
+      }
+    }
+  }, [formData.customerId, formData.materialType, slips, companySettings.materials]);
 
   const [vehicleSearch, setVehicleSearch] = useState("");
   // parseFeetInches imported from ../../lib/utils
@@ -89,13 +83,13 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
     calculatedQty * (parseFloat(formData.ratePerUnit) || 0) + appliedFreight
   );
 
-  const [prevCalculatedAmount, setPrevCalculatedAmount] = useState<number>(calculatedTotalAmount);
   const [manualTotalAmount, setManualTotalAmount] = useState<string>(calculatedTotalAmount.toString());
 
-  if (calculatedTotalAmount !== prevCalculatedAmount) {
-    setPrevCalculatedAmount(calculatedTotalAmount);
+  // Sync the editable total whenever the calculated value changes due to
+  // dimension / rate / freight changes. useEffect avoids setState-during-render.
+  useEffect(() => {
     setManualTotalAmount(calculatedTotalAmount.toString());
-  }
+  }, [calculatedTotalAmount]);
 
   const finalAmount = parseFloat(manualTotalAmount) || 0;
 
@@ -559,7 +553,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
               <button
                 key={status}
                 type="button"
-                onClick={() => setFormData({ ...formData, paymentStatus: status as any, amountPaid: "" })}
+                onClick={() => setFormData({ ...formData, paymentStatus: status as "Cash (Paid)" | "Credit (Unpaid)" | "Partial", amountPaid: "" })}
                 className={`flex-1 py-2 px-2 text-sm font-semibold rounded-lg border transition-colors ${
                   formData.paymentStatus === status
                     ? "bg-primary-500 text-white border-primary-500 shadow-sm"

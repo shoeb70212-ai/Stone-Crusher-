@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Shield, Lock, Mail, AlertCircle } from 'lucide-react';
 import { useErp } from '../context/ErpContext';
+import { verifyPassword, DEFAULT_ADMIN_PASSWORD_HASH } from '../lib/auth';
 
 interface LoginProps {
   onLogin: () => void;
@@ -10,43 +11,52 @@ export function Login({ onLogin }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { companySettings, setUserRole } = useErp();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsSubmitting(true);
 
-    // Default admin fallback if no users are set up
-    const hasUsers = companySettings.users && companySettings.users.length > 0;
-    
-    if (!hasUsers) {
-      if (email === 'admin@admin.com' && password === 'admin123') {
-        setUserRole('Admin');
-        localStorage.setItem('erp_auth_token', 'mock_token_admin');
-        onLogin();
-        return;
-      }
-    } else {
-      // In a real app, this would verify a hash or use an Auth provider like Firebase.
-      // For this offline-first version, we match the email against companySettings.users.
-      const user = companySettings.users?.find(u => u.email === email && u.status === 'Active');
-      
-      if (user) {
-        // We assume password is valid for now since we don't store passwords in settings.
-        // If they enter *any* password and the email exists, we let them in (mock auth).
-        if (password.length >= 6) {
-          setUserRole(user.role);
-          localStorage.setItem('erp_auth_token', `mock_token_${user.id}`);
+    try {
+      const hasUsers = companySettings.users && companySettings.users.length > 0;
+
+      if (!hasUsers) {
+        // Default admin fallback — password is verified against a stored hash.
+        const valid = await verifyPassword(password, DEFAULT_ADMIN_PASSWORD_HASH);
+        if (email === 'admin@admin.com' && valid) {
+          setUserRole('Admin');
+          localStorage.setItem('erp_auth_token', 'admin_session');
           onLogin();
           return;
-        } else {
-          setError('Password must be at least 6 characters.');
-          return;
+        }
+      } else {
+        const user = companySettings.users?.find(
+          (u) => u.email === email && u.status === 'Active',
+        );
+
+        if (user) {
+          if (!user.passwordHash) {
+            // User exists but has no password hash set — account not yet activated.
+            setError('This account has no password configured. Ask an Admin to reset it.');
+            return;
+          }
+          const valid = await verifyPassword(password, user.passwordHash);
+          if (valid) {
+            setUserRole(user.role);
+            // Use a non-guessable session marker scoped to this user.
+            localStorage.setItem('erp_auth_token', `session_${user.id}`);
+            onLogin();
+            return;
+          }
         }
       }
-    }
 
-    setError('Invalid email or password. (Default: admin@admin.com / admin123)');
+      setError('Invalid email or password. (Default: admin@admin.com / admin123)');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -98,11 +108,12 @@ export function Login({ onLogin }: LoginProps) {
             </div>
           </div>
 
-          <button 
+          <button
             type="submit"
-            className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 rounded-xl transition-colors shadow-sm shadow-primary-600/20"
+            disabled={isSubmitting}
+            className="w-full bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white font-medium py-3 rounded-xl transition-colors shadow-sm shadow-primary-600/20"
           >
-            Sign In
+            {isSubmitting ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
       </div>

@@ -5,6 +5,7 @@ import { Plus, Download, FileText, Upload, Printer } from "lucide-react";
 import { Combobox } from "../components/ui/Combobox";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { PrintInvoiceModal } from "../components/forms/PrintInvoiceModal";
+import { MobileModal } from "../components/ui/MobileModal";
 import { ToWords } from 'to-words';
 
 const toWords = new ToWords({
@@ -85,7 +86,7 @@ export function Invoices() {
     if (newStatus === "Cancelled") {
       setInvoiceToCancel(invId);
     } else {
-      updateInvoice(invId, { status: newStatus as any });
+      updateInvoice(invId, { status: newStatus as Invoice["status"] });
     }
   };
 
@@ -100,14 +101,16 @@ export function Invoices() {
 
   const materials = useMemo(() => {
     if (companySettings.materials && companySettings.materials.length > 0) {
-      return companySettings.materials.map((m, idx) => ({
-        id: m.id || idx + 1,
-        name: m.name,
-        defaultPrice: m.defaultPrice || 0,
-        unit: m.unit || "Ton",
-        hsnCode: m.hsnCode || "25171010",
-        gstRate: m.gstRate || 5,
-      }));
+      return companySettings.materials
+        .filter((m) => m.isActive !== false)
+        .map((m, idx) => ({
+          id: m.id || idx + 1,
+          name: m.name,
+          defaultPrice: m.defaultPrice || 0,
+          unit: m.unit || "Ton",
+          hsnCode: m.hsnCode || "25171010",
+          gstRate: m.gstRate || 5,
+        }));
     }
     // Fallback defaults if no materials configured
     return [
@@ -359,35 +362,37 @@ export function Invoices() {
   ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="space-y-4">
+      {/* Page header */}
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
+          <h2 className="text-lg md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
             Invoicing
           </h2>
-          <p className="text-zinc-500 dark:text-zinc-400 mt-1">
-            Generate and manage invoices for your dispatches.
+          <p className="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
+            Generate and manage invoices.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 md:gap-3">
-          <label className="flex-1 md:flex-none justify-center flex items-center px-4 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 dark:bg-zinc-900/50 transition-colors shadow-sm font-medium cursor-pointer">
-            <Upload className="w-4 h-4 mr-2 shrink-0" />
-            <span className="whitespace-nowrap">Import JSON</span>
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Secondary actions – icon-only on mobile */}
+          <label className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors shadow-sm font-medium cursor-pointer text-sm active:scale-95">
+            <Upload className="w-4 h-4 shrink-0" />
+            <span className="hidden md:inline whitespace-nowrap">Import JSON</span>
             <input type="file" accept=".json" className="hidden" onChange={importData} />
           </label>
-          <button 
+          <button
             onClick={exportData}
-            className="flex-1 md:flex-none justify-center flex items-center px-4 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 dark:bg-zinc-900/50 transition-colors shadow-sm font-medium"
+            className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors shadow-sm font-medium text-sm active:scale-95"
           >
-            <Download className="w-4 h-4 mr-2 shrink-0" />
-            <span className="whitespace-nowrap">Export to Excel</span>
+            <Download className="w-4 h-4 shrink-0" />
+            <span className="hidden md:inline whitespace-nowrap">Export CSV</span>
           </button>
           <button
             onClick={openCreateModal}
-            className="flex-1 md:flex-none justify-center flex items-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors shadow-sm font-medium w-full md:w-auto mt-1 md:mt-0"
+            className="flex items-center gap-2 px-3 py-2 md:px-4 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors shadow-sm font-medium text-sm active:scale-95"
           >
-            <Plus className="w-5 h-5 mr-2 shrink-0" />
-            <span className="whitespace-nowrap">Generate Invoice</span>
+            <Plus className="w-4 h-4 shrink-0" />
+            <span className="whitespace-nowrap">New Invoice</span>
           </button>
         </div>
       </div>
@@ -597,22 +602,13 @@ export function Invoices() {
         </div>
       </div>
 
-      {showGenerateModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center md:p-4 z-50 overflow-hidden">
-          <div className="bg-white dark:bg-zinc-800 md:rounded-2xl max-w-3xl w-full h-full md:h-auto md:max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col">
-            <div className="p-3 md:p-5 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50 sticky top-0 z-10">
-              <h3 className="font-bold font-display text-lg text-zinc-900 dark:text-white">
-                {editingInvoiceId ? "Edit Invoice" : "Generate Invoice"}
-              </h3>
-              <button
-                onClick={() => setShowGenerateModal(false)}
-                className="p-2 hover:bg-zinc-200 rounded-full text-zinc-500 dark:text-zinc-400 transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-3 md:p-5 space-y-6">
+      <MobileModal
+        isOpen={showGenerateModal}
+        onClose={() => setShowGenerateModal(false)}
+        title={editingInvoiceId ? "Edit Invoice" : "Generate Invoice"}
+        maxWidth="max-w-3xl"
+      >
+        <div className="p-4 md:p-5 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1">
@@ -1013,9 +1009,7 @@ export function Invoices() {
                 {editingInvoiceId ? "Save Changes" : "Generate & Save"}
               </button>
             </div>
-          </div>
-        </div>
-      )}
+        </MobileModal>
 
       <ConfirmationModal
         isOpen={!!invoiceToCancel}

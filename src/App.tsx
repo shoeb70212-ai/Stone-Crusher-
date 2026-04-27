@@ -13,17 +13,13 @@ export default function App() {
     }
   }, []);
 
-  if (!isAuthenticated) {
-    return (
-      <ErpProvider>
-        <Login onLogin={() => setIsAuthenticated(true)} />
-      </ErpProvider>
-    );
-  }
-
   return (
     <ErpProvider>
-      <Layout />
+      {isAuthenticated ? (
+        <Layout />
+      ) : (
+        <Login onLogin={() => setIsAuthenticated(true)} />
+      )}
     </ErpProvider>
   );
 }

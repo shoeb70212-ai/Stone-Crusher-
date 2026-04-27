@@ -120,9 +120,11 @@ export function Layout() {
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
       />
-      <div className="flex-1 flex flex-col overflow-hidden w-full relative">
+      <div className="flex-1 flex flex-col overflow-hidden w-full relative min-w-0">
         <Header onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
-        <main className="flex-1 overflow-auto p-2 sm:p-4 lg:p-6 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6">{content}</main>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:p-6 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-6">
+          {content}
+        </main>
       </div>
     </div>
   );

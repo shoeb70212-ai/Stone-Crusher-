@@ -91,6 +91,8 @@ export interface UserAccount {
   id: string;
   name: string;
   email: string;
+  /** SHA-256 hex digest of the user's password. Never store plaintext. */
+  passwordHash?: string;
   role: "Admin" | "Partner" | "Manager";
   status: "Active" | "Inactive";
 }
