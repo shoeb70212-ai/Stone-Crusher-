@@ -99,11 +99,7 @@ const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
     { id: "5", name: "GSB", defaultPrice: 300, unit: "Ton", hsnCode: "25171020", gstRate: 5 },
     { id: "6", name: "Boulders", defaultPrice: 250, unit: "Ton", hsnCode: "25169090", gstRate: 5 },
   ],
-  users: [
-    { id: "1", name: "Admin User", email: "admin@crushtrack.com", role: "Admin", status: "Active" },
-    { id: "2", name: "Operations Manager", email: "manager@crushtrack.com", role: "Manager", status: "Active" },
-    { id: "3", name: "Partner", email: "partner@crushtrack.com", role: "Partner", status: "Active" },
-  ],
+  users: [],
 };
 
 const LOCAL_BACKUP_KEY = "erp_data_backup";
