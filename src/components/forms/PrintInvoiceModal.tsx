@@ -658,9 +658,9 @@ export function PrintInvoiceModal({
             </button>
             <button
               onClick={() => {
-                const printContent = document.getElementById('print-invoice-area')?.innerHTML;
-                if(printContent) {
-                   downloadPdfBackend(printContent, format, `Invoice-${invoice.invoiceNo}.pdf`);
+                const element = document.getElementById('print-invoice-area');
+                if(element) {
+                   downloadPdfBackend(element, format, `Invoice-${invoice.invoiceNo}.pdf`);
                 }
               }}
               className="px-4 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors shadow-sm"

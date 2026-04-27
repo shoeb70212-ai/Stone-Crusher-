@@ -117,126 +117,105 @@ export async function openPdfBackend(htmlContent: string, format: string) {
   }
 }
 
-export async function downloadPdfBackend(htmlContent: string, format: string, filename: string) {
-  const html2pdfModule = await import('html2pdf.js');
-  const html2pdf = html2pdfModule.default || html2pdfModule;
-  
-  // Conditionally import Capacitor to avoid breaking the web build if not present
-  let Capacitor, Filesystem, Directory, Share;
-  try {
-    const core = await import('@capacitor/core');
-    Capacitor = core.Capacitor;
-    const fs = await import('@capacitor/filesystem');
-    Filesystem = fs.Filesystem;
-    Directory = fs.Directory;
-    const share = await import('@capacitor/share');
-    Share = share.Share;
-  } catch (e) {
-    console.warn("Capacitor plugins not available", e);
+export async function downloadPdfBackend(element: HTMLElement | string, format: string, filename: string) {
+  // If element is passed as string (legacy), fallback to printHtml
+  if (typeof element === 'string') {
+     alert("Failed to download PDF. Falling back to native print.");
+     printHtml(element, format);
+     return;
   }
 
-  let cssRules = '';
-  document.querySelectorAll('style, link[rel="stylesheet"]').forEach(node => {
-     cssRules += node.outerHTML + '\n';
-  });
-
-  const fullHtml = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Print</title>
-        <script src="https://cdn.tailwindcss.com"></script>
-        ${cssRules}
-        <style>
-          @media print {
-            @page { margin: 0; }
-          }
-          body { 
-            margin: 0; 
-            padding: 0;
-            background-color: white !important;
-            color: black;
-          }
-          .shadow-2xl { box-shadow: none !important; }
-          .rounded-xl { border-radius: 0 !important; }
-          .m-4 { margin: 0 !important; }
-        </style>
-      </head>
-      <body class="bg-white text-black font-sans leading-relaxed text-sm">
-        ${htmlContent}
-      </body>
-    </html>
-  `;
-
-  const opt = {
-    margin:       [0, 0],
-    filename:     filename,
-    image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { scale: 2, useCORS: true, logging: false },
-    jsPDF:        { unit: 'in', format: format === 'A4' ? 'a4' : [3.15, 11], orientation: 'portrait' }
-  };
-
   try {
-     const element = document.createElement('div');
-     element.innerHTML = fullHtml;
-     
-     if (Capacitor && Capacitor.isNativePlatform()) {
-        const worker = html2pdf().set(opt).from(element);
-        const pdfBase64Str = await worker.outputPdf('datauristring');
-        
-        // Remove 'data:application/pdf;filename=...;base64,' prefix
-        const base64Data = pdfBase64Str.split(',')[1];
-        
-        const savedFile = await Filesystem.writeFile({
-          path: filename,
-          data: base64Data,
-          directory: Directory.Cache
-        });
-        
-        await Share.share({
-          title: filename,
-          url: savedFile.uri,
-          dialogTitle: 'Share or Save PDF'
-        });
-     } else {
-        // Fallback for mobile web browsers
-        const worker = html2pdf().set(opt).from(element);
-        const blob = await worker.outputPdf('blob');
-        const file = new File([blob], filename, { type: 'application/pdf' });
-        
-        // Try native Web Share API first (works great on iOS Safari and Chrome for Android)
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          try {
-            await navigator.share({
-              files: [file],
-              title: filename,
-              text: 'Invoice Document'
-            });
-            return; // Success!
-          } catch (shareErr) {
-            console.log("User cancelled share or share failed", shareErr);
-          }
+    const domtoimage = await import('dom-to-image-more');
+    const { jsPDF } = await import('jspdf');
+
+    // Conditionally import Capacitor
+    let Capacitor, Filesystem, Directory, Share;
+    try {
+      const core = await import('@capacitor/core');
+      Capacitor = core.Capacitor;
+      const fs = await import('@capacitor/filesystem');
+      Filesystem = fs.Filesystem;
+      Directory = fs.Directory;
+      const share = await import('@capacitor/share');
+      Share = share.Share;
+    } catch (e) {
+      console.warn("Capacitor plugins not available", e);
+    }
+
+    // Capture the element using dom-to-image-more
+    // This uses native browser rendering (SVG) which supports oklch and modern CSS
+    const scale = 2; // high resolution
+    const dataUrl = await domtoimage.default.toPng(element, {
+      quality: 0.98,
+      width: element.clientWidth * scale,
+      height: element.clientHeight * scale,
+      style: {
+        transform: `scale(${scale})`,
+        transformOrigin: 'top left',
+        width: element.clientWidth + 'px',
+        height: element.clientHeight + 'px'
+      }
+    });
+
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'px',
+      format: [element.clientWidth, element.clientHeight]
+    });
+
+    pdf.addImage(dataUrl, 'PNG', 0, 0, element.clientWidth, element.clientHeight);
+
+    if (Capacitor && Capacitor.isNativePlatform()) {
+      const pdfBase64Str = pdf.output('datauristring');
+      const base64Data = pdfBase64Str.split(',')[1];
+      
+      const savedFile = await Filesystem.writeFile({
+        path: filename,
+        data: base64Data,
+        directory: Directory.Cache
+      });
+      
+      await Share.share({
+        title: filename,
+        url: savedFile.uri,
+        dialogTitle: 'Share or Save PDF'
+      });
+    } else {
+      const blob = pdf.output('blob');
+      const file = new File([blob], filename, { type: 'application/pdf' });
+      
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: filename,
+            text: 'Invoice Document'
+          });
+          return;
+        } catch (shareErr) {
+          console.log("User cancelled share or share failed", shareErr);
         }
-        
-        // Fallback to traditional blob URL download
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = filename;
-        a.target = '_blank';
-        document.body.appendChild(a);
-        a.click();
-        
-        setTimeout(() => {
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }, 1000);
-     }
+      }
+      
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = filename;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 1000);
+    }
   } catch (error) {
      console.error("PDF download failed:", error);
-     alert("Failed to download PDF. Falling back to native print.");
-     printHtml(htmlContent, format);
+     alert("Failed to download PDF natively. Falling back to browser print.");
+     printHtml(element.innerHTML, format);
   }
 }
 
