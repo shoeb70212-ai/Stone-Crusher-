@@ -121,6 +121,20 @@ export async function downloadPdfBackend(htmlContent: string, format: string, fi
   const html2pdfModule = await import('html2pdf.js');
   const html2pdf = html2pdfModule.default || html2pdfModule;
   
+  // Conditionally import Capacitor to avoid breaking the web build if not present
+  let Capacitor, Filesystem, Directory, Share;
+  try {
+    const core = await import('@capacitor/core');
+    Capacitor = core.Capacitor;
+    const fs = await import('@capacitor/filesystem');
+    Filesystem = fs.Filesystem;
+    Directory = fs.Directory;
+    const share = await import('@capacitor/share');
+    Share = share.Share;
+  } catch (e) {
+    console.warn("Capacitor plugins not available", e);
+  }
+
   let cssRules = '';
   document.querySelectorAll('style, link[rel="stylesheet"]').forEach(node => {
      cssRules += node.outerHTML + '\n';
@@ -166,7 +180,42 @@ export async function downloadPdfBackend(htmlContent: string, format: string, fi
      const element = document.createElement('div');
      element.innerHTML = fullHtml;
      
-     await html2pdf().set(opt).from(element).save();
+     if (Capacitor && Capacitor.isNativePlatform()) {
+        const worker = html2pdf().set(opt).from(element);
+        const pdfBase64Str = await worker.outputPdf('datauristring');
+        
+        // Remove 'data:application/pdf;filename=...;base64,' prefix
+        const base64Data = pdfBase64Str.split(',')[1];
+        
+        const savedFile = await Filesystem.writeFile({
+          path: filename,
+          data: base64Data,
+          directory: Directory.Cache
+        });
+        
+        await Share.share({
+          title: filename,
+          url: savedFile.uri,
+          dialogTitle: 'Share or Save PDF'
+        });
+     } else {
+        // Fallback for mobile web browsers
+        const worker = html2pdf().set(opt).from(element);
+        const blob = await worker.outputPdf('blob');
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 1000);
+     }
   } catch (error) {
      console.error("PDF download failed:", error);
      alert("Failed to download PDF. Falling back to native print.");
