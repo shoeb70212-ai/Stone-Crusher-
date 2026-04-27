@@ -17,7 +17,7 @@ const toWords = new ToWords({
     currencyOptions: {
       name: 'Rupee',
       plural: 'Rupees',
-      symbol: 'â‚¹',
+      symbol: '₹',
       fractionalUnit: {
         name: 'Paisa',
         plural: 'Paise',
@@ -482,7 +482,7 @@ export function Invoices() {
                         {customers.find((c) => c.id === inv.customerId)?.name || "Cash Customer"}
                      </div>
                      <div className="font-bold text-zinc-900 dark:text-white text-lg">
-                        â‚¹{inv.total.toLocaleString()}
+                        ₹{inv.total.toLocaleString()}
                      </div>
                   </div>
 
@@ -545,7 +545,7 @@ export function Invoices() {
                       "Cash Customer"}
                   </td>
                   <td className="py-4 px-6 font-semibold text-zinc-900 dark:text-white text-right">
-                    â‚¹{inv.total.toLocaleString()}
+                    ₹{inv.total.toLocaleString()}
                   </td>
                   <td className="py-4 px-6 text-center">
                     <select
@@ -608,7 +608,7 @@ export function Invoices() {
                 onClick={() => setShowGenerateModal(false)}
                 className="p-2 hover:bg-zinc-200 rounded-full text-zinc-500 dark:text-zinc-400 transition-colors"
               >
-                âœ•
+                ✕
               </button>
             </div>
 
@@ -849,16 +849,16 @@ export function Invoices() {
                           <button onClick={() => setNewInvoice({...newInvoice, items: newInvoice.items?.filter((_, i) => i !== idx)})} className="absolute top-3 right-3 text-rose-500 hover:text-rose-700 font-medium bg-white dark:bg-zinc-800 rounded px-2 py-0.5 text-xs">Remove</button>
                           <div className="font-bold text-zinc-900 dark:text-white pr-14">{it.materialType}</div>
                           <div className="text-zinc-600 dark:text-zinc-400 mt-1">
-                             {it.quantity} x â‚¹{it.rate} = â‚¹{it.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                             {it.quantity} x ₹{it.rate} = ₹{it.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                           </div>
                           {newInvoice.type === "GST" && (
                             <div className="text-xs text-zinc-500 mt-1 flex gap-2">
                                <span>HSN: {it.hsnCode}</span>
-                               <span>GST: {it.gstRate}% (â‚¹{gstAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })})</span>
+                               <span>GST: {it.gstRate}% (₹{gstAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })})</span>
                             </div>
                           )}
                           <div className="mt-2 text-right font-bold text-zinc-900 dark:text-white border-t border-zinc-200 dark:border-zinc-700/50 pt-2">
-                             Total: â‚¹{total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                             Total: ₹{total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                           </div>
                         </div>
                       )
@@ -923,16 +923,16 @@ export function Invoices() {
                               </>
                             )}
                             <td className="py-2 px-4">{it.quantity}</td>
-                            <td className="py-2 px-4">â‚¹{it.rate}</td>
-                            <td className="py-2 px-4 text-right">â‚¹{it.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                            <td className="py-2 px-4">₹{it.rate}</td>
+                            <td className="py-2 px-4 text-right">₹{it.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                             {newInvoice.type === "GST" && (
                               <>
-                                <td className="py-2 px-4 text-right">â‚¹{cgst.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
-                                <td className="py-2 px-4 text-right">â‚¹{sgst.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                                <td className="py-2 px-4 text-right">₹{cgst.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                                <td className="py-2 px-4 text-right">₹{sgst.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                               </>
                             )}
                             <td className="py-2 px-4 text-right font-medium text-zinc-900 dark:text-white">
-                              â‚¹{total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                              ₹{total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                             </td>
                             <td className="py-2 px-4 text-right">
                               <button 
@@ -950,7 +950,7 @@ export function Invoices() {
                       <tr>
                         <td colSpan={newInvoice.type === "GST" ? 8 : 4} className="py-3 px-4 text-right font-medium text-zinc-600 dark:text-zinc-300">Subtotal:</td>
                         <td className="py-3 px-4 text-right font-bold text-zinc-900 dark:text-white">
-                          â‚¹{Math.round(newInvoice.items.reduce((sum, item) => sum + item.amount, 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          ₹{Math.round(newInvoice.items.reduce((sum, item) => sum + item.amount, 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                         </td>
                         <td></td>
                       </tr>
@@ -959,14 +959,14 @@ export function Invoices() {
                           <tr>
                             <td colSpan={8} className="py-1 px-4 text-right text-sm text-zinc-500 dark:text-zinc-400">Total CGST:</td>
                             <td className="py-1 px-4 text-right text-sm text-zinc-700 dark:text-zinc-200">
-                              â‚¹{Math.round(newInvoice.items.reduce((sum, item) => sum + (item.amount * ((item.gstRate || 0) / 100)) / 2, 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                              ₹{Math.round(newInvoice.items.reduce((sum, item) => sum + (item.amount * ((item.gstRate || 0) / 100)) / 2, 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                             </td>
                             <td></td>
                           </tr>
                           <tr>
                             <td colSpan={8} className="py-1 px-4 text-right text-sm text-zinc-500 dark:text-zinc-400">Total SGST:</td>
                             <td className="py-1 px-4 text-right text-sm text-zinc-700 dark:text-zinc-200">
-                              â‚¹{Math.round(newInvoice.items.reduce((sum, item) => sum + (item.amount * ((item.gstRate || 0) / 100)) / 2, 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                              ₹{Math.round(newInvoice.items.reduce((sum, item) => sum + (item.amount * ((item.gstRate || 0) / 100)) / 2, 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                             </td>
                             <td></td>
                           </tr>
@@ -975,7 +975,7 @@ export function Invoices() {
                       <tr className="border-t border-zinc-200 dark:border-zinc-700">
                         <td colSpan={newInvoice.type === "GST" ? 8 : 4} className="py-3 px-4 text-right font-bold text-zinc-900 dark:text-white">Grand Total:</td>
                         <td className="py-3 px-4 text-right font-bold text-primary-600">
-                          â‚¹{(() => {
+                          ₹{(() => {
                             let sub = 0, cgst = 0, sgst = 0;
                             newInvoice.items.forEach(it => {
                               sub += it.amount;

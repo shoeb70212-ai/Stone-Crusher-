@@ -28,11 +28,14 @@ export function printHtml(htmlContent: string, format: string) {
         }
         body { 
           margin: 0; 
-          padding: 10px; 
+          padding: 0; 
           -webkit-print-color-adjust: exact; 
           color-adjust: exact;
           background-color: white !important;
         }
+        .shadow-2xl { box-shadow: none !important; }
+        .rounded-xl { border-radius: 0 !important; }
+        .m-4 { margin: 0 !important; }
       }
     </style>
   `);
@@ -54,8 +57,9 @@ export function printHtml(htmlContent: string, format: string) {
 }
 
 export async function openPdfBackend(htmlContent: string, format: string) {
-  // Use html2pdf.js dynamically so we don't break SSR (even though this is Vite)
-  const html2pdf = (await import('html2pdf.js')).default;
+  // Fix dynamic import for Vite
+  const html2pdfModule = await import('html2pdf.js');
+  const html2pdf = html2pdfModule.default || html2pdfModule;
   
   let cssRules = '';
   document.querySelectorAll('style, link[rel="stylesheet"]').forEach(node => {
@@ -75,10 +79,14 @@ export async function openPdfBackend(htmlContent: string, format: string) {
           }
           body { 
             margin: 0; 
-            padding: ${format === 'A4' ? '20px' : '10px'}; 
+            padding: 0;
             background-color: white !important;
             color: black;
           }
+          /* Override any modal-specific margins/shadows for print */
+          .shadow-2xl { box-shadow: none !important; }
+          .rounded-xl { border-radius: 0 !important; }
+          .m-4 { margin: 0 !important; }
         </style>
       </head>
       <body class="bg-white text-black font-sans leading-relaxed text-sm">
@@ -88,11 +96,11 @@ export async function openPdfBackend(htmlContent: string, format: string) {
   `;
 
   const opt = {
-    margin:       [0, 0] as [number, number],
+    margin:       [0, 0],
     filename:     'document.pdf',
-    image:        { type: 'jpeg' as const, quality: 0.98 },
+    image:        { type: 'jpeg', quality: 0.98 },
     html2canvas:  { scale: 2, useCORS: true, logging: false },
-    jsPDF:        { unit: 'in' as const, format: format === 'A4' ? 'a4' as const : [3.15, 11] as [number, number], orientation: 'portrait' as const }
+    jsPDF:        { unit: 'in', format: format === 'A4' ? 'a4' : [3.15, 11], orientation: 'portrait' }
   };
 
   try {
@@ -110,7 +118,8 @@ export async function openPdfBackend(htmlContent: string, format: string) {
 }
 
 export async function downloadPdfBackend(htmlContent: string, format: string, filename: string) {
-  const html2pdf = (await import('html2pdf.js')).default;
+  const html2pdfModule = await import('html2pdf.js');
+  const html2pdf = html2pdfModule.default || html2pdfModule;
   
   let cssRules = '';
   document.querySelectorAll('style, link[rel="stylesheet"]').forEach(node => {
@@ -130,10 +139,13 @@ export async function downloadPdfBackend(htmlContent: string, format: string, fi
           }
           body { 
             margin: 0; 
-            padding: ${format === 'A4' ? '20px' : '10px'}; 
+            padding: 0;
             background-color: white !important;
             color: black;
           }
+          .shadow-2xl { box-shadow: none !important; }
+          .rounded-xl { border-radius: 0 !important; }
+          .m-4 { margin: 0 !important; }
         </style>
       </head>
       <body class="bg-white text-black font-sans leading-relaxed text-sm">
@@ -143,11 +155,11 @@ export async function downloadPdfBackend(htmlContent: string, format: string, fi
   `;
 
   const opt = {
-    margin:       [0, 0] as [number, number],
+    margin:       [0, 0],
     filename:     filename,
-    image:        { type: 'jpeg' as const, quality: 0.98 },
+    image:        { type: 'jpeg', quality: 0.98 },
     html2canvas:  { scale: 2, useCORS: true, logging: false },
-    jsPDF:        { unit: 'in' as const, format: format === 'A4' ? 'a4' as const : [3.15, 11] as [number, number], orientation: 'portrait' as const }
+    jsPDF:        { unit: 'in', format: format === 'A4' ? 'a4' : [3.15, 11], orientation: 'portrait' }
   };
 
   try {
