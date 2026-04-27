@@ -144,10 +144,11 @@ export async function downloadPdfBackend(element: HTMLElement | string, format: 
     }
 
     // Capture the element using dom-to-image-more
-    // This uses native browser rendering (SVG) which supports oklch and modern CSS
+    // Using JPEG to massively reduce file size
     const scale = 2; // high resolution
-    const dataUrl = await domtoimage.default.toPng(element, {
-      quality: 0.98,
+    const dataUrl = await domtoimage.default.toJpeg(element, {
+      quality: 0.95,
+      bgcolor: '#ffffff', // Ensure white background for JPEG
       width: element.clientWidth * scale,
       height: element.clientHeight * scale,
       style: {
@@ -164,7 +165,7 @@ export async function downloadPdfBackend(element: HTMLElement | string, format: 
       format: [element.clientWidth, element.clientHeight]
     });
 
-    pdf.addImage(dataUrl, 'PNG', 0, 0, element.clientWidth, element.clientHeight);
+    pdf.addImage(dataUrl, 'JPEG', 0, 0, element.clientWidth, element.clientHeight);
 
     if (Capacitor && Capacitor.isNativePlatform()) {
       const pdfBase64Str = pdf.output('datauristring');
@@ -182,21 +183,11 @@ export async function downloadPdfBackend(element: HTMLElement | string, format: 
         dialogTitle: 'Share or Save PDF'
       });
     } else {
+      // For web browsers, we explicitly force a standard file download
       const blob = pdf.output('blob');
-      const file = new File([blob], filename, { type: 'application/pdf' });
       
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: filename,
-            text: 'Invoice Document'
-          });
-          return;
-        } catch (shareErr) {
-          console.log("User cancelled share or share failed", shareErr);
-        }
-      }
+      // We skip navigator.share here because Windows 11 Desktop supports it
+      // and pops open a confusing Share dialog when users just want a file download.
       
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
