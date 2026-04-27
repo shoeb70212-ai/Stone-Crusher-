@@ -202,12 +202,29 @@ export async function downloadPdfBackend(htmlContent: string, format: string, fi
         // Fallback for mobile web browsers
         const worker = html2pdf().set(opt).from(element);
         const blob = await worker.outputPdf('blob');
-        const url = URL.createObjectURL(blob);
+        const file = new File([blob], filename, { type: 'application/pdf' });
         
+        // Try native Web Share API first (works great on iOS Safari and Chrome for Android)
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              files: [file],
+              title: filename,
+              text: 'Invoice Document'
+            });
+            return; // Success!
+          } catch (shareErr) {
+            console.log("User cancelled share or share failed", shareErr);
+          }
+        }
+        
+        // Fallback to traditional blob URL download
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.style.display = 'none';
         a.href = url;
         a.download = filename;
+        a.target = '_blank';
         document.body.appendChild(a);
         a.click();
         
