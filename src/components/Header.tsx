@@ -13,13 +13,13 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   return (
-    <header className="flex h-14 md:h-16 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-3 md:px-8 items-center justify-between shrink-0 transition-colors z-20">
+    <header className="flex h-12 md:h-16 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-2 md:px-8 items-center justify-between shrink-0 transition-colors z-20 mobile-header">
       {/* Left: date (desktop) / app name (mobile) */}
-      <div className="flex items-center gap-3 flex-1 min-w-0">
-        <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400 hidden sm:block truncate">
-          {format(new Date(), "EEEE, dd MMMM yyyy")}
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <span className="text-xs md:text-sm font-medium text-zinc-500 dark:text-zinc-400 hidden sm:block truncate">
+          {format(new Date(), "EEE, dd MMM yyyy")}
         </span>
-        <span className="text-sm font-bold text-zinc-900 dark:text-white sm:hidden tracking-tight">
+        <span className="text-sm font-bold text-zinc-900 dark:text-white sm:hidden tracking-tight mobile-header-title">
           CrushTrack
         </span>
       </div>

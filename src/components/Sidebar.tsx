@@ -198,9 +198,9 @@ export function Sidebar({
       </aside>
 
       {/* ═══════════════════════════════════════════════════════════
-          Mobile Bottom Navigation Bar
+          Mobile Bottom Navigation Bar - Thumb Zone Optimized
           ═══════════════════════════════════════════════════════════ */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-t border-zinc-200 dark:border-zinc-800 z-40 flex items-stretch shadow-[0_-1px_0_0_rgba(0,0,0,0.06),0_-4px_16px_-4px_rgba(0,0,0,0.08)] pb-[env(safe-area-inset-bottom)]">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-t border-zinc-200 dark:border-zinc-800 z-40 flex items-stretch shadow-[0_-1px_0_0_rgba(0,0,0,0.06),0_-4px_16px_-4px_rgba(0,0,0,0.08)] pb-[env(safe-area-inset-bottom)] min-h-[64px]">
         {bottomBarItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
@@ -209,7 +209,7 @@ export function Sidebar({
               key={item.id}
               onClick={() => handleNavigate(item.id)}
               className={cn(
-                "flex-1 flex flex-col items-center justify-center gap-1 py-2.5 min-h-[56px] transition-colors relative active:bg-zinc-50 dark:active:bg-zinc-900",
+                "flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] transition-all duration-150 active:scale-95 active:bg-primary-50/50 dark:active:bg-primary-500/10",
                 isActive
                   ? "text-primary-600 dark:text-primary-400"
                   : "text-zinc-500 dark:text-zinc-400",
@@ -217,7 +217,7 @@ export function Sidebar({
               aria-label={item.label}
             >
               {isActive && (
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary-500 rounded-b-full" />
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-10 h-0.5 bg-primary-500 rounded-b-full" />
               )}
               <Icon
                 className="w-5 h-5"
@@ -239,7 +239,7 @@ export function Sidebar({
         <button
           onClick={() => setIsMoreOpen(true)}
           className={cn(
-            "flex-1 flex flex-col items-center justify-center gap-1 py-2.5 min-h-[56px] transition-colors relative active:bg-zinc-50 dark:active:bg-zinc-900",
+            "flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] transition-all duration-150 active:scale-95 active:bg-zinc-100 dark:active:bg-zinc-800",
             isMoreOpen
               ? "text-primary-600 dark:text-primary-400"
               : "text-zinc-500 dark:text-zinc-400",

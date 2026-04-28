@@ -62,11 +62,11 @@ export function MobileModal({
       {/* Sheet / Modal */}
       <div
         className={cn(
-          "relative w-full flex flex-col bg-white dark:bg-zinc-900 shadow-2xl",
-          // Mobile: bottom sheet
-          "rounded-t-2xl max-h-[92dvh]",
+          "relative flex flex-col bg-white dark:bg-zinc-900 shadow-2xl",
+          // Mobile: bottom sheet - use maxWidth but can be narrower
+          "rounded-t-2xl max-h-[92dvh] w-full max-w-[90vw]",
           // Desktop: centred modal
-          `md:rounded-2xl md:max-h-[90vh] md:${maxWidth}`,
+          `md:rounded-2xl md:max-h-[90vh] md:w-auto md:${maxWidth}`,
         )}
       >
         {/* Drag handle – mobile only */}

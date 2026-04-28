@@ -28,6 +28,8 @@ interface ErpState {
   invoices: Invoice[];
   tasks: Task[];
   companySettings: CompanySettings;
+  isLoading: boolean;
+  syncStatus: 'idle' | 'syncing' | 'error';
 
   // Auth
   userRole: UserRole;
@@ -123,6 +125,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   const [companySettings, setCompanySettings] = useState<CompanySettings>(DEFAULT_COMPANY_SETTINGS);
   const [userRole, setUserRole] = useState<UserRole>("Admin");
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
 
   // -----------------------------------------------------------------------
   // Data Loading — server-first with localStorage fallback

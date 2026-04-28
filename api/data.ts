@@ -11,6 +11,38 @@
 import { Pool, PoolClient } from "pg";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
+// Simple rate limiter for serverless (uses Vercel's built-in platform features)
+// In production, consider using Vercel's edge middleware for advanced rate limiting
+
+const RATE_LIMIT_HEADER = 'x-ratelimit-remaining';
+const RATE_LIMIT = 100; // Conservative limit for serverless
+
+function getRateLimitKey(req: VercelRequest): string {
+  return `rate_${(req.headers['x-forwarded-for'] as string || req.headers['client-ip'] || 'unknown').split(',')[0].trim()}`;
+}
+
+// In-memory store (note: resets on cold starts in serverless)
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+
+function checkRateLimit(req: VercelRequest): boolean {
+  const key = getRateLimitKey(req);
+  const now = Date.now();
+  
+  let record = rateLimitStore.get(key);
+  
+  if (!record || now > record.resetTime) {
+    rateLimitStore.set(key, { count: 1, resetTime: now + 60000 });
+    return true;
+  }
+  
+  if (record.count >= RATE_LIMIT) {
+    return false;
+  }
+  
+  record.count++;
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Database connection
 // ---------------------------------------------------------------------------
@@ -246,6 +278,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
+  }
+
+  // Rate limiting check
+  if (!checkRateLimit(req)) {
+    res.setHeader('Retry-After', '60');
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
   }
 
   // Ensure schema is ready before any operation

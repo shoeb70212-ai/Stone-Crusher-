@@ -147,7 +147,7 @@ export function Invoices() {
         rate: historicalRate > 0 ? historicalRate : (mat?.defaultPrice || 0)
       }));
     }
-  }, [newInvoice.customerId, newItem.materialType]);
+  }, [newInvoice.customerId, newItem.materialType, invoices, materials]);
 
   const handleAddItem = () => {
     if (newItem.quantity > 0 && newItem.rate > 0) {
@@ -447,68 +447,71 @@ export function Invoices() {
 
         {/* Mobile View */}
         <div className={`${companySettings.mobileLayout === 'Compact' ? 'hidden' : 'md:hidden divide-y divide-zinc-100 dark:divide-zinc-700/50'}`}>
-           {filteredInvoices.length === 0 ? (
-              <div className="py-12 text-center text-zinc-500 dark:text-zinc-400">
-                <FileText className="w-12 h-12 text-zinc-300 mx-auto mb-3" />
-                No invoices found. Generate one to get started.
-              </div>
-           ) : (
-             filteredInvoices.map((inv) => (
-                <div key={inv.id} className="p-4 space-y-3 bg-white dark:bg-zinc-800">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="font-bold text-zinc-900 dark:text-white flex items-center gap-2">
-                        {inv.invoiceNo}
-                        <span className="text-[10px] text-zinc-500 font-normal px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-700/50">
-                          {inv.type}
-                        </span>
-                      </div>
-                      <div className="text-xs text-zinc-500">{new Date(inv.date).toLocaleDateString()}</div>
-                    </div>
-                    <select
-                      value={inv.status}
-                      onChange={(e) => handleStatusChange(inv.id, e.target.value)}
-                      className={`px-2 py-1.5 rounded-full text-xs font-semibold appearance-none outline-none cursor-pointer text-center ${
-                        inv.status === "Paid"
-                          ? "bg-primary-100 text-primary-700"
-                          : inv.status === "Cancelled"
-                            ? "bg-rose-100 text-rose-700"
-                            : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
-                      <option value="Pending">Pending</option>
-                      <option value="Paid">Paid</option>
-                      <option value="Cancelled">Cancelled</option>
-                    </select>
-                  </div>
-                  
-                  <div className="flex justify-between items-center text-sm">
-                     <div className="text-zinc-600 dark:text-zinc-300">
-                        {customers.find((c) => c.id === inv.customerId)?.name || "Cash Customer"}
+{filteredInvoices.length === 0 ? (
+               <div className="py-8 text-center text-zinc-500 dark:text-zinc-400 text-xs">
+                 No invoices found
+               </div>
+            ) : (
+              <div className="space-y-1">
+              {filteredInvoices.map((inv) => (
+                 <div key={inv.id} className="p-2.5 bg-white dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700">
+                   <div className="flex justify-between items-center">
+                     <div className="flex items-center gap-2">
+                       <div>
+                         <div className="font-bold text-zinc-900 dark:text-white text-xs">
+                           {inv.invoiceNo}
+                           <span className="ml-1.5 text-[9px] text-zinc-500 font-normal px-1.5 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-700/50">
+                             {inv.type}
+                           </span>
+                         </div>
+                         <div className="text-[10px] text-zinc-500">{new Date(inv.date).toLocaleDateString()}</div>
+                       </div>
                      </div>
-                     <div className="font-bold text-zinc-900 dark:text-white text-lg">
-                        ₹{inv.total.toLocaleString()}
+                     <div className="flex items-center gap-2">
+                       <span className="font-bold text-zinc-900 dark:text-white text-xs">
+                         ₹{inv.total.toLocaleString()}
+                       </span>
+                       <select
+                         value={inv.status}
+                         onChange={(e) => handleStatusChange(inv.id, e.target.value)}
+                         className={`px-1.5 py-0.5 rounded text-[9px] font-semibold appearance-none outline-none cursor-pointer ${
+                           inv.status === "Paid"
+                             ? "bg-primary-100 text-primary-700"
+                             : inv.status === "Cancelled"
+                               ? "bg-rose-100 text-rose-700"
+                               : "bg-amber-100 text-amber-700"
+                         }`}
+                       >
+                         <option value="Pending">P</option>
+                         <option value="Paid">✓</option>
+                         <option value="Cancelled">✕</option>
+                       </select>
                      </div>
+                   </div>
+                   <div className="flex justify-between items-center mt-1">
+                     <div className="text-[10px] text-zinc-500 truncate max-w-[120px]">
+                       {customers.find((c) => c.id === inv.customerId)?.name || "Cash"}
+                     </div>
+                     <div className="flex gap-1">
+                       <button
+                         onClick={() => openEditModal(inv)}
+                         className="text-indigo-600 dark:text-indigo-400 font-medium text-[10px] px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 rounded"
+                       >
+                         Edit
+                       </button>
+                       <button
+                         onClick={() => setPrintInvoice(inv)}
+                         className="text-zinc-600 dark:text-zinc-300 font-medium text-[10px] px-2 py-0.5 bg-zinc-100 dark:bg-zinc-700/50 rounded flex items-center"
+                       >
+                         <Printer className="w-3 h-3 mr-0.5" />
+                         Print
+                       </button>
+                     </div>
+                   </div>
                   </div>
-
-                  <div className="flex justify-end gap-3 pt-2 border-t border-zinc-100 dark:border-zinc-700">
-                    <button
-                      onClick={() => openEditModal(inv)}
-                      className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 font-medium text-sm px-3 py-1 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => setPrintInvoice(inv)}
-                      className="text-zinc-600 hover:text-primary-600 dark:text-zinc-300 font-medium text-sm px-3 py-1 bg-zinc-100 dark:bg-zinc-700/50 rounded-lg flex items-center"
-                    >
-                      <Printer className="w-4 h-4 mr-1" />
-                      Print / Download
-                    </button>
-                  </div>
-                </div>
-             ))
-           )}
+               ))}
+            </div>
+            )}
         </div>
 
         {/* Desktop View */}
@@ -606,12 +609,12 @@ export function Invoices() {
         isOpen={showGenerateModal}
         onClose={() => setShowGenerateModal(false)}
         title={editingInvoiceId ? "Edit Invoice" : "Generate Invoice"}
-        maxWidth="max-w-3xl"
+        maxWidth="max-w-sm"
       >
-        <div className="p-4 md:p-5 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+        <div className="p-2 space-y-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1">
+                  <label className="block text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1">
                     Invoice No
                   </label>
                   <input
@@ -620,12 +623,12 @@ export function Invoices() {
                     onChange={(e) =>
                       setNewInvoice({ ...newInvoice, invoiceNo: e.target.value })
                     }
-                    className="w-full border border-zinc-300 dark:border-zinc-600 dark:border-zinc-600 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm bg-white dark:bg-zinc-800"
+                    className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-2 py-1.5 outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 text-xs bg-white dark:bg-zinc-800"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1">
-                    Invoice Type
+                  <label className="block text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1">
+                    Type
                   </label>
                   <select
                     value={newInvoice.type}
@@ -637,36 +640,37 @@ export function Invoices() {
                         invoiceNo: !editingInvoiceId ? generateInvoiceNoForType(newType) : newInvoice.invoiceNo,
                       });
                     }}
-                    className="w-full border border-zinc-300 dark:border-zinc-600 dark:border-zinc-600 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm bg-white dark:bg-zinc-800"
+                    className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-2 py-1.5 outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 text-xs bg-white dark:bg-zinc-800"
                   >
-                    <option value="GST">GST Invoice</option>
-                    <option value="Cash">Cash Invoice</option>
+                    <option value="GST">GST</option>
+                    <option value="Cash">Cash</option>
                   </select>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1">
-                    Customer
-                  </label>
-                  <Combobox
-                    options={[
-                      { label: "Cash Sale", value: "CASH" },
-                      ...customers.map(c => ({ label: c.name, value: c.id }))
-                    ]}
-                    value={newInvoice.customerId || ""}
-                    onChange={(val) => {
-                      const existing = customers.find(c => c.name.toLowerCase() === val.toLowerCase());
-                      setNewInvoice({ ...newInvoice, customerId: existing ? existing.id : val });
-                    }}
-                    allowCreate={true}
-                    placeholder="Search or Create Customer..."
-                  />
                 </div>
               </div>
 
+              <div>
+                <label className="block text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1">
+                  Customer
+                </label>
+                <Combobox
+                  options={[
+                    { label: "Cash Sale", value: "CASH" },
+                    ...customers.map(c => ({ label: c.name, value: c.id }))
+                  ]}
+                  value={newInvoice.customerId || ""}
+                  onChange={(val) => {
+                    const existing = customers.find(c => c.name.toLowerCase() === val.toLowerCase());
+                    setNewInvoice({ ...newInvoice, customerId: existing ? existing.id : val });
+                  }}
+                  allowCreate={true}
+                  placeholder="Search customer..."
+                />
+              </div>
+
               {unbilledSlips.length > 0 && (
-                <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl overflow-hidden">
-                  <div className="bg-zinc-50 dark:bg-zinc-900/50 px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 font-semibold text-sm text-zinc-700 dark:text-zinc-200 flex justify-between items-center">
-                    <span>Select Slips to Bill</span>
+                <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+                  <div className="bg-zinc-50 dark:bg-zinc-900/50 px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 font-semibold text-xs text-zinc-700 dark:text-zinc-200 flex justify-between items-center">
+                    <span>Select Slips</span>
                     <button
                       onClick={() => {
                         const itemsMap = new Map<string, InvoiceItem>();
@@ -735,11 +739,11 @@ export function Invoices() {
                 </div>
               )}
 
-              <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl overflow-hidden">
-                <div className="bg-zinc-50 dark:bg-zinc-900/50 px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 font-semibold text-sm text-zinc-700 dark:text-zinc-200">
+              <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+                <div className="bg-zinc-50 dark:bg-zinc-900/50 px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 font-semibold text-xs text-zinc-700 dark:text-zinc-200">
                   Add Items
                 </div>
-                <div className={`p-4 bg-white dark:bg-zinc-800 grid grid-cols-2 gap-3 items-end ${newInvoice.type === 'GST' ? 'md:grid-cols-8' : 'md:grid-cols-6'}`}>
+                <div className={`p-2 bg-white dark:bg-zinc-800 grid grid-cols-2 gap-2 items-end`}>
                   <div className="col-span-2">
                     <label className="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">
                       Material

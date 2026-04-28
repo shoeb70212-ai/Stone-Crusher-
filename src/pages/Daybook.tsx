@@ -35,6 +35,7 @@ export function Daybook() {
   const [activeTab, setActiveTab] = useState<"slip" | "income" | "expense">("slip");
   
   const [isCustModalOpen, setIsCustModalOpen] = useState(false);
+  const [isOpsModalOpen, setIsOpsModalOpen] = useState(false);
   const [editingSlip, setEditingSlip] = useState<Slip | null>(null);
   const [printSlip, setPrintSlip] = useState<Slip | null>(null);
 
@@ -161,311 +162,343 @@ export function Daybook() {
     downloadCSV(
       rows,
       { date: "Date", time: "Time", type: "Type", description: "Description", customer: "Customer", amount: "Amount (₹)" },
-      `Daybook_${startDate}_to_${endDate}`
+      `Daybook_${startDate}_to_${endDate}`.replace(/-/g, '')
     );
   };
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 h-full">
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 h-full">
       {/* Left Column: Data & Activity Log */}
-      <div className="xl:col-span-2 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-zinc-200 dark:border-zinc-800 pb-4">
-          <div>
-            <h2 className="text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
-              Daybook Portal
+      <div className="xl:col-span-2 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 sm:gap-4 border-b border-zinc-200 dark:border-zinc-800 pb-3">
+          <div className="shrink-0">
+            <h2 className="text-base sm:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
+              Daybook
             </h2>
-            <p className="text-zinc-500 dark:text-zinc-400 mt-1 text-sm">
-              Overview & operations for the selected date.
+            <p className="text-[10px] sm:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
+              Today's cash transactions
             </p>
           </div>
-          <div className="flex flex-col sm:flex-row items-center gap-2 bg-white dark:bg-zinc-800 p-2 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-sm">
-            <div className="flex items-center gap-2 px-2">
-              <CalendarIcon className="w-5 h-5 text-indigo-500" />
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="bg-transparent font-medium text-sm text-zinc-900 dark:text-white outline-none"
-              />
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            {/* Simple date selector */}
+            <button
+              onClick={() => document.getElementById('daybook-date')?.click()}
+              className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors"
+            >
+              <CalendarIcon className="w-4 h-4 text-indigo-500" />
+              <span className="text-sm font-medium text-zinc-900 dark:text-white">
+                {format(new Date(startDate), "dd MMM")}
+              </span>
+            </button>
+            <input
+              id="daybook-date"
+              type="date"
+              value={startDate}
+              onChange={(e) => {
+                setStartDate(e.target.value);
+                setEndDate(e.target.value);
+              }}
+              className="hidden"
+            />
+            {/* Quick Action Buttons - Fluid & Responsive */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => {
+                  setActiveTab('slip');
+                  setIsOpsModalOpen(true);
+                }}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all shadow-sm active:scale-95"
+                title="New Dispatch Slip"
+              >
+                <Truck className="w-4 h-4" />
+                <span className="text-sm">Slip</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('income');
+                  setIsOpsModalOpen(true);
+                }}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl transition-all shadow-sm active:scale-95"
+                title="Cash Received"
+              >
+                <ArrowDownRight className="w-4 h-4" />
+                <span className="text-sm">In</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('expense');
+                  setIsOpsModalOpen(true);
+                }}
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-xl transition-all shadow-sm active:scale-95"
+                title="Expense"
+              >
+                <ArrowUpRight className="w-4 h-4" />
+                <span className="text-sm">Out</span>
+              </button>
             </div>
-            <span className="text-zinc-400 hidden sm:inline">-</span>
-            <div className="flex items-center gap-2 px-2">
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="bg-transparent font-medium text-sm text-zinc-900 dark:text-white outline-none"
-              />
-            </div>
+            <button
+              onClick={handleExportDaybook}
+              className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-zinc-800 dark:bg-white text-white dark:text-zinc-800 text-sm font-semibold rounded-xl hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors shadow-sm"
+            >
+              <Download className="w-4 h-4" />
+            </button>
           </div>
-          <button
-            onClick={handleExportDaybook}
-            className="flex items-center justify-center w-full sm:w-auto gap-1.5 px-4 py-2.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-sm font-semibold rounded-xl hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors shadow-sm"
-          >
-            <Download className="w-4 h-4" />
-            Export CSV
-          </button>
         </div>
 
-        {/* Hero Metrics */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-white dark:bg-zinc-800 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-700 shadow-sm flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-2">
-               <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Trips</p>
-               <Truck className="w-4 h-4 text-blue-500" />
+        {/* Hero Metrics - Dense grid for mobile */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+          <div className="bg-white dark:bg-zinc-800 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-zinc-100 dark:border-zinc-700 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1">
+               <p className="text-[10px] sm:text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Trips</p>
+               <Truck className="w-3.5 h-3.5 sm:w-4 h-4 text-blue-500" />
             </div>
-            <span className="text-2xl font-bold text-zinc-900 dark:text-white">
+            <span className="text-xl sm:text-2xl font-bold text-zinc-900 dark:text-white">
               {dailyData.totalTrips}
             </span>
-            <p className="text-[11px] font-medium text-blue-600 dark:text-blue-400 mt-1 truncate bg-blue-50 dark:bg-blue-500/10 px-2 py-0.5 rounded inline-block w-fit">
-               ₹{dailyData.totalDispatchValue.toLocaleString()} value
+            <p className="text-[10px] font-medium text-blue-600 dark:text-blue-400 mt-1 truncate bg-blue-50 dark:bg-blue-500/10 px-1.5 py-0.5 rounded w-fit">
+               ₹{dailyData.totalDispatchValue.toLocaleString()}
             </p>
           </div>
 
-          <div className="bg-white dark:bg-zinc-800 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-700 shadow-sm flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-2">
-               <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Cash In</p>
-               <ArrowDownRight className="w-4 h-4 text-primary-500" />
+          <div className="bg-white dark:bg-zinc-800 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-zinc-100 dark:border-zinc-700 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1">
+               <p className="text-[10px] sm:text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Cash In</p>
+               <ArrowDownRight className="w-3.5 h-3.5 sm:w-4 h-4 text-primary-500" />
             </div>
-            <span className="text-2xl font-bold text-zinc-900 dark:text-white">
+            <span className="text-xl sm:text-2xl font-bold text-zinc-900 dark:text-white">
               ₹{dailyData.incoming.toLocaleString()}
             </span>
-            <p className="text-[11px] font-medium text-primary-600 dark:text-primary-400 mt-1 bg-primary-50 dark:bg-primary-500/10 px-2 py-0.5 rounded inline-block w-fit">
-               Receipts today
+            <p className="text-[10px] font-medium text-primary-600 dark:text-primary-400 mt-1 bg-primary-50 dark:bg-primary-500/10 px-1.5 py-0.5 rounded w-fit">
+               +receipts
             </p>
           </div>
 
-          <div className="bg-white dark:bg-zinc-800 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-700 shadow-sm flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-2">
-               <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Cash Out</p>
-               <ArrowUpRight className="w-4 h-4 text-rose-500" />
+          <div className="bg-white dark:bg-zinc-800 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-zinc-100 dark:border-zinc-700 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1">
+               <p className="text-[10px] sm:text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Cash Out</p>
+               <ArrowUpRight className="w-3.5 h-3.5 sm:w-4 h-4 text-rose-500" />
             </div>
-            <span className="text-2xl font-bold text-zinc-900 dark:text-white">
+            <span className="text-xl sm:text-2xl font-bold text-zinc-900 dark:text-white">
               ₹{dailyData.outgoing.toLocaleString()}
             </span>
-            <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400 mt-1 bg-rose-50 dark:bg-rose-500/10 px-2 py-0.5 rounded inline-block w-fit">
-               Expenses today
+            <p className="text-[10px] font-medium text-rose-600 dark:text-rose-400 mt-1 bg-rose-50 dark:bg-rose-500/10 px-1.5 py-0.5 rounded w-fit">
+               -expenses
             </p>
           </div>
 
-          <div className="bg-zinc-900 p-4 rounded-2xl shadow-sm text-white flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-2">
-               <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Net Cashflow</p>
-               <IndianRupee className="w-4 h-4 text-zinc-300" />
+<div className="bg-zinc-900 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl shadow-sm text-white flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1">
+               <p className="text-[10px] sm:text-xs font-semibold text-zinc-400 uppercase tracking-wider">Net</p>
+               <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-zinc-300" />
             </div>
-            <span className={`text-2xl font-bold ${dailyData.netCashFlow >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+            <span className={`text-base sm:text-2xl font-bold ${dailyData.netCashFlow >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
               {dailyData.netCashFlow >= 0 ? "+" : "-"}₹{Math.abs(dailyData.netCashFlow).toLocaleString()}
             </span>
-            <p className="text-[11px] font-medium text-zinc-400 mt-1 truncate">
-               Net daily position
+            <p className="text-[9px] sm:text-[10px] font-medium text-zinc-400 mt-1 truncate">
+               net position
             </p>
           </div>
         </div>
 
-        {/* Live Activity Feed */}
-        <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 flex flex-col h-[600px]">
-          <div className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-900/20">
-             <div className="flex items-center gap-2">
-               <ListFilter className="w-4 h-4 text-zinc-500" />
-               <h3 className="font-bold text-zinc-900 dark:text-white text-sm">Combined Activity Feed</h3>
-             </div>
-             <span className="text-xs font-semibold bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 px-2.5 py-1 rounded-full">
-               {dailyData.combinedFeed.length} entries
-             </span>
+      {/* Live Activity Feed - Stacked on mobile, side by side on desktop */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+        {/* Cash In Section */}
+        <div className="bg-white dark:bg-zinc-800 rounded-xl sm:rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 flex flex-col max-h-[200px] md:max-h-[300px] overflow-hidden">
+          <div className="px-2.5 py-2 sm:px-4 sm:py-3 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center bg-emerald-50 dark:bg-emerald-900/20">
+            <div className="flex items-center gap-2">
+              <ArrowDownRight className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600 dark:text-emerald-400" />
+              <h3 className="font-bold text-emerald-700 dark:text-emerald-400 text-xs sm:text-sm">Cash In</h3>
+            </div>
+            <span className="text-[9px] sm:text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-800 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded-full">
+              {dailyData.dayTransactions.filter(t => t.type === "Income").length}
+            </span>
           </div>
           
-          <div className="flex-1 overflow-y-auto p-2">
-            {dailyData.combinedFeed.length === 0 ? (
+          <div className="flex-1 overflow-y-auto p-1.5 sm:p-2">
+            {dailyData.dayTransactions.filter(t => t.type === "Income").length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-zinc-400 dark:text-zinc-500 space-y-2">
-                <FileText className="w-8 h-8 opacity-50" />
-                <p className="text-sm">No activity recorded for this day.</p>
+                <p className="text-xs">No cash in today</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {dailyData.combinedFeed.map((item: any) => {
-                  if (item.feedType === "slip") {
-                     return (
-                       <div key={`slip-${item.id}`} className="bg-white dark:bg-zinc-800 p-3 rounded-xl border border-zinc-100 dark:border-zinc-700 hover:border-blue-200 transition-colors shadow-sm relative group">
-                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-l-xl"></div>
-                          <div className="pl-3">
-                             <div className="flex justify-between items-start mb-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-bold text-zinc-900 dark:text-white text-sm uppercase">{item.vehicleNo}</span>
-                                  <span className="text-[10px] font-semibold bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">DISPATCH</span>
-                                </div>
-                                <span className="font-bold text-zinc-900 dark:text-white text-sm tracking-tight">₹{item.totalAmount.toLocaleString()}</span>
-                             </div>
-                             <div className="flex justify-between items-center text-xs text-zinc-500 dark:text-zinc-400">
-                                <span>{format(parseISO(item.date), "hh:mm a")} • {item.materialType} • {item.quantity.toFixed(1)} {item.measurementType === "Volume (Brass)" ? "Brass" : "Tons"}</span>
-                                <div className="flex items-center gap-1 opacity-100 transition-opacity">
-                                  <button onClick={() => setEditingSlip(item)} className="p-1 hover:text-blue-600 bg-zinc-50 dark:bg-zinc-700 rounded"><Edit2 className="w-3.5 h-3.5" /></button>
-                                  <button onClick={() => setPrintSlip(item)} className="p-1 hover:text-zinc-900 dark:hover:text-white bg-zinc-50 dark:bg-zinc-700 rounded"><Printer className="w-3.5 h-3.5" /></button>
-                                </div>
-                             </div>
-                          </div>
-                       </div>
-                     )
-                  } else {
-                     const isIncome = item.type === "Income";
-                     return (
-                       <div key={`tx-${item.id}`} className="bg-white dark:bg-zinc-800 p-3 rounded-xl border border-zinc-100 dark:border-zinc-700 hover:border-zinc-300 transition-colors shadow-sm relative">
-                          <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-xl ${isIncome ? "bg-primary-500" : "bg-rose-500"}`}></div>
-                          <div className="pl-3">
-                             <div className="flex justify-between items-start mb-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-bold text-zinc-900 dark:text-white text-sm">{item.category}</span>
-                                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${isIncome ? "bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400" : "bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400"}`}>
-                                     {item.type.toUpperCase()}
-                                  </span>
-                                </div>
-                                <span className={`font-bold text-sm tracking-tight ${isIncome ? "text-primary-600 dark:text-primary-400" : "text-rose-600 dark:text-rose-400"}`}>
-                                   {isIncome ? "+" : "-"}₹{item.amount.toLocaleString()}
-                                </span>
-                             </div>
-                             <div className="flex justify-between items-center text-xs text-zinc-500 dark:text-zinc-400">
-                                <span>{format(parseISO(item.date), "hh:mm a")} • {item.description || "No remarks"}</span>
-                             </div>
-                          </div>
-                       </div>
-                     )
-                  }
-                })}
+              <div className="space-y-1">
+                {dailyData.dayTransactions.filter(t => t.type === "Income").map((item: any) => (
+                  <div key={`tx-${item.id}`} className="bg-white dark:bg-zinc-800 p-2 rounded-lg border border-zinc-100 dark:border-zinc-700 shadow-sm relative">
+                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 rounded-l-lg"></div>
+                    <div className="pl-2 sm:pl-3">
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold text-zinc-900 dark:text-white text-[11px]">{item.category}</span>
+                        <span className="font-bold text-emerald-600 dark:text-emerald-400 text-[11px]">
+                          +₹{item.amount.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="text-[9px] text-zinc-500 dark:text-zinc-400">
+                        {format(parseISO(item.date), "HH:mm")} • {item.description || "-"}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
         </div>
-      </div>
 
-      {/* Right Column: Embedded Actions Hub */}
-      <div className="bg-white dark:bg-zinc-900 flex flex-col h-[760px] xl:h-auto xl:min-h-[600px] rounded-2xl shadow-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden sticky xl:top-6 z-10 hidden-scrollbar">
-         <div className="p-4 bg-zinc-900 text-white flex justify-between items-center shrink-0">
-            <h3 className="font-bold text-sm flex items-center gap-2">
-               Operations Hub
-            </h3>
-            <button onClick={() => setIsCustModalOpen(true)} className="text-xs font-semibold bg-white/10 hover:bg-white/20 px-2 py-1 rounded transition-colors flex items-center">
-               <Plus className="w-3 h-3 mr-1" /> Customer
-            </button>
-         </div>
-         
-         <div className="flex border-b border-zinc-200 dark:border-zinc-800 shrink-0 text-xs sm:text-sm font-medium bg-zinc-50 dark:bg-zinc-800/50 overflow-x-auto hide-scrollbar">
-            <button onClick={() => setActiveTab('slip')} className={`flex-none py-3 px-3 text-center border-b-2 transition-colors ${activeTab === 'slip' ? 'border-zinc-900 dark:border-white text-zinc-900 dark:text-white bg-white dark:bg-zinc-900' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>Dispatch Slip</button>
-            <button onClick={() => setActiveTab('income')} className={`flex-none py-3 px-3 text-center border-b-2 transition-colors ${activeTab === 'income' ? 'border-primary-500 text-primary-600 dark:text-primary-400 bg-white dark:bg-zinc-900' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>Receive</button>
-            <button onClick={() => setActiveTab('expense')} className={`flex-none py-3 px-3 text-center border-b-2 transition-colors ${activeTab === 'expense' ? 'border-rose-500 text-rose-600 dark:text-rose-400 bg-white dark:bg-zinc-900' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>Expense</button>
-         </div>
-
-         <div className="flex-1 overflow-y-auto w-full">
-            {activeTab === 'slip' && (
-              <div className="pb-8">
-                 <CreateSlipForm onSuccess={(slip) => slip && setPrintSlip(slip)} />
-              </div>
-            )}
-
-            {(activeTab === 'income' || activeTab === 'expense') && (
-              <form onSubmit={handleCreateTx} className="p-5 space-y-5">
-                <div className="bg-zinc-50 dark:bg-zinc-800/50 p-4 rounded-xl border border-zinc-100 dark:border-zinc-700">
-                   <div className="space-y-4">
-                      <div>
-                        <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1 block">Amount (₹)</label>
-                        <input
-                          required
-                          type="number"
-                          step="0.01"
-                          min="1"
-                          value={txFormData.amount}
-                          onChange={(e) => setTxFormData({ ...txFormData, amount: e.target.value })}
-                          className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-4 py-3 text-lg font-bold focus:ring-2 focus:ring-primary-500 outline-none transition-shadow"
-                          placeholder="e.g., 5000"
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1 block">Category</label>
-                        {activeTab === "expense" ? (
-                           <select
-                              value={txFormData.category}
-                              onChange={(e) => setTxFormData({ ...txFormData, category: e.target.value })}
-                              className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                              required
-                           >
-                              <option value="" disabled>Select Category</option>
-                              {companySettings.expenseCategories?.map((cat, i) => (
-                                 <option key={i} value={cat}>{cat}</option>
-                              ))}
-                           </select>
-                        ) : (
-                           <>
-                             <input
-                                required
-                                list="income-options"
-                                type="text"
-                                value={txFormData.category}
-                                onChange={(e) => setTxFormData({ ...txFormData, category: e.target.value })}
-                                className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                                placeholder="e.g., Payment, Advance"
-                             />
-                             <datalist id="income-options">
-                               <option value="Payments Received" />
-                               <option value="Advance Received" />
-                               <option value="Scrap Sale" />
-                               <option value="Other Income" />
-                             </datalist>
-                           </>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1 block">Link Customer (Optional)</label>
-                        <select
-                          value={txFormData.customerId}
-                          onChange={(e) => {
-                             const cid = e.target.value;
-                             let suggestedCategory = txFormData.category;
-                             if (cid) {
-                                const pastTxs = transactions.filter(t => t.customerId === cid && t.type === (activeTab === "income" ? "Income" : "Expense"));
-                                if (pastTxs.length > 0) {
-                                   suggestedCategory = pastTxs[0].category;
-                                } else {
-                                   if (activeTab === "income") {
-                                      suggestedCategory = "Payments Received";
-                                   } else if (companySettings.expenseCategories && companySettings.expenseCategories.length > 0) {
-                                      suggestedCategory = companySettings.expenseCategories[0];
-                                   }
-                                }
-                             }
-                             setTxFormData({ ...txFormData, customerId: cid, category: suggestedCategory });
-                          }}
-                          className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                        >
-                          <option value="">None (General Entry)</option>
-                          {customers.map((c) => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1 block">Remarks</label>
-                        <textarea
-                          required
-                          value={txFormData.description}
-                          onChange={(e) => setTxFormData({ ...txFormData, description: e.target.value })}
-                          className="w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none resize-none h-20"
-                          placeholder="Details..."
-                        ></textarea>
-                      </div>
-                   </div>
+        {/* Cash Out Section */}
+        <div className="bg-white dark:bg-zinc-800 rounded-xl sm:rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 flex flex-col max-h-[200px] md:max-h-[300px] overflow-hidden">
+          <div className="px-2.5 py-2 sm:px-4 sm:py-3 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center bg-rose-50 dark:bg-rose-900/20">
+            <div className="flex items-center gap-2">
+              <ArrowUpRight className="w-3 h-3 sm:w-4 sm:h-4 text-rose-600 dark:text-rose-400" />
+              <h3 className="font-bold text-rose-700 dark:text-rose-400 text-xs sm:text-sm">Cash Out</h3>
+            </div>
+            <span className="text-[9px] sm:text-[10px] font-semibold bg-rose-100 dark:bg-rose-800 text-rose-700 dark:text-rose-300 px-1.5 py-0.5 rounded-full">
+              {dailyData.dayTransactions.filter(t => t.type === "Expense").length}
+            </span>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-1.5 sm:p-2">
+              {dailyData.dayTransactions.filter(t => t.type === "Expense").length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-zinc-400 dark:text-zinc-500 space-y-2">
+                  <p className="text-xs sm:text-sm">No cash out today</p>
                 </div>
-
-                <button
-                  type="submit"
-                  className={`w-full py-4 text-white font-bold rounded-xl transition-all shadow-sm hover:shadow-md ${activeTab === 'income' ? 'bg-primary-600 hover:bg-primary-700' : 'bg-rose-600 hover:bg-rose-700'}`}
-                >
-                  Save {activeTab === "income" ? "Receipt" : "Payment"}
-                </button>
-              </form>
-            )}
-         </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {dailyData.dayTransactions.filter(t => t.type === "Expense").map((item: any) => (
+                    <div key={`tx-${item.id}`} className="bg-white dark:bg-zinc-800 p-2 sm:p-3 rounded-lg border border-zinc-100 dark:border-zinc-700 hover:border-rose-200 transition-colors shadow-sm relative">
+                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-rose-500 rounded-l-lg"></div>
+                      <div className="pl-2 sm:pl-3">
+                        <div className="flex justify-between items-center mb-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-zinc-900 dark:text-white text-xs">{item.category}</span>
+                          </div>
+                          <span className="font-bold text-rose-600 dark:text-rose-400 text-xs">
+                            -₹{item.amount.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                          {format(parseISO(item.date), "HH:mm")} • {item.description || "-"}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
+
+
+      {isOpsModalOpen && (
+        <div className="fixed inset-0 bg-zinc-900/60 flex items-end sm:items-center justify-center z-50 sm:p-4">
+          <div className="bg-white dark:bg-zinc-900 w-full sm:max-w-lg sm:rounded-2xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-200">
+            {/* Modal Header */}
+            <div className="p-4 bg-zinc-900 text-white flex justify-between items-center shrink-0">
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                <Plus className="w-5 h-5" />
+                New Entry
+              </h3>
+              <button onClick={() => setIsOpsModalOpen(false)} className="p-1 hover:bg-white/10 rounded-lg transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {/* Tab Switcher */}
+            <div className="flex border-b border-zinc-200 dark:border-zinc-800 shrink-0 text-sm font-medium bg-zinc-50 dark:bg-zinc-800/50">
+              <button onClick={() => setActiveTab('slip')} className={`flex-1 py-3 text-center border-b-2 transition-colors ${activeTab === 'slip' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-zinc-500'}`}>Dispatch Slip</button>
+              <button onClick={() => setActiveTab('income')} className={`flex-1 py-3 text-center border-b-2 transition-colors ${activeTab === 'income' ? 'border-primary-600 text-primary-600 dark:text-primary-400' : 'border-transparent text-zinc-500'}`}>Receive</button>
+              <button onClick={() => setActiveTab('expense')} className={`flex-1 py-3 text-center border-b-2 transition-colors ${activeTab === 'expense' ? 'border-rose-600 text-rose-600 dark:text-rose-400' : 'border-transparent text-zinc-500'}`}>Expense</button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+              {activeTab === 'slip' && (
+                <CreateSlipForm onSuccess={(slip) => {
+                  if (slip) setPrintSlip(slip);
+                  setIsOpsModalOpen(false);
+                }} />
+              )}
+
+              {(activeTab === 'income' || activeTab === 'expense') && (
+                <form onSubmit={(e) => {
+                  handleCreateTx(e);
+                  setIsOpsModalOpen(false);
+                }} className="space-y-4">
+                  <div>
+                    <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1 block">Amount (₹)</label>
+                    <input
+                      required
+                      type="number"
+                      step="0.01"
+                      min="1"
+                      value={txFormData.amount}
+                      onChange={(e) => setTxFormData({ ...txFormData, amount: e.target.value })}
+                      className="w-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-4 py-3 text-lg font-bold focus:ring-2 focus:ring-primary-500 outline-none"
+                      placeholder="e.g., 5000"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1 block">Category</label>
+                    {activeTab === "expense" ? (
+                      <select
+                        value={txFormData.category}
+                        onChange={(e) => setTxFormData({ ...txFormData, category: e.target.value })}
+                        className="w-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+                        required
+                      >
+                        <option value="" disabled>Select Category</option>
+                        {companySettings.expenseCategories?.map((cat, i) => (
+                          <option key={i} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        required
+                        list="income-options"
+                        type="text"
+                        value={txFormData.category}
+                        onChange={(e) => setTxFormData({ ...txFormData, category: e.target.value })}
+                        className="w-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+                        placeholder="e.g., Payment, Advance"
+                      />
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1 block">Link Customer (Optional)</label>
+                    <select
+                      value={txFormData.customerId}
+                      onChange={(e) => setTxFormData({ ...txFormData, customerId: e.target.value })}
+                      className="w-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+                    >
+                      <option value="">None</option>
+                      {customers.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1 block">Remarks</label>
+                    <textarea
+                      value={txFormData.description}
+                      onChange={(e) => setTxFormData({ ...txFormData, description: e.target.value })}
+                      className="w-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm resize-none h-20"
+                      placeholder="Details (optional)..."
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className={`w-full py-4 text-white font-bold rounded-xl transition-all shadow-sm hover:shadow-md ${activeTab === 'income' ? 'bg-primary-600 hover:bg-primary-700' : 'bg-rose-600 hover:bg-rose-700'}`}
+                  >
+                    Save {activeTab === "income" ? "Receipt" : "Payment"}
+                  </button>
+                </form>
+)}
+            </div>
+          </div>
+        </div>
+      )}
 
       {isCustModalOpen && (
         <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center p-4 z-[60]">

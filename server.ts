@@ -6,10 +6,38 @@ import cors from 'cors';
 
 const DATA_FILE = path.join(process.cwd(), 'local-data.json');
 
+// Simple in-memory rate limiter (resets every minute)
+const requestCounts = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT = 100; // Max requests per minute
+const RATE_WINDOW_MS = 60 * 1000; // 1 minute
+
+function rateLimitMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  
+  let record = requestCounts.get(ip);
+  
+  if (!record || now > record.resetTime) {
+    record = { count: 1, resetTime: now + RATE_WINDOW_MS };
+    requestCounts.set(ip, record);
+    return next();
+  }
+  
+  record.count++;
+  
+  if (record.count > RATE_LIMIT) {
+    res.status(429).json({ error: 'Too many requests. Please try again later.' });
+    return;
+  }
+  
+  next();
+}
+
 async function startServer() {
   const app = express();
   app.use(cors());
   app.use(express.json({ limit: '50mb' }));
+  app.use(rateLimitMiddleware);
 
   // Load initial data if file doesn't exist
   if (!fs.existsSync(DATA_FILE)) {
@@ -147,7 +175,7 @@ async function startServer() {
     }
   });
 
-  const port = 5173;
+  const port = process.env.PORT ? parseInt(process.env.PORT) : 8081;
   app.listen(port, () => {
     console.log(`
 🚀 CrushTrack ERP Development Server

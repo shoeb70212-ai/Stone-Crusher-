@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Shield, Lock, Mail, AlertCircle } from 'lucide-react';
 import { useErp } from '../context/ErpContext';
 import { verifyPassword, DEFAULT_ADMIN_PASSWORD_HASH } from '../lib/auth';
+import { loginSchema, type LoginInput } from '../lib/validation';
 
 interface LoginProps {
   onLogin: () => void;
@@ -12,12 +13,28 @@ export function Login({ onLogin }: LoginProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const { companySettings, setUserRole } = useErp();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
     setIsSubmitting(true);
+
+    const validation: LoginInput = { email, password };
+    const result = loginSchema.safeParse(validation);
+
+    if (!result.success) {
+      const errors: { email?: string; password?: string } = {};
+      result.error.issues.forEach((issue) => {
+        if (issue.path[0] === 'email') errors.email = issue.message;
+        if (issue.path[0] === 'password') errors.password = issue.message;
+      });
+      setFieldErrors(errors);
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       const hasUsers = companySettings.users && companySettings.users.length > 0;
@@ -79,33 +96,45 @@ export function Login({ onLogin }: LoginProps) {
           )}
           
           <div className="space-y-1 relative">
-            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 ml-1">Email Address</label>
+            <label htmlFor="login-email" className="text-sm font-medium text-zinc-700 dark:text-zinc-300 ml-1">Email Address</label>
             <div className="relative">
               <Mail className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
               <input 
+                id="login-email"
                 type="email" 
                 required
+                aria-invalid={!!fieldErrors.email}
+                aria-describedby={fieldErrors.email ? "email-error" : undefined}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all text-zinc-900 dark:text-white"
+                className={`w-full pl-10 pr-4 py-3 bg-zinc-50 dark:bg-zinc-900/50 border rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all text-zinc-900 dark:text-white ${fieldErrors.email ? 'border-rose-500 focus:ring-rose-500' : 'border-zinc-200 dark:border-zinc-700'}`}
                 placeholder="admin@admin.com"
               />
             </div>
+            {fieldErrors.email && (
+              <p id="email-error" className="text-xs text-rose-500 mt-1 ml-1" role="alert">{fieldErrors.email}</p>
+            )}
           </div>
 
           <div className="space-y-1 relative">
-            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 ml-1">Password</label>
+            <label htmlFor="login-password" className="text-sm font-medium text-zinc-700 dark:text-zinc-300 ml-1">Password</label>
             <div className="relative">
               <Lock className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
               <input 
+                id="login-password"
                 type="password" 
                 required
+                aria-invalid={!!fieldErrors.password}
+                aria-describedby={fieldErrors.password ? "password-error" : undefined}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all text-zinc-900 dark:text-white"
+                className={`w-full pl-10 pr-4 py-3 bg-zinc-50 dark:bg-zinc-900/50 border rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all text-zinc-900 dark:text-white ${fieldErrors.password ? 'border-rose-500 focus:ring-rose-500' : 'border-zinc-200 dark:border-zinc-700'}`}
                 placeholder="••••••••"
               />
             </div>
+            {fieldErrors.password && (
+              <p id="password-error" className="text-xs text-rose-500 mt-1 ml-1" role="alert">{fieldErrors.password}</p>
+            )}
           </div>
 
           <button

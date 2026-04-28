@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ErpProvider } from "./context/ErpContext";
+import { ToastProvider } from "./components/ui/Toast";
+import { OfflineIndicator } from "./components/ui/OfflineIndicator";
 import { Layout } from "./components/Layout";
 import { Login } from "./components/Login";
 
@@ -14,12 +16,15 @@ export default function App() {
   }, []);
 
   return (
-    <ErpProvider>
-      {isAuthenticated ? (
-        <Layout />
-      ) : (
-        <Login onLogin={() => setIsAuthenticated(true)} />
-      )}
-    </ErpProvider>
+    <ToastProvider>
+      <OfflineIndicator />
+      <ErpProvider>
+        {isAuthenticated ? (
+          <Layout />
+        ) : (
+          <Login onLogin={() => setIsAuthenticated(true)} />
+        )}
+      </ErpProvider>
+    </ToastProvider>
   );
 }

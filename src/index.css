@@ -125,3 +125,1184 @@ body {
     @apply bg-zinc-800 text-white;
   }
 }
+
+/* Mobile Touch Optimizations */
+@layer utilities {
+  /* Touch-friendly minimum tap targets */
+  .touch-manual {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Smooth spring-like press animation */
+  .press-spring {
+    transition: transform 150ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  
+  /* Prevent pull-to-refresh on mobile */
+  .no-pull-refresh {
+    overscroll-behavior-y: contain;
+  }
+  
+  /* Smooth scrolling for mobile */
+  .mobile-smooth-scroll {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+  
+  /* Prevent accidental zoom on input focus */
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  input[type="date"],
+  input[type="time"],
+  input[type="tel"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+  
+  /* Larger touch targets for action buttons */
+  .btn-touch {
+    min-height: 48px;
+    padding: 12px 20px;
+  }
+  
+  /* Prevent text selection on buttons during tap */
+  button {
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+    touch-action: manipulation;
+  }
+  
+  /* Better form field touch experience */
+  .form-field-touch {
+    padding: 14px 16px;
+    min-height: 48px;
+  }
+  
+  /* Mobile card improvements */
+  .mobile-card {
+    touch-action: pan-y;
+  }
+  
+  /* Smooth transitions for all interactive elements */
+  button, a, input, select, textarea {
+    transition: all 0.2s ease-in-out;
+  }
+  
+  /* Focus visible for keyboard navigation */
+  :focus-visible {
+    outline: 2px solid var(--primary-500);
+    outline-offset: 2px;
+  }
+  
+  /* Remove focus outline for mouse users */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+}
+
+/* Animations */
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scale-in {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out;
+}
+
+/* Staggered animation for lists */
+.stagger-animation > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-animation > *:nth-child(2) { animation-delay: 50ms; }
+.stagger-animation > *:nth-child(3) { animation-delay: 100ms; }
+.stagger-animation > *:nth-child(4) { animation-delay: 150ms; }
+.stagger-animation > *:nth-child(5) { animation-delay: 200ms; }
+.stagger-animation > *:nth-child(6) { animation-delay: 250ms; }
+.stagger-animation > *:nth-child(7) { animation-delay: 300ms; }
+.stagger-animation > *:nth-child(8) { animation-delay: 350ms; }
+
+/* Reduced motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE NAVIGATION OPTIMIZATIONS
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+  /* Bottom nav with proper safe area */
+  .mobile-bottom-nav {
+    height: calc(56px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    min-height: calc(56px + env(safe-area-inset-bottom));
+  }
+
+  /* FAB positioned above bottom nav with safe area */
+  .mobile-fab {
+    bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+
+  /* Main content padding for bottom nav */
+  .has-bottom-nav {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+
+  /* Better touch ripple feedback */
+  button, .btn, [role="button"] {
+    position: relative;
+    overflow: hidden;
+  }
+
+  button::before, .btn::before, [role="button"]::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, currentColor 0%, transparent 70%);
+    opacity: 0;
+    transform: scale(0);
+    transition: opacity 0.3s, transform 0.3s;
+    pointer-events: none;
+  }
+
+  button:active::before, .btn:active::before, [role="button"]:active::before {
+    opacity: 0.08;
+    transform: scale(1);
+  }
+
+/* Active scale feedback */
+  button:active, .btn:active, [role="button"]:active {
+    transform: scale(0.96);
+  }
+
+  /* Better pressed states for cards */
+  .card-pressable:active {
+    transform: scale(0.98);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  }
+
+  body {
+    font-size: 15px;
+    line-height: 1.4;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Full viewport height app-like feel */
+  .app-container {
+    height: 100dvh;
+    height: 100vh;
+    overflow: hidden;
+    position: fixed;
+    inset: 0;
+  }
+
+  .app-content {
+    height: calc(100dvh - 56px - env(safe-area-inset-bottom));
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     DENSE CARD SYSTEM - Show more info with less scroll
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  .dense-card {
+    padding: var(--space-md);
+    border-radius: var(--radius-md);
+    gap: var(--space-sm);
+  }
+
+  .dense-card-stack {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-sm);
+  }
+
+  .dense-stat {
+    padding: var(--space-sm) var(--space-md);
+    background: var(--color-zinc-50);
+    border-radius: var(--radius-sm);
+    min-height: 56px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .dense-stat-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-zinc-400);
+    line-height: 1.2;
+  }
+
+  .dense-stat-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--color-zinc-900);
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     COMPACT LIST ITEMS - Dense information display
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  .compact-list-item {
+    padding: var(--space-sm) var(--space-md);
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .compact-list-item > * {
+    flex-shrink: 0;
+  }
+
+  .compact-list-item .flex-1 {
+    min-width: 0;
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     MOBILE-FIRST GRID SYSTEM
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  .mobile-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-sm);
+  }
+
+  .mobile-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-xs);
+  }
+
+  .mobile-grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-xs);
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     TOUCH-OPTIMIZED CONTROLS
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  button, 
+  .btn,
+  [role="button"] {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: var(--radius-md);
+    touch-action: manipulation;
+  }
+
+  .btn-sm {
+    min-height: 36px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  .btn-icon {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Input fields with better touch targets */
+  input, 
+  select, 
+  textarea {
+    padding: 12px 14px !important;
+    min-height: 48px;
+    font-size: 16px !important; /* Prevents iOS zoom */
+    border-radius: var(--radius-md);
+  }
+
+  /* Table cells with better touch targets */
+  td, th {
+    padding: 10px 8px !important;
+    font-size: 13px;
+  }
+
+  /* Card padding for mobile */
+  .card-mobile {
+    padding: var(--space-md);
+    border-radius: var(--radius-md);
+  }
+
+  .list-item-touch {
+    padding: var(--space-sm) var(--space-md);
+    min-height: 48px;
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     SECTION HEADERS FOR MOBILE
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-sm) 0;
+    margin-bottom: var(--space-sm);
+  }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-zinc-500);
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     HIDE SCROLLBARS BUT KEEP FUNCTIONALITY
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  .app-content::-webkit-scrollbar {
+    width: 0px;
+    display: none;
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     MOBILE TAB BAR IMPROVEMENTS
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  .mobile-tab-bar {
+    height: 56px;
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--color-white);
+    border-top: 1px solid var(--color-zinc-200);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+  }
+
+  .mobile-tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    min-height: 48px;
+    color: var(--color-zinc-400);
+    transition: all 0.15s ease;
+  }
+
+  .mobile-tab-item.active {
+    color: var(--primary-600);
+  }
+
+  .mobile-tab-icon {
+    width: 22px;
+    height: 22px;
+    margin-bottom: 2px;
+  }
+
+  .mobile-tab-label {
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     COMPACT DATA DISPLAY
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  .data-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--color-zinc-100);
+  }
+
+  .data-row:last-child {
+    border-bottom: none;
+  }
+
+  .data-label {
+    font-size: 12px;
+    color: var(--color-zinc-500);
+    font-weight: 500;
+  }
+
+  .data-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-zinc-900);
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     STATUS BADGES - Compact
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: var(--radius-full);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     MOBILE ACTION BUTTONS ROW
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  .mobile-actions-row {
+    display: flex;
+    gap: var(--space-sm);
+    padding: var(--space-md) 0;
+  }
+
+  .mobile-actions-row button {
+    flex: 1;
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     SWIPE-ABLE LIST ITEMS
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  .swipe-item {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .swipe-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--primary-500);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .swipe-item:active::before {
+    opacity: 1;
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     HORIZONTAL SCROLL CONTAINERS
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  .scroll-x {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin: 0 calc(var(--space-md) * -1);
+    padding: 0 var(--space-md);
+  }
+
+  .scroll-x::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scroll-x > * {
+    flex-shrink: 0;
+    scroll-snap-align: start;
+  }
+
+  /* Pill buttons for filters */
+  .pill-button {
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: var(--radius-full);
+    white-space: nowrap;
+    scroll-snap-align: start;
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     MODAL OPTIMIZATIONS FOR MOBILE
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  .mobile-modal-content {
+    max-height: 90dvh;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    padding-bottom: calc(var(--space-xl) + env(safe-area-inset-bottom));
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     FLOATING ACTION BUTTON (FAB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  .mobile-fab {
+    position: fixed;
+    bottom: calc(64px + env(safe-area-inset-bottom));
+    right: var(--space-lg);
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 50;
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     INFO COMPACT LAYOUTS
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  .info-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-xs);
+  }
+
+  .info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .info-item-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--color-zinc-400);
+    letter-spacing: 0.02em;
+  }
+
+  .info-item-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-zinc-900);
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   LARGER MOBILE / SMALL TABLET (640px - 768px)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@media (min-width: 641px) and (max-width: 768px) {
+  :root {
+    --space-md: 14px;
+    --space-lg: 18px;
+  }
+
+  .app-content {
+    height: 100dvh;
+    height: calc(100dvh - 64px);
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   DYNAMIC VIEWPORT HEIGHT (100dvh) - Fixes mobile browser issues
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@supports (height: 100dvh) {
+  .app-container {
+    height: 100dvh;
+  }
+  
+  .app-content {
+    height: 100dvh;
+    height: calc(100dvh - 56px - env(safe-area-inset-bottom));
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   ENHANCED TOUCH TARGETS - Minimum 48px with 8px spacing
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@media (max-width: 640px) {
+  /* Minimum touch target size */
+  button, 
+  .btn,
+  [role="button"],
+  a,
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-height: 48px;
+    min-width: 48px;
+  }
+  
+  /* Extra padding for buttons */
+  .btn {
+    padding: 12px 20px;
+  }
+  
+  /* Ensure spacing between touch targets */
+  button + button,
+  .btn + .btn,
+  [role="button"] + [role="button"] {
+    margin-left: 8px;
+  }
+  
+  /* Icon-only buttons need extra padding */
+  .btn-icon-only {
+    padding: 12px;
+    min-width: 48px;
+    min-height: 48px;
+  }
+  
+  /* Form inputs - minimum height */
+  input, 
+  select, 
+  textarea {
+    min-height: 52px;
+    padding: 14px 16px !important;
+  }
+  
+  /* Checkbox and radio custom styling */
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 24px;
+    height: 24px;
+  }
+  
+  /* Links need proper touch area */
+  a {
+    padding: 8px 12px;
+    display: inline-block;
+  }
+  
+  /* Table row touch targets */
+  tr {
+    min-height: 56px;
+  }
+  
+  td, th {
+    padding: 14px 12px !important;
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   FLUID TYPOGRAPHY
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@media (max-width: 640px) {
+  .fluid-text-xs { font-size: clamp(10px, 2.5vw, 11px); }
+  .fluid-text-sm { font-size: clamp(12px, 3vw, 13px); }
+  .fluid-text-base { font-size: clamp(14px, 3.5vw, 15px); }
+  .fluid-text-lg { font-size: clamp(16px, 4vw, 18px); }
+  .fluid-text-xl { font-size: clamp(18px, 5vw, 22px); }
+  .fluid-text-2xl { font-size: clamp(22px, 6vw, 28px); }
+  .fluid-text-3xl { font-size: clamp(28px, 8vw, 36px); }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   iOS SAFE AREA INSETS
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@supports (padding: max(0px)) {
+  .safe-area-bottom {
+    padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
+  }
+  
+  .safe-area-top {
+    padding-top: max(var(--space-md), env(safe-area-inset-top));
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   PULL TO REFRESH PREVENTION (app-like)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.no-pull {
+  overscroll-behavior: contain;
+  overflow: hidden;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   COMPACT PAGE LAYOUT FOR MOBILE
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@media (max-width: 640px) {
+  .compact-page {
+    padding: var(--space-md);
+    padding-bottom: calc(80px + var(--space-xl) + env(safe-area-inset-bottom));
+  }
+
+  .compact-page-with-fab {
+    padding-bottom: calc(80px + 56px + var(--space-xl) + env(safe-area-inset-bottom));
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   TOUCH FEEDBACK & INTERACTION STATES
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@media (max-width: 640px) {
+  /* Active/pressed state with scale transform */
+  button:active,
+  .btn:active,
+  [role="button"]:active {
+    transform: scale(0.96);
+    opacity: 0.9;
+  }
+  
+  /* Ripple effect simulation */
+  button::after,
+  .btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle, currentColor at center, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+  }
+  
+  button:active::after,
+  .btn:active::after {
+    opacity: 0.1;
+  }
+  
+  /* Focus state - more prominent for mobile */
+  :focus-visible {
+    outline: 3px solid var(--primary-500);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  
+  /* Disabled state - more visible */
+  button:disabled,
+  .btn:disabled,
+  [role="button"]:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  /* Selected state for toggles/tabs */
+  .tab-selected {
+    background: var(--primary-600);
+    color: white;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   HORIZONTAL SCROLL PREVENTION & SCROLL SNAPPING
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@media (max-width: 640px) {
+  /* Prevent horizontal overflow */
+  html, body {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+  
+  /* Horizontal scroll containers with snap */
+  .scroll-snap-x {
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .scroll-snap-x > * {
+    scroll-snap-align: start;
+  }
+  
+  /* Hide scrollbar but keep functionality */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Smooth scrolling */
+  .smooth-scroll {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   THUMB ZONE OPTIMIZATION - Primary actions at bottom
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@media (max-width: 640px) {
+  /* FAB should be in comfortable thumb zone */
+  .mobile-fab {
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    /* Right side - thumb zone for right-handed users */
+  }
+  
+  /* Primary action buttons in bottom area */
+  .bottom-action-bar {
+    position: fixed;
+    bottom: calc(56px + env(safe-area-inset-bottom));
+    left: 0;
+    right: 0;
+    padding: 12px 16px;
+    background: white;
+    border-top: 1px solid var(--color-zinc-200);
+    z-index: 40;
+    display: flex;
+    gap: 12px;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+  }
+  
+  .bottom-action-bar button {
+    flex: 1;
+    height: 48px;
+  }
+  
+  /* Bottom sheet style for mobile modals */
+  .mobile-bottom-sheet {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-height: 90dvh;
+    border-radius: 20px 20px 0 0;
+    transform: translateY(100%);
+    transition: transform 0.3s ease-out;
+    z-index: 60;
+  }
+  
+  .mobile-bottom-sheet.open {
+    transform: translateY(0);
+  }
+  
+  .mobile-bottom-sheet-handle {
+    width: 40px;
+    height: 4px;
+    background: var(--color-zinc-300);
+    border-radius: 2px;
+    margin: 12px auto;
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   SKELETON LOADING STATES
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #e4e4e7 25%,
+    #f4f4f5 50%,
+    #e4e4e7 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+.dark .skeleton {
+  background: linear-gradient(
+    90deg,
+    #3f3f46 25%,
+    #52525b 50%,
+    #3f3f46 75%
+  );
+}
+
+.skeleton-text {
+  height: 16px;
+  margin-bottom: 8px;
+}
+
+.skeleton-title {
+  height: 24px;
+  width: 60%;
+  margin-bottom: 12px;
+}
+
+.skeleton-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+}
+
+.skeleton-button {
+  height: 48px;
+  width: 120px;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   SWIPE GESTURES FOR MOBILE
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@media (max-width: 640px) {
+  /* Swipeable list items */
+  .swipeable {
+    touch-action: pan-x;
+    overscroll-behavior: none;
+  }
+  
+  .swipe-left-reveal {
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .swipe-left-reveal::before {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 80px;
+    background: linear-gradient(to left, var(--color-rose-500), transparent);
+    transform: translateX(100%);
+    transition: transform 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .swipeable:active .swipe-left-reveal::before {
+    transform: translateX(0);
+  }
+  
+  /* Pull to refresh indicator */
+  .pull-to-refresh {
+    position: relative;
+  }
+  
+  .pull-to-refresh-indicator {
+    position: absolute;
+    top: -40px;
+    left: 50%;
+    transform: translateX(-50%);
+    transition: top 0.2s;
+  }
+  
+  .pull-to-refresh.refreshing .pull-to-refresh-indicator {
+    top: 16px;
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   COMPACT HEADER FOR MOBILE
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@media (max-width: 640px) {
+  .mobile-header {
+    height: 52px;
+    min-height: 52px;
+    padding: 0 12px;
+  }
+  
+  .mobile-header-title {
+    font-size: 16px;
+    font-weight: 600;
+  }
+  
+  .mobile-header-subtitle {
+    font-size: 11px;
+  }
+  
+  /* Sticky header that hides on scroll down */
+  .header-hide-on-scroll {
+    transition: transform 0.2s ease;
+  }
+  
+  .header-hide-on-scroll.hidden {
+    transform: translateY(-100%);
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   DATA DENSITY OPTIMIZATION
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@media (max-width: 640px) {
+  /* Compact data display */
+  .data-dense {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  
+  .data-dense-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  
+  .data-dense-value {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  
+  /* Compact badges */
+  .badge-compact {
+    font-size: 10px;
+    padding: 2px 6px;
+    font-weight: 600;
+  }
+  
+  /* Compact avatars */
+  .avatar-compact {
+    width: 36px;
+    height: 36px;
+    font-size: 14px;
+  }
+  
+  /* Icon-only buttons with labels below */
+  .icon-label-btn {
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px;
+    min-height: 56px;
+  }
+  
+  .icon-label-btn .icon {
+    width: 20px;
+    height: 20px;
+  }
+  
+  .icon-label-btn .label {
+    font-size: 10px;
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   INPUT & FORM OPTIMIZATION
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@media (max-width: 640px) {
+  /* Input focus states - larger touch target, better visibility */
+  input:focus,
+  select:focus,
+  textarea:focus {
+    border-color: var(--primary-500) !important;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2) !important;
+    outline: none;
+  }
+  
+  /* Labels that stay visible */
+  .form-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-zinc-700);
+    margin-bottom: 6px;
+    display: block;
+  }
+  
+  /* Floating labels */
+  .floating-label {
+    position: relative;
+  }
+  
+  .floating-label input {
+    padding-top: 20px;
+  }
+  
+  .floating-label label {
+    position: absolute;
+    top: 50%;
+    left: 16px;
+    transform: translateY(-50%);
+    font-size: 14px;
+    color: var(--color-zinc-400);
+    pointer-events: none;
+    transition: all 0.2s;
+  }
+  
+  .floating-label input:focus + label,
+  .floating-label input:not(:placeholder-shown) + label {
+    top: 8px;
+    font-size: 10px;
+    transform: translateY(0);
+    color: var(--primary-600);
+  }
+  
+  /* Error states */
+  input.error,
+  select.error,
+  textarea.error {
+    border-color: var(--color-rose-500) !important;
+    box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.2) !important;
+  }
+  
+  .error-message {
+    font-size: 11px;
+    color: var(--color-rose-600);
+    margin-top: 4px;
+  }
+  
+  /* Success states */
+  input.success,
+  select.success {
+    border-color: var(--primary-500) !important;
+  }
+  
+  /* Form groups */
+  .form-group {
+    margin-bottom: 16px;
+  }
+  
+  /* Toggle switches - larger for touch */
+  .toggle {
+    width: 52px;
+    height: 28px;
+    border-radius: 14px;
+    background: var(--color-zinc-300);
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  
+  .toggle.active {
+    background: var(--primary-600);
+  }
+  
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 24px;
+    height: 24px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+  
+  .toggle.active::after {
+    transform: translateX(24px);
+  }
+}

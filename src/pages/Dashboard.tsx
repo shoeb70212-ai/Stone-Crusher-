@@ -3,9 +3,10 @@ import { useErp } from "../context/ErpContext";
 import {
   Truck,
   IndianRupee,
-  TrendingUp,
   Wallet,
   Printer,
+  ArrowDownCircle,
+  ArrowUpCircle,
 } from "lucide-react";
 import {
   endOfDay,
@@ -158,37 +159,37 @@ export function Dashboard() {
 
   const stats = [
     {
-      label: "Dispatches & Volume",
+      label: "Dispatches",
       value: `${dateSlips.length} Trips`,
-      subValue: `${currentVolume.toFixed(2)} units (${volumePercent}% vs prev)`,
+      subValue: `${currentVolume.toFixed(2)} Brass`,
       isPositive: currentVolume >= prevVolume,
       icon: Truck,
       color: "text-blue-600 dark:text-blue-400",
       bg: "bg-blue-100 dark:bg-blue-500/20",
     },
     {
-      label: "Cash In (Income)",
+      label: "Income",
       value: `₹${income.toLocaleString()}`,
       subValue: `${incomePercent}% vs prev period`,
       isPositive: income >= prevIncome,
-      icon: IndianRupee,
+      icon: ArrowDownCircle,
       color: "text-emerald-600 dark:text-emerald-400",
       bg: "bg-emerald-100 dark:bg-emerald-500/20",
     },
     {
-      label: "Cash Out (Expenses)",
+      label: "Expenses",
       value: `₹${expense.toLocaleString()}`,
       subValue: `${expensePercent}% vs prev period`,
-      isPositive: expense <= prevExpense, // expenses going down is positive
-      icon: TrendingUp,
-      color: "text-rose-600 dark:text-rose-400",
-      bg: "bg-rose-100 dark:bg-rose-500/20",
+      isPositive: expense <= prevExpense,
+      icon: ArrowUpCircle,
+      color: "text-orange-600 dark:text-orange-400",
+      bg: "bg-orange-100 dark:bg-orange-500/20",
     },
     {
-      label: "Market Receivables",
+      label: "Receivables",
       value: `₹${totalReceivables.toLocaleString()}`,
       subValue: `Pending collection`,
-      isPositive: true, // Neutral metric
+      isPositive: true,
       icon: Wallet,
       color: "text-amber-600 dark:text-amber-400",
       bg: "bg-amber-100 dark:bg-amber-500/20",
@@ -203,34 +204,34 @@ export function Dashboard() {
     return "Custom Range";
   };
 
-  return (
-    <div className="space-y-4 md:space-y-6">
-      {/* Page header */}
-      <div className="flex flex-col gap-3">
+return (
+    <div className="space-y-3 md:space-y-5">
+      {/* Page header - Compact for mobile */}
+      <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
+            <h2 className="text-base md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
               Dashboard
             </h2>
-            <p className="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
+            <p className="text-[10px] md:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
               {getRangeLabel()} overview
             </p>
           </div>
         </div>
 
-        {/* Date range pills – horizontally scrollable on mobile */}
-        <div className="flex gap-2 overflow-x-auto hide-scrollbar -mx-3 px-3 md:mx-0 md:px-0">
+        {/* Date range pills - Horizontally scrollable on mobile */}
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1 -mx-1 px-1">
           {(["today", "week", "month", "year", "custom"] as const).map((type) => (
             <button
               key={type}
               onClick={() => setDateRangeType(type)}
-              className={`shrink-0 px-4 py-2 text-sm font-medium rounded-xl transition-colors ${
+              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all active:scale-95 ${
                 dateRangeType === type
                   ? "bg-primary-600 text-white shadow-sm"
-                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                  : "bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700"
               }`}
             >
-              {type.charAt(0).toUpperCase() + type.slice(1)}
+              {type === "today" ? "Today" : type === "week" ? "Week" : type === "month" ? "Month" : type === "year" ? "Year" : "Custom"}
             </button>
           ))}
         </div>
@@ -241,46 +242,46 @@ export function Dashboard() {
               type="date"
               value={customStartDate}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomStartDate(e.target.value)}
-              className="text-sm text-zinc-700 dark:text-zinc-200 outline-none bg-transparent"
+              className="text-xs text-zinc-700 dark:text-zinc-200 outline-none bg-transparent w-full"
             />
-            <span className="text-zinc-400 dark:text-zinc-500 font-semibold text-xs">–</span>
+            <span className="text-zinc-400 dark:text-zinc-500 font-semibold text-xs shrink-0">to</span>
             <input
               type="date"
               value={customEndDate}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomEndDate(e.target.value)}
-              className="text-sm text-zinc-700 dark:text-zinc-200 outline-none bg-transparent"
+              className="text-xs text-zinc-700 dark:text-zinc-200 outline-none bg-transparent w-full"
             />
           </div>
         )}
       </div>
 
-      {/* TOP 4 KEY METRICS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+      {/* TOP 4 KEY METRICS - Dense 2x2 grid with touch feedback */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
         {stats.map((stat, i) => {
           const Icon = stat.icon;
           return (
             <div
               key={i}
-              className="bg-white dark:bg-zinc-900/40 p-4 md:p-5 rounded-2xl shadow-sm border border-zinc-200/80 dark:border-zinc-800 flex flex-col gap-2 md:gap-3 relative overflow-hidden group hover:shadow-md transition-all active:scale-[0.98]"
+              className="bg-white dark:bg-zinc-900/40 p-2.5 md:p-5 rounded-xl md:rounded-2xl shadow-sm border border-zinc-200/80 dark:border-zinc-800 flex flex-col gap-1 relative overflow-hidden active:scale-[0.98] active:shadow-inner transition-all cursor-pointer"
             >
               <div className="flex justify-between items-start">
-                <p className="text-xs md:text-sm font-medium text-zinc-500 dark:text-zinc-400 leading-tight">
+                <p className="text-[10px] md:text-sm font-semibold text-zinc-500 dark:text-zinc-400 leading-tight line-clamp-2 uppercase tracking-wide">
                   {stat.label}
                 </p>
-                <div className={`p-1.5 md:p-2 rounded-xl ${stat.bg} shrink-0`}>
-                  <Icon className={`w-4 h-4 md:w-5 md:h-5 ${stat.color}`} />
+                <div className={`p-1 rounded-lg md:rounded-xl ${stat.bg} shrink-0`}>
+                  <Icon className={`w-3.5 h-3.5 md:w-5 md:h-5 ${stat.color}`} />
                 </div>
               </div>
-              <p className="text-xl md:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
+              <p className="text-base md:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white truncate">
                 {stat.value}
               </p>
-              <p className="text-[10px] md:text-xs font-medium">
-                {stat.label !== "Market Receivables" ? (
-                  <span className={`px-1.5 py-0.5 rounded-md inline-flex items-center gap-0.5 ${stat.isPositive ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400"}`}>
-                    {stat.isPositive ? "↗" : "↘"} {stat.subValue}
-                  </span>
-                ) : (
+              <p className="text-[9px] md:text-xs font-medium leading-tight">
+                {stat.label === "Receivables" ? (
                   <span className="text-zinc-500 dark:text-zinc-400">{stat.subValue}</span>
+                ) : (
+                  <span className={`px-1 py-0.5 rounded-md inline-flex items-center gap-0.5 ${stat.isPositive ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400"}`}>
+                    {stat.isPositive ? "↑" : "↓"} {stat.subValue.split(" vs")[0]}
+                  </span>
                 )}
               </p>
             </div>
@@ -288,104 +289,103 @@ export function Dashboard() {
         })}
       </div>
 
-      {/* MIDDLE ROW: LIVE DISPATCHES & RECENT TRANSACTIONS */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pb-2">
-        {/* Live Dispatches */}
-        <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 p-4 md:p-5">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-semibold text-zinc-900 dark:text-white">
-              Live Feed: Dispatches
-            </h3>
-            <span className="text-xs font-medium bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 px-2 py-1 rounded-md">
-              Last 6 Slips
-            </span>
-          </div>
-          <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
-            {slips.slice().reverse().slice(0, 6).map((slip) => (
-              <div key={slip.id} className="bg-zinc-50 dark:bg-zinc-900/50 p-3 rounded-xl flex flex-col gap-2 border border-zinc-100 dark:border-zinc-700/50 hover:border-primary-200 dark:hover:border-primary-900/30 transition-colors group">
-                 <div className="flex justify-between items-center">
-                    <span className="font-bold text-zinc-900 dark:text-white uppercase tracking-wide text-sm">{slip.vehicleNo}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${slip.status === "Tallied" ? "bg-primary-100 text-primary-700" : slip.status === "Loaded" ? "bg-blue-100 text-blue-700" : slip.status === "Cancelled" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
-                      {slip.status}
-                    </span>
-                 </div>
-                 <div className="flex justify-between items-center text-sm">
-                    <div className="text-zinc-600 dark:text-zinc-400 font-medium text-xs">
-                       {slip.materialType} • {slip.quantity.toFixed(1)} {slip.measurementType === "Volume (Brass)" ? "Brass" : "Tons"}
-                    </div>
-                    <div className="flex items-center gap-3">
-                       <span className="font-bold text-zinc-900 dark:text-white">
-                          ₹{slip.totalAmount.toLocaleString()}
-                       </span>
-                       <button onClick={() => setPrintSlip(slip)} className="text-zinc-400 p-1.5 rounded-lg bg-white dark:bg-zinc-800 shadow-sm border border-zinc-200 dark:border-zinc-700 hover:text-primary-600 dark:hover:text-primary-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                         <Printer className="w-3.5 h-3.5" />
-                       </button>
-                    </div>
-                 </div>
-              </div>
-            ))}
-            {slips.length === 0 && (
-              <div className="text-center text-sm text-zinc-500 py-6 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl">No dispatches yet.</div>
-            )}
-          </div>
+      {/* Recent Dispatches - Full width on mobile */}
+      <div className="bg-white dark:bg-zinc-800 rounded-xl md:rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 p-2.5 md:p-5">
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="font-semibold text-zinc-900 dark:text-white text-xs md:text-sm">
+            Recent Dispatches
+          </h3>
+          <span className="text-[10px] font-semibold bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 px-2 py-0.5 rounded-lg">
+            {slips.length > 6 ? "6+" : slips.length}
+          </span>
         </div>
-
-        {/* Live Transactions */}
-        <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 p-4 md:p-5">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-semibold text-zinc-900 dark:text-white">
-              Live Feed: Transactions
-            </h3>
-            <span className="text-xs font-medium bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 px-2 py-1 rounded-md">
-              Last 6 Entries
-            </span>
-          </div>
-          <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
-            {transactions
-              .slice()
-              .reverse()
-              .slice(0, 6)
-              .map((t) => (
-                <div
-                  key={t.id}
-                  className="bg-zinc-50 dark:bg-zinc-900/50 p-3 rounded-xl flex items-center justify-between border border-zinc-100 dark:border-zinc-700/50"
-                >
-                  <div className="flex items-center space-x-3">
-                    <div
-                      className={`w-2 h-2 rounded-full shadow-sm ${t.type === "Income" ? "bg-emerald-500" : "bg-rose-500"}`}
-                    />
-                    <div>
-                      <p className="text-sm font-semibold text-zinc-900 dark:text-white">
-                        {t.category}
-                      </p>
-                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium truncate max-w-[150px] sm:max-w-[200px]">{t.description}</p>
-                    </div>
-                  </div>
-                  <div
-                    className={`text-sm font-bold flex items-center ${t.type === "Income" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
-                  >
-                    {t.type === "Income" ? "+" : "-"}₹
-                    {t.amount.toLocaleString()}
-                  </div>
+        <div className="space-y-1.5 max-h-[180px] md:max-h-[220px] overflow-y-auto">
+          {slips.slice().reverse().slice(0, 5).map((slip) => (
+            <div key={slip.id} className="bg-zinc-50 dark:bg-zinc-900/50 p-2 rounded-lg flex flex-col gap-1.5 border border-zinc-100 dark:border-zinc-700/50 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors cursor-pointer">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <Truck className="w-3 h-3 text-zinc-400 shrink-0" />
+                  <span className="font-bold text-zinc-900 dark:text-white uppercase tracking-wide text-[11px]">{slip.vehicleNo}</span>
                 </div>
-              ))}
-            {transactions.length === 0 && (
-              <p className="text-center text-sm text-zinc-500 dark:text-zinc-400 py-6 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl">
-                No transactions recorded.
-              </p>
-            )}
-          </div>
+                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-wide uppercase ${slip.status === "Tallied" ? "bg-primary-100 text-primary-700" : slip.status === "Loaded" ? "bg-blue-100 text-blue-700" : slip.status === "Cancelled" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
+                  {slip.status}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-[10px]">
+                <div className="text-zinc-500 dark:text-zinc-400 font-medium">
+                  {slip.materialType} · {slip.quantity.toFixed(1)}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-zinc-900 dark:text-white text-[11px]">
+                    ₹{slip.totalAmount.toLocaleString()}
+                  </span>
+                  <button onClick={() => setPrintSlip(slip)} className="text-zinc-400 p-1 rounded bg-white dark:bg-zinc-800 shadow-sm border border-zinc-200 dark:border-zinc-700 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                    <Printer className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+          {slips.length === 0 && (
+            <div className="text-center text-xs text-zinc-500 py-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-lg">No dispatches yet</div>
+          )}
         </div>
       </div>
 
-      {/* BOTTOM ROW: COMPANY VEHICLES */}
-      <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 p-4 md:p-5">
-        <h3 className="font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
-          <Truck className="w-4 h-4 text-zinc-400" />
-          Company Vehicles Tracking ({getRangeLabel()})
+      {/* Recent Transactions - Full width on mobile */}
+      <div className="bg-white dark:bg-zinc-800 rounded-xl md:rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 p-2.5 md:p-5">
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="font-semibold text-zinc-900 dark:text-white text-xs md:text-sm">
+            Recent Transactions
+          </h3>
+          <span className="text-[10px] font-semibold bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 px-2 py-0.5 rounded-lg">
+            {transactions.length > 6 ? "6+" : transactions.length}
+          </span>
+        </div>
+        <div className="space-y-1.5 max-h-[180px] md:max-h-[220px] overflow-y-auto">
+          {transactions
+            .reverse()
+            .slice(0, 5)
+            .map((t) => (
+              <div
+                key={t.id}
+                className="bg-zinc-50 dark:bg-zinc-900/50 p-2 rounded-lg flex items-center justify-between border border-zinc-100 dark:border-zinc-700/50"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <div
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${t.type === "Income" ? "bg-emerald-500" : "bg-rose-500"}`}
+                  />
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-zinc-900 dark:text-white truncate">
+                      {t.category}
+                    </p>
+                    <p className="text-[9px] text-zinc-400 dark:text-zinc-500">{t.type}</p>
+                  </div>
+                </div>
+                <div
+                  className={`text-[11px] font-bold flex items-center shrink-0 ${t.type === "Income" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
+                >
+                  {t.type === "Income" ? "+" : "-"}₹
+                  {t.amount.toLocaleString()}
+                </div>
+              </div>
+            ))}
+          {transactions.length === 0 && (
+            <p className="text-center text-xs text-zinc-500 dark:text-zinc-400 py-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-lg">
+              No transactions yet
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* COMPANY VEHICLES - Compact grid */}
+      <div className="bg-white dark:bg-zinc-800 rounded-xl md:rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 p-2.5 md:p-5">
+        <h3 className="font-semibold text-zinc-900 dark:text-white mb-2 flex items-center gap-2 text-xs md:text-base">
+          <Truck className="w-3 h-3 md:w-4 md:h-4 text-zinc-400" />
+          Company Vehicles
         </h3>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1.5">
           {(
             Object.entries(companyVehicleTrips) as [
               string,
@@ -394,22 +394,22 @@ export function Dashboard() {
           ).map(([vehicleNo, data]) => (
             <div
               key={vehicleNo}
-              className="flex justify-between items-center p-3 bg-zinc-50 border border-zinc-100 dark:border-zinc-700/50 dark:bg-zinc-900/50 rounded-xl"
+              className="flex justify-between items-center p-2 bg-zinc-50 border border-zinc-100 dark:border-zinc-700/50 dark:bg-zinc-900/50 rounded-lg"
             >
-              <span className="font-bold text-zinc-900 dark:text-white text-sm">{vehicleNo}</span>
+              <span className="font-bold text-zinc-900 dark:text-white text-[11px] md:text-sm">{vehicleNo}</span>
               <div className="text-right">
-                <span className="text-sm font-bold text-primary-600 dark:text-primary-400 block">
-                  {data.trips} Trips
+                <span className="text-[11px] md:text-xs font-bold text-primary-600 dark:text-primary-400 block">
+                  {data.trips}
                 </span>
-                <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                  {data.quantity.toFixed(1)} units
+                <span className="text-[8px] md:text-[9px] font-medium text-zinc-500 dark:text-zinc-400 uppercase">
+                  trips
                 </span>
               </div>
             </div>
           ))}
           {Object.keys(companyVehicleTrips).length === 0 && (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400 py-3 col-span-full">
-              No company vehicle trips recorded in this period.
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 py-2 col-span-full">
+              No trips recorded
             </p>
           )}
         </div>

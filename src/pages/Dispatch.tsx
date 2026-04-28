@@ -39,30 +39,72 @@ export function Dispatch() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   // Filters
+  const [filterDate, setFilterDate] = useState("");
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterMaterial, setFilterMaterial] = useState("All");
   const [filterDeliveryMode, setFilterDeliveryMode] = useState("All");
   const [filterCustomer, setFilterCustomer] = useState("All");
+  const [filterVehicle, setFilterVehicle] = useState("");
+
+  const quickDateFilter = (period: "today" | "week" | "month") => {
+    const today = new Date();
+    if (period === "today") {
+      setFilterDate(today.toISOString().split('T')[0]);
+      setFilterStartDate("");
+      setFilterEndDate("");
+    } else if (period === "week") {
+      const startOfWeek = new Date(today);
+      startOfWeek.setDate(today.getDate() - today.getDay());
+      setFilterStartDate(startOfWeek.toISOString().split('T')[0]);
+      setFilterEndDate("");
+      setFilterDate("");
+    } else if (period === "month") {
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      setFilterStartDate(startOfMonth.toISOString().split('T')[0]);
+      setFilterEndDate("");
+      setFilterDate("");
+    }
+  };
 
   const hasActiveFilters =
+    filterDate ||
     filterStartDate ||
     filterEndDate ||
     filterMaterial !== "All" ||
     filterCustomer !== "All" ||
-    filterDeliveryMode !== "All";
+    filterDeliveryMode !== "All" ||
+    filterVehicle.trim() !== "";
 
   const clearFilters = () => {
+    setFilterDate("");
     setFilterStartDate("");
     setFilterEndDate("");
     setFilterMaterial("All");
     setFilterCustomer("All");
     setFilterDeliveryMode("All");
+    setFilterVehicle("");
+  };
+
+  const getActiveFilterCount = () => {
+    let count = 0;
+    if (filterDate || filterStartDate || filterEndDate) count++;
+    if (filterMaterial !== "All") count++;
+    if (filterCustomer !== "All") count++;
+    if (filterDeliveryMode !== "All") count++;
+    if (filterVehicle.trim() !== "") count++;
+    return count;
   };
 
   const filteredSlips = slips
     .filter((s) => {
       if (activeTab === "pending" && s.status !== "Pending") return false;
+      
+      // Vehicle search
+      if (filterVehicle.trim() && !s.vehicleNo.toLowerCase().includes(filterVehicle.trim().toLowerCase())) {
+        return false;
+      }
+      
       if (filterMaterial !== "All" && s.materialType !== filterMaterial)
         return false;
       if (
@@ -72,113 +114,191 @@ export function Dispatch() {
         return false;
       if (filterCustomer !== "All" && s.customerId !== filterCustomer)
         return false;
-      if (filterStartDate && new Date(s.date) < new Date(filterStartDate))
-        return false;
-      if (filterEndDate) {
-        const end = new Date(filterEndDate);
-        end.setHours(23, 59, 59, 999);
-        if (new Date(s.date) > end) return false;
+      
+      // Single date filter
+      if (filterDate) {
+        const slipDate = new Date(s.date).toISOString().split('T')[0];
+        if (slipDate !== filterDate) return false;
+      }
+      // Date range filter
+      else {
+        if (filterStartDate && new Date(s.date) < new Date(filterStartDate))
+          return false;
+        if (filterEndDate) {
+          const end = new Date(filterEndDate);
+          end.setHours(23, 59, 59, 999);
+          if (new Date(s.date) > end) return false;
+        }
       }
       return true;
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const filterPanel = (
-    <div className="p-4 md:p-6 space-y-4">
-      <div className="grid grid-cols-2 gap-3">
+    <div className="p-3 md:p-4 space-y-3">
+      {/* Quick Date Filters */}
+      <div>
+        <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5 block">
+          Quick Dates
+        </label>
+        <div className="flex gap-1.5 flex-wrap">
+          <button
+            onClick={() => quickDateFilter("today")}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              filterDate === new Date().toISOString().split('T')[0]
+                ? "bg-primary-500 text-white"
+                : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            }`}
+          >
+            Today
+          </button>
+          <button
+            onClick={() => quickDateFilter("week")}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              filterStartDate && !filterDate
+                ? "bg-primary-500 text-white"
+                : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            }`}
+          >
+            This Week
+          </button>
+          <button
+            onClick={() => quickDateFilter("month")}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              filterStartDate && new Date(filterStartDate).getDate() === 1 && !filterDate
+                ? "bg-primary-500 text-white"
+                : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            }`}
+          >
+            This Month
+          </button>
+          <button
+            onClick={() => { clearFilters(); }}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              !hasActiveFilters
+                ? "bg-primary-500 text-white"
+                : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            }`}
+          >
+            All
+          </button>
+        </div>
+      </div>
+
+      {/* Date Range */}
+      <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5 block">
+          <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
             From Date
           </label>
           <input
             type="date"
             value={filterStartDate}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilterStartDate(e.target.value)}
-            className="w-full text-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-xl px-3 py-2.5 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFilterStartDate(e.target.value); setFilterDate(""); }}
+            className="w-full text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg px-2 py-1.5 outline-none focus:border-primary-500"
           />
         </div>
         <div>
-          <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5 block">
+          <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
             To Date
           </label>
           <input
             type="date"
             value={filterEndDate}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilterEndDate(e.target.value)}
-            className="w-full text-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-xl px-3 py-2.5 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+            className="w-full text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg px-2 py-1.5 outline-none focus:border-primary-500"
           />
         </div>
       </div>
+
+      {/* Vehicle Search */}
       <div>
-        <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5 block">
-          Material
+        <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
+          Vehicle Number
         </label>
-        <select
-          value={filterMaterial}
-          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterMaterial(e.target.value)}
-          className="w-full text-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-xl px-3 py-2.5 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-        >
-          <option value="All">All Materials</option>
-          {(companySettings.materials || []).map((m: { id?: string; name: string }) => (
-            <option key={m.id || m.name} value={m.name}>
-              {m.name}
-            </option>
-          ))}
-        </select>
+        <input
+          type="text"
+          value={filterVehicle}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilterVehicle(e.target.value)}
+          placeholder="Search vehicle..."
+          className="w-full text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg px-2 py-1.5 outline-none focus:border-primary-500"
+        />
       </div>
-      <div>
-        <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5 block">
-          Customer
-        </label>
-        <select
-          value={filterCustomer}
-          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterCustomer(e.target.value)}
-          className="w-full text-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-xl px-3 py-2.5 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-        >
-          <option value="All">All Customers</option>
-          <option value="CASH">Cash Sale</option>
-          {customers.map((c: { id: string; name: string }) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
+            Material
+          </label>
+          <select
+            value={filterMaterial}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterMaterial(e.target.value)}
+            className="w-full text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg px-2 py-1.5 outline-none focus:border-primary-500"
+          >
+            <option value="All">All</option>
+            {(companySettings.materials || []).map((m: { id?: string; name: string }) => (
+              <option key={m.id || m.name} value={m.name}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
+            Customer
+          </label>
+          <select
+            value={filterCustomer}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterCustomer(e.target.value)}
+            className="w-full text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg px-2 py-1.5 outline-none focus:border-primary-500"
+          >
+            <option value="All">All</option>
+            <option value="CASH">Cash</option>
+            {customers.map((c: { id: string; name: string }) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
+
       <div>
-        <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1.5 block">
+        <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
           Delivery Mode
         </label>
         <select
           value={filterDeliveryMode}
           onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterDeliveryMode(e.target.value)}
-          className="w-full text-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-xl px-3 py-2.5 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+          className="w-full text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg px-2 py-1.5 outline-none focus:border-primary-500"
         >
-          <option value="All">All Modes</option>
-          <option value="Company Vehicle">Own Vehicle</option>
+          <option value="All">All</option>
+          <option value="Company Vehicle">Own</option>
           <option value="Third-Party Vehicle">Third-Party</option>
         </select>
       </div>
+      
       {hasActiveFilters && (
         <button
-          onClick={() => { clearFilters(); setIsFilterOpen(false); }}
-          className="w-full py-2.5 text-sm font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 rounded-xl hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors"
+          onClick={() => { clearFilters(); }}
+          className="w-full py-2 text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors"
         >
-          Clear All Filters
+          Clear Filter{getActiveFilterCount() > 1 ? 's' : ''} ({getActiveFilterCount()})
         </button>
       )}
     </div>
   );
 
   return (
-    <div className="space-y-4">
-      {/* Page header */}
+    <div className="space-y-3">
+      {/* Page header - Compact for mobile */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
-            Dispatch & Slips
+            Dispatch
           </h2>
-          <p className="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-            Manage vehicle dispatches and measurements.
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+            {filteredSlips.length} slip{filteredSlips.length !== 1 ? 's' : ''}
           </p>
         </div>
         {/* Desktop create button */}
@@ -191,47 +311,48 @@ export function Dispatch() {
         </button>
       </div>
 
-      {/* Tab bar + filter button */}
-      <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-700 shadow-sm overflow-hidden">
-        <div className="flex items-center border-b border-zinc-100 dark:border-zinc-700 px-4">
+      {/* Tab bar + filter button - Compact */}
+      <div className="bg-white dark:bg-zinc-900 rounded-xl md:rounded-2xl border border-zinc-200 dark:border-zinc-700 shadow-sm overflow-hidden">
+        <div className="flex items-center border-b border-zinc-100 dark:border-zinc-700 px-3 md:px-4">
           {(["all", "pending"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={cn(
-                "py-3 px-1 mr-5 text-sm font-medium border-b-2 transition-colors",
+                "py-2.5 md:py-3 px-2 mr-3 md:mr-5 text-sm font-medium border-b-2 transition-colors",
                 activeTab === tab
                   ? "border-primary-600 text-primary-600 dark:text-primary-400"
                   : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200",
               )}
             >
-              {tab === "all" ? "All Slips" : "Pending"}
+              {tab === "all" ? "All" : "Pending"}
+              <span className="ml-1.5 text-[10px] bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-full">
+                {tab === "all" ? filteredSlips.length : filteredSlips.filter(s => s.status === "Pending").length}
+              </span>
             </button>
           ))}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-1">
             {hasActiveFilters && (
               <button
                 onClick={clearFilters}
-                className="text-xs text-rose-500 font-medium flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+                className="text-xs text-rose-500 font-medium flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
               >
                 <X className="w-3 h-3" />
-                Clear
               </button>
             )}
             <button
               onClick={() => setIsFilterOpen(true)}
               className={cn(
-                "flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-xl transition-colors",
+                "flex items-center gap-1.5 text-sm font-medium px-2.5 py-2 rounded-lg transition-colors relative",
                 hasActiveFilters
                   ? "bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400"
                   : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800",
               )}
             >
               <Filter className="w-4 h-4" />
-              <span className="hidden sm:inline">Filter</span>
-              {hasActiveFilters && (
-                <span className="w-4 h-4 rounded-full bg-primary-600 text-white text-[10px] flex items-center justify-center font-bold">
-                  !
+              {getActiveFilterCount() > 0 && (
+                <span className="absolute -top-1 -right-1 bg-primary-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
+                  {getActiveFilterCount()}
                 </span>
               )}
             </button>
@@ -239,39 +360,65 @@ export function Dispatch() {
         </div>
 
         {/* Desktop inline filters */}
-        <div className="hidden md:flex flex-wrap gap-3 items-end px-4 py-3 bg-zinc-50 dark:bg-zinc-900/50 border-b border-zinc-100 dark:border-zinc-700">
+        <div className="hidden md:flex flex-wrap gap-2 items-end px-3 py-2 bg-zinc-50 dark:bg-zinc-900/50 border-b border-zinc-100 dark:border-zinc-700">
+          {/* Quick Dates */}
+          <div className="flex gap-1">
+            <button
+              onClick={() => quickDateFilter("today")}
+              className={`px-2 py-1 text-[10px] font-medium rounded transition-colors ${
+                filterDate === new Date().toISOString().split('T')[0]
+                  ? "bg-primary-500 text-white"
+                  : "bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-300 dark:hover:bg-zinc-600"
+              }`}
+            >
+              Today
+            </button>
+            <button
+              onClick={() => quickDateFilter("week")}
+              className={`px-2 py-1 text-[10px] font-medium rounded transition-colors ${
+                filterStartDate && !filterDate
+                  ? "bg-primary-500 text-white"
+                  : "bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-300 dark:hover:bg-zinc-600"
+              }`}
+            >
+              Week
+            </button>
+            <button
+              onClick={() => quickDateFilter("month")}
+              className={`px-2 py-1 text-[10px] font-medium rounded transition-colors ${
+                filterStartDate && new Date(filterStartDate).getDate() === 1 && !filterDate
+                  ? "bg-primary-500 text-white"
+                  : "bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-300 dark:hover:bg-zinc-600"
+              }`}
+            >
+              Month
+            </button>
+          </div>
+
+          <div className="h-4 w-px bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
           <div>
-            <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
-              From
+            <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-0.5 block">
+              Vehicle
             </label>
             <input
-              type="date"
-              value={filterStartDate}
-              onChange={(e) => setFilterStartDate(e.target.value)}
-              className="text-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg px-3 py-2 outline-none focus:border-primary-500"
+              type="text"
+              value={filterVehicle}
+              onChange={(e) => setFilterVehicle(e.target.value)}
+              placeholder="Search..."
+              className="text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded px-2 py-1.5 outline-none focus:border-primary-500 w-24"
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
-              To
-            </label>
-            <input
-              type="date"
-              value={filterEndDate}
-              onChange={(e) => setFilterEndDate(e.target.value)}
-              className="text-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg px-3 py-2 outline-none focus:border-primary-500"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
+            <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-0.5 block">
               Material
             </label>
             <select
               value={filterMaterial}
               onChange={(e) => setFilterMaterial(e.target.value)}
-              className="text-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg px-3 py-2 outline-none focus:border-primary-500"
+              className="text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded px-2 py-1.5 outline-none focus:border-primary-500"
             >
-              <option value="All">All Materials</option>
+              <option value="All">All</option>
               {(companySettings.materials || []).map((m) => (
                 <option key={m.id || m.name} value={m.name}>
                   {m.name}
@@ -280,16 +427,16 @@ export function Dispatch() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
+            <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-0.5 block">
               Customer
             </label>
             <select
               value={filterCustomer}
               onChange={(e) => setFilterCustomer(e.target.value)}
-              className="text-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg px-3 py-2 outline-none focus:border-primary-500 max-w-[180px]"
+              className="text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded px-2 py-1.5 outline-none focus:border-primary-500 max-w-[140px]"
             >
-              <option value="All">All Customers</option>
-              <option value="CASH">Cash Sale</option>
+              <option value="All">All</option>
+              <option value="CASH">Cash</option>
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -298,23 +445,23 @@ export function Dispatch() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
+            <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-0.5 block">
               Delivery
             </label>
             <select
               value={filterDeliveryMode}
               onChange={(e) => setFilterDeliveryMode(e.target.value)}
-              className="text-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg px-3 py-2 outline-none focus:border-primary-500"
+              className="text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded px-2 py-1.5 outline-none focus:border-primary-500"
             >
-              <option value="All">All Modes</option>
-              <option value="Company Vehicle">Own Vehicle</option>
-              <option value="Third-Party Vehicle">Third-Party</option>
+              <option value="All">All</option>
+              <option value="Company Vehicle">Own</option>
+              <option value="Third-Party Vehicle">Third</option>
             </select>
           </div>
           {hasActiveFilters && (
             <button
               onClick={clearFilters}
-              className="text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 px-3 py-2"
+              className="text-xs text-rose-500 hover:text-rose-600 px-2 py-1.5"
             >
               Clear
             </button>
@@ -322,7 +469,7 @@ export function Dispatch() {
         </div>
 
         {/* Content area */}
-        <div className="p-3 md:p-5">
+        <div className="p-2 md:p-5">
           {/* ── Mobile card list ── */}
           <div
             className={cn(
@@ -332,100 +479,71 @@ export function Dispatch() {
             )}
           >
             {filteredSlips.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-zinc-400 dark:text-zinc-600">
-                <Truck className="w-10 h-10 mb-3 opacity-40" />
-                <p className="text-sm font-medium">No slips found.</p>
+              <div className="flex flex-col items-center justify-center py-12 text-zinc-400 dark:text-zinc-600">
+                <Truck className="w-10 h-10 mb-3 opacity-30" />
+                <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">No dispatch slips found</p>
+                <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1 text-center">Create your first slip to get started</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {filteredSlips.map((slip) => {
                   const cust = customers.find((c) => c.id === slip.customerId);
                   return (
                     <div
                       key={slip.id}
-                      className="bg-zinc-50 dark:bg-zinc-800/60 rounded-2xl border border-zinc-200 dark:border-zinc-700 overflow-hidden"
+                      className="bg-zinc-50 dark:bg-zinc-800/60 rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden active:bg-zinc-100 dark:active:bg-zinc-700/50 transition-colors"
                     >
-                      {/* Card header */}
-                      <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700/50">
-                        <div className="flex items-center gap-2.5 min-w-0">
+                      {/* Compact header - inline layout */}
+                      <div className="flex items-center justify-between px-3 py-2.5 bg-white dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700/50">
+                        <div className="flex items-center gap-2 min-w-0">
                           <Truck className="w-4 h-4 text-zinc-400 shrink-0" />
-                          <span className="font-bold text-zinc-900 dark:text-white uppercase tracking-wide text-sm truncate">
+                          <span className="font-bold text-zinc-900 dark:text-white uppercase tracking-wide text-xs truncate">
                             {slip.vehicleNo}
                           </span>
-                          <span className="text-xs text-zinc-400 dark:text-zinc-500 shrink-0">
-                            #{slip.id}
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${statusStyle(slip.status)}`}>
+                            {slip.status}
                           </span>
                         </div>
-                        <span
-                          className={cn(
-                            "px-2.5 py-1 rounded-full text-xs font-semibold shrink-0",
-                            statusStyle(slip.status),
-                          )}
-                        >
-                          {slip.status}
+                        <span className="font-bold text-primary-600 dark:text-primary-400 text-sm">
+                          ₹{slip.totalAmount.toLocaleString()}
                         </span>
                       </div>
 
-                      {/* Card body */}
-                      <div className="px-4 py-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
-                        <div>
-                          <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide">
-                            Customer
-                          </p>
-                          <p className="text-sm font-medium text-zinc-900 dark:text-white truncate">
-                            {slip.customerId === "CASH"
-                              ? "Cash Sale"
-                              : cust?.name ?? "—"}
+                      {/* Compact body - horizontal layout */}
+                      <div className="px-3 py-2.5 bg-white dark:bg-zinc-800 grid grid-cols-3 gap-3 text-[11px]">
+                        <div className="min-w-0">
+                          <p className="text-zinc-400 font-medium text-[9px] uppercase tracking-wide">Customer</p>
+                          <p className="font-semibold text-zinc-900 dark:text-white truncate">
+                            {slip.customerId === "CASH" ? "Cash" : cust?.name?.slice(0, 12) ?? "—"}
                           </p>
                         </div>
                         <div>
-                          <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide">
-                            Material
-                          </p>
-                          <p className="text-sm font-medium text-zinc-900 dark:text-white">
-                            {slip.materialType}
+                          <p className="text-zinc-400 font-medium text-[9px] uppercase tracking-wide">Material</p>
+                          <p className="font-semibold text-zinc-900 dark:text-white truncate">
+                            {slip.materialType?.slice(0, 12)}
                           </p>
                         </div>
                         <div>
-                          <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide">
-                            Qty
-                          </p>
-                          <p className="text-sm font-medium text-zinc-900 dark:text-white">
-                            {slip.quantity.toFixed(2)}{" "}
-                            {slip.measurementType === "Volume (Brass)"
-                              ? "Brass"
-                              : "Tons"}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide">
-                            Amount
-                          </p>
-                          <p className="text-sm font-bold text-zinc-900 dark:text-white">
-                            ₹{slip.totalAmount.toLocaleString()}
+                          <p className="text-zinc-400 font-medium text-[9px] uppercase tracking-wide">Quantity</p>
+                          <p className="font-semibold text-zinc-900 dark:text-white">
+                            {slip.quantity.toFixed(1)}
                           </p>
                         </div>
                       </div>
 
-                      {/* Card footer – actions */}
-                      <div className="flex items-center gap-2 px-4 py-2.5 border-t border-zinc-100 dark:border-zinc-700/50 bg-white dark:bg-zinc-800">
+                      {/* Compact actions - horizontal */}
+                      <div className="flex items-center gap-1.5 px-2 py-2 border-t border-zinc-100 dark:border-zinc-700/50 bg-zinc-50 dark:bg-zinc-800/50">
                         {slip.status === "Pending" && (
                           <>
                             <button
-                              onClick={() =>
-                                updateSlipStatus(slip.id, "Loaded")
-                              }
-                              className="flex-1 py-2 text-xs font-semibold bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors active:scale-95"
+                              onClick={() => updateSlipStatus(slip.id, "Loaded")}
+                              className="flex-1 py-2.5 text-[12px] font-semibold bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 rounded-lg hover:bg-blue-100 active:scale-[0.98] transition-all"
                             >
-                              Mark Loaded
+                              Load
                             </button>
                             <button
-                              onClick={() =>
-                                window.confirm(
-                                  "Cancel this slip?",
-                                ) && updateSlipStatus(slip.id, "Cancelled")
-                              }
-                              className="p-2 text-zinc-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors active:scale-95"
+                              onClick={() => window.confirm("Cancel?") && updateSlipStatus(slip.id, "Cancelled")}
+                              className="p-2.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 active:scale-95 transition-all"
                               title="Cancel"
                             >
                               <Ban className="w-4 h-4" />
@@ -434,24 +552,22 @@ export function Dispatch() {
                         )}
                         {slip.status === "Loaded" && (
                           <button
-                            onClick={() =>
-                              updateSlipStatus(slip.id, "Tallied")
-                            }
-                            className="flex-1 py-2 text-xs font-semibold bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400 rounded-xl hover:bg-primary-100 transition-colors active:scale-95"
+                            onClick={() => updateSlipStatus(slip.id, "Tallied")}
+                            className="flex-1 py-2.5 text-[12px] font-semibold bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400 rounded-lg hover:bg-primary-100 active:scale-[0.98] transition-all"
                           >
                             Tally
                           </button>
                         )}
                         <button
                           onClick={() => setEditingSlip(slip)}
-                          className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors active:scale-95"
+                          className="p-2.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
                           title="Edit"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => setPrintSlip(slip)}
-                          className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors active:scale-95"
+                          className="p-2.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
                           title="Print"
                         >
                           <Printer className="w-4 h-4" />
@@ -625,13 +741,13 @@ export function Dispatch() {
         </div>
       </div>
 
-      {/* ── Mobile FAB ── */}
+      {/* ── Mobile FAB ── Optimized for thumb zone with safe area */}
       <button
         onClick={() => setIsCreateOpen(true)}
-        className="md:hidden fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-30 w-14 h-14 rounded-full bg-primary-600 text-white shadow-lg hover:bg-primary-700 flex items-center justify-center active:scale-95 transition-all"
+        className="md:hidden fixed right-4 bottom-[calc(64px+env(safe-area-inset-bottom))] w-14 h-14 bg-primary-600 text-white hover:bg-primary-700 active:scale-90 shadow-lg shadow-primary-500/30 flex items-center justify-center rounded-full z-50"
         aria-label="Create Slip"
       >
-        <Plus className="w-6 h-6" />
+        <Plus className="w-7 h-7" />
       </button>
 
       {/* ── Filter bottom sheet (mobile) ── */}
@@ -648,7 +764,8 @@ export function Dispatch() {
       <MobileModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        title="New Dispatch Slip"
+        title="New Slip"
+        maxWidth="max-w-xs"
       >
         <CreateSlipForm onSuccess={() => setIsCreateOpen(false)} />
       </MobileModal>

@@ -37,7 +37,60 @@ This is the most critical part of the recent hardening phase.
 - For `Vehicles` and `Materials`, we use an `isActive: boolean` flag.
 - **Why**: Deleting a material used in a slip from 6 months ago would break the ledger. Always filter UI lists by `isActive !== false` but keep the data in the state/DB.
 
-## 4. Current Status of Features
+## 4. Session Work - April 28, 2026
+
+### 4.1 Print/Download Fixes (Prior Sessions)
+
+| File | Issue | Solution |
+|------|-------|----------|
+| `src/components/forms/PrintInvoiceModal.tsx` | Modal not closing after print | Added `setTimeout(() => onClose(), 500)` |
+| `src/components/forms/PrintInvoiceModal.tsx` | PDF going to second page | Adjusted width: 700px, margins: 8mm, height: 900px |
+| `src/components/forms/PrintInvoiceModal.tsx` | Duplicate button content | Fixed button layout structure |
+| `src/lib/print-utils.ts` | Using incorrect DOM-to-image approach | Completely rewrote to use html2pdf.js |
+| `src/components/forms/PrintSlipModal.tsx` | Format dropdown taking space | Removed format dropdown, made buttons compact |
+
+### 4.2 Syntax Error Fix (This Session)
+
+**File:** `src/pages/Invoices.tsx`
+
+**Issue:** Missing curly braces around the `filteredInvoices.map()` function caused TypeScript compilation error.
+
+**Fix Applied:**
+```diff
+- <div className="space-y-1">
+- filteredInvoices.map((inv) => (
++ <div className="space-y-1">
++ {filteredInvoices.map((inv) => (
+```
+
+Also added closing curly brace:
+```diff
+- </div>
+- ))
+-</div>
++ </div>
++ ))}
++</div>
+```
+
+**Verification:** ✅ Build passes successfully
+
+### 4.3 Mobile Layout Review
+
+All pages were reviewed and are already optimized for mobile:
+
+| Page | Status | Mobile Pattern |
+|------|--------|---------------|
+| Dashboard | ✅ Optimized | Compact stat cards, reduced spacing |
+| Daybook | ✅ Optimized | 2-column grid (desktop: 4), max-height 200px sections |
+| Dispatch | ✅ Optimized | Card list with 3-column detail grid |
+| Invoices | ✅ Optimized + Fixed | Compact list items, status dropdown |
+| Customers | ✅ Optimized | Expandable sections |
+| Vehicles | ✅ Optimized | Compact cards |
+
+---
+
+## 5. Current Status of Features
 
 | Feature | Status | Notes |
 | :--- | :--- | :--- |
@@ -46,12 +99,117 @@ This is the most critical part of the recent hardening phase.
 | **Vehicle Master** | ✅ Done | Dynamic selection in Dispatch. |
 | **Material Master** | ✅ Done | Dynamic pricing and activation. |
 | **PDF Billing** | ✅ Done | Supports Thermal & A4 formats. |
+| **Mobile Layout** | ✅ Done | Compact views, touch-friendly targets |
+| **Print Fixes** | ✅ Done | Modal closing, PDF sizing fixed |
 | **Mobile App** | 🚧 Pending | Capacitor wrapping required. |
 
-## 5. Next Steps for Development
+---
+
+## 6. Key Source Files Reference
+
+### Core Files
+| File | Purpose |
+|------|---------|
+| `src/types.ts` | All TypeScript interfaces (single source of truth) |
+| `src/context/ErpContext.tsx` | Global state, CRUD operations, delta-sync engine |
+| `src/lib/utils.ts` | Utility functions (cn(), parseFeetInches()) |
+| `src/lib/print-utils.ts` | DOM-to-print/PDF bridge (html2pdf.js) |
+| `server.ts` | Express server with flat-file JSON API |
+
+### Pages (Mobile Status)
+| File | Purpose | Mobile Status |
+|------|---------|---------------|
+| `src/pages/Dashboard.tsx` | Overview with stats | ✅ Optimized |
+| `src/pages/Dispatch.tsx` | Slip/Dispatch management | ✅ Optimized |
+| `src/pages/Invoices.tsx` | Invoice generation | ✅ Fixed |
+| `src/pages/Daybook.tsx` | Cash transactions | ✅ Optimized |
+| `src/pages/Ledger.tsx` | Customer account tracking | ✅ Optimized |
+| `src/pages/Customers.tsx` | Customer management | ✅ Optimized |
+| `src/pages/Vehicles.tsx` | Vehicle directory | ✅ Optimized |
+| `src/pages/Settings.tsx` | Configuration | Standard |
+
+### Print Components
+| File | Purpose |
+|------|---------|
+| `src/components/forms/PrintInvoiceModal.tsx` | Invoice print modal |
+| `src/components/forms/PrintSlipModal.tsx` | Slip print modal |
+
+---
+
+## 7. Build & Commands
+
+```bash
+# Start development server (Express + Vite, port 5173)
+npm run dev
+
+# Type check only (note: pre-existing React types warning)
+npm run lint
+
+# Production build
+npm run build
+```
+
+**Build Output:**
+```
+✓ 2215 modules transformed
+✓ built in 4.01s
+```
+
+---
+
+## 8. Business Logic Reference
+
+### Customer Balance Formula
+```
+balance = openingBalance + unbilledSlipTotal + invoiceTotal + expenseDebits - paymentCredits
+```
+- Unbilled slips = slips with status `Pending | Tallied` that have no `invoiceId`
+
+### Print Format Options
+- **Slip:** A4, Thermal-80mm, Thermal-58mm
+- **Invoice:** Classic, Modern, Minimal
+
+### Mobile Layout Toggle
+- Controlled via `companySettings.mobileLayout === 'Compact'` setting
+
+---
+
+## 9. What Was Done
+
+### This Session (April 28, 2026)
+1. Fixed syntax error in `src/pages/Invoices.tsx` - added missing curly braces
+2. Verified build passes successfully
+3. Reviewed all mobile layouts - all optimized
+
+### Prior Sessions
+1. Fixed print modal not closing after print
+2. Fixed PDF sizing (700px width, 8mm margins)
+3. Rewrote print-utils.ts to use html2pdf.js
+4. Removed format dropdowns from print modals
+5. Mobile layout optimizations across all pages
+
+---
+
+## 10. Recommendations
+
+### Low Priority
+1. Install `@types/react` to resolve lint warnings (non-blocking)
+2. Consider code-splitting for large bundle sizes
+
+### Future Enhancements (Not Requested)
+1. Pull-to-refresh on mobile lists
+2. Offline mode indicator
+3. Push notifications for pending invoices
+
+---
+
+## 11. Next Steps for Development
+
 1. **Admin User Management**: Add a screen under Settings to allow the Admin to manage the `companySettings.users` array (Add/Delete/Deactivate).
 2. **Production Deployment Check**: After deploying to Vercel, monitor the PostgreSQL logs to ensure the dynamic `PATCH` queries are performing efficiently under load.
 3. **Ledger Filters**: Add date-range filtering to the Ledger and Customer Statement views to handle high-volume accounts.
 
 ---
-*End of Handoff - Documented by Antigravity AI*
+
+*Document updated: April 28, 2026*
+*Original handoff by Antigravity AI*

@@ -113,7 +113,7 @@ export function Layout() {
   }
 
   return (
-    <div className="flex h-screen bg-zinc-50 dark:bg-zinc-900 transition-colors duration-200 font-sans">
+    <div className="flex h-screen bg-zinc-50 dark:bg-zinc-900 transition-colors duration-200 font-sans overflow-hidden">
       <Sidebar
         currentView={currentView}
         onChangeView={setCurrentView}
@@ -122,7 +122,7 @@ export function Layout() {
       />
       <div className="flex-1 flex flex-col overflow-hidden w-full relative min-w-0">
         <Header onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:p-6 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-6">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-4 lg:p-6 pb-20 md:pb-6 app-content no-pull smooth-scroll has-bottom-nav">
           {content}
         </main>
       </div>

@@ -6,11 +6,11 @@ import { openPdfBackend, downloadPdfBackend } from "../../lib/print-utils";
 
 export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => void }) {
   const { companySettings, customers } = useErp();
-  const [format, setFormat] = useState(companySettings.slipFormat || "Thermal-80mm");
+  const [format, setFormat] = useState(companySettings.slipFormat || "Thermal-58mm");
   
-  let printWidthClass = "max-w-sm"; // default for 80mm
+  let printWidthClass = "max-w-[260px]"; // reduced for 80mm
   if (format === "A4") printWidthClass = "max-w-3xl";
-  if (format === "Thermal-58mm") printWidthClass = "max-w-[58mm] text-[10px]";
+  if (format === "Thermal-58mm") printWidthClass = "max-w-[200px] text-[9px]";
 
   return (
     <div className="fixed inset-0 bg-zinc-900/80 flex items-center justify-center md:p-4 z-50 overflow-hidden">
@@ -28,8 +28,8 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
         <div className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-900 p-4">
           <div
             id="print-area"
-            className="text-black bg-white mx-auto relative p-4 md:p-6"
-            style={{ width: format === 'A4' ? '794px' : (format === 'Thermal-58mm' ? '220px' : '300px') }}
+            className="text-black bg-white mx-auto relative p-2 md:p-4"
+            style={{ width: format === 'A4' ? '794px' : (format === 'Thermal-58mm' ? '180px' : '240px') }}
           >
             <style dangerouslySetInnerHTML={{ __html: `
             @media print {
@@ -39,155 +39,145 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
               }
             }
           `}} />
-          <div className="text-center mb-4 border-b-2 border-black pb-3" style={format === 'A4' ? { borderColor: '#10b981' } : undefined}>
+          <div className="text-center mb-2 border-b border-black pb-2" style={format === 'A4' ? { borderColor: '#10b981' } : undefined}>
             {companySettings.logo && (
-               <img src={companySettings.logo} alt="Logo" className={`${format === 'A4' ? 'h-16' : 'h-10'} object-contain mx-auto mb-2 grayscale`} />
+               <img src={companySettings.logo} alt="Logo" className={`${format === 'A4' ? 'h-16' : 'h-8'} object-contain mx-auto mb-1 grayscale`} />
             )}
-            <h1 className={`${format === 'A4' ? 'text-4xl' : 'text-xl'} font-bold uppercase tracking-wider print:text-2xl`}>
+            <h1 className={`${format === 'A4' ? 'text-4xl' : 'text-sm'} font-bold uppercase tracking-wider print:text-2xl`}>
               {companySettings.name || "CrushTrack"}
             </h1>
-            <p className="text-[11px] md:text-sm font-medium mt-1">
+            <p className="text-[9px] md:text-sm font-medium mt-0.5">
               {companySettings.address || "Stone Crushing & Minerals"}
             </p>
-            <p className="text-[10px] md:text-xs mt-1 font-mono bg-black text-white inline-block px-2 py-0.5 uppercase">
-              Gate Pass / Loading Token
+            <p className="text-[8px] md:text-xs mt-1 font-mono bg-black text-white inline-block px-1.5 py-0.5 uppercase">
+              Gate Pass
             </p>
           </div>
 
-          <table className={`w-full font-mono mt-4 mb-4 border-collapse border border-black ${format === 'Thermal-58mm' ? 'text-[9px]' : 'text-[11px] md:text-xs'}`}>
+          <table className={`w-full font-mono mt-2 mb-2 border-collapse border border-black ${format === 'Thermal-58mm' ? 'text-[8px]' : 'text-[10px] md:text-xs'}`}>
             <tbody>
               <tr>
-                <td className="border border-black p-1.5 font-bold">Token ID</td>
-                <td className="border border-black p-1.5">#{slip.id.toUpperCase()}</td>
+                <td className="border border-black p-1 font-bold">Token</td>
+                <td className="border border-black p-1">#{slip.id.toUpperCase().slice(0,6)}</td>
               </tr>
               <tr>
-                <td className="border border-black p-1.5 font-bold">Date & Time</td>
-                <td className="border border-black p-1.5">{new Date(slip.date).toLocaleString()}</td>
+                <td className="border border-black p-1 font-bold">Date</td>
+                <td className="border border-black p-1">{new Date(slip.date).toLocaleDateString()}</td>
               </tr>
               <tr>
-                <td className="border border-black p-1.5 font-bold">Vehicle No</td>
-                <td className="border border-black p-1.5 font-bold">{slip.vehicleNo}</td>
+                <td className="border border-black p-1 font-bold">Vehicle</td>
+                <td className="border border-black p-1 font-bold">{slip.vehicleNo}</td>
               </tr>
               {slip.driverName && (
                 <tr>
-                  <td className="border border-black p-1.5 font-bold">Driver</td>
-                  <td className="border border-black p-1.5 font-bold">
-                    {slip.driverName} {slip.driverPhone && `(${slip.driverPhone})`}
+                  <td className="border border-black p-1 font-bold">Driver</td>
+                  <td className="border border-black p-1 font-bold">
+                    {slip.driverName}{slip.driverPhone ? ` (${slip.driverPhone.slice(-4)})` : ''}
                   </td>
                 </tr>
               )}
               {slip.operatorName && (
                 <tr>
-                  <td className="border border-black p-1.5 font-bold">Operator</td>
-                  <td className="border border-black p-1.5">{slip.operatorName}</td>
+                  <td className="border border-black p-1 font-bold">Operator</td>
+                  <td className="border border-black p-1">{slip.operatorName}</td>
                 </tr>
               )}
               {slip.loaderName && (
                 <tr>
-                  <td className="border border-black p-1.5 font-bold">Loader</td>
-                  <td className="border border-black p-1.5">{slip.loaderName}</td>
+                  <td className="border border-black p-1 font-bold">Loader</td>
+                  <td className="border border-black p-1">{slip.loaderName}</td>
                 </tr>
               )}
               <tr>
-                <td className="border border-black p-1.5 font-bold">Customer</td>
-                <td className="border border-black p-1.5 font-bold">
+                <td className="border border-black p-1 font-bold">Customer</td>
+                <td className="border border-black p-1 font-bold">
                   {
                     (() => {
                       if (slip.customerId === 'CASH' || !slip.customerId) return 'Counter Sale';
                       const cust = customers.find(c => c.id === slip.customerId);
-                      return cust ? cust.name : slip.customerId;
+                      return cust ? cust.name.slice(0, 12) : slip.customerId;
                     })()
                   }
                 </td>
               </tr>
               <tr>
-                <td className="border border-black p-1.5 font-bold">Material</td>
-                <td className="border border-black p-1.5 font-bold">{slip.materialType}</td>
+                <td className="border border-black p-1 font-bold">Material</td>
+                <td className="border border-black p-1 font-bold">{slip.materialType}</td>
               </tr>
               <tr>
-                <td className="border border-black p-1.5 font-bold">Quantity</td>
-                <td className="border border-black p-1.5 font-bold">
-                  {slip.quantity.toFixed(2)}{" "}
-                  {slip.measurementType === "Volume (Brass)" ? "Brass" : "Tons"}
+                <td className="border border-black p-1 font-bold">Qty</td>
+                <td className="border border-black p-1 font-bold">
+                  {slip.quantity.toFixed(1)}{" "}
+                  {slip.measurementType === "Volume (Brass)" ? "Br" : "T"}
                 </td>
               </tr>
               <tr>
-                <td className="border border-black p-1.5 font-bold">Rate</td>
-                <td className="border border-black p-1.5">₹{slip.ratePerUnit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                <td className="border border-black p-1 font-bold">Rate</td>
+                <td className="border border-black p-1">₹{slip.ratePerUnit.toLocaleString('en-IN', { minimumFractionDigits: 0 })}</td>
               </tr>
               <tr>
-                <td className="border border-black p-1.5 font-bold">Total Amount</td>
-                <td className="border border-black p-1.5 font-bold">₹{slip.totalAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                <td className="border border-black p-1 font-bold">Total</td>
+                <td className="border border-black p-1 font-bold">₹{slip.totalAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
               </tr>
               {(slip.amountPaid ?? 0) > 0 && (
                 <>
                   <tr>
-                    <td className="border border-black p-1.5 font-bold text-green-700">Amount Paid</td>
-                    <td className="border border-black p-1.5 font-bold text-green-700">₹{slip.amountPaid!.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                    <td className="border border-black p-1 font-bold text-green-700">Paid</td>
+                    <td className="border border-black p-1 font-bold text-green-700">₹{slip.amountPaid!.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                   </tr>
                   <tr>
-                    <td className="border border-black p-1.5 font-bold">Balance</td>
-                    <td className="border border-black p-1.5 font-bold">₹{Math.max(0, slip.totalAmount - slip.amountPaid!).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                    <td className="border border-black p-1 font-bold">Balance</td>
+                    <td className="border border-black p-1 font-bold">₹{Math.max(0, slip.totalAmount - slip.amountPaid!).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                   </tr>
                 </>
               )}
             </tbody>
           </table>
 
-          <div className="mt-4 pt-4 md:mt-6 md:pt-6 border-t border-black flex justify-between items-end text-[10px] md:text-xs font-mono">
+          <div className="mt-2 pt-2 border-t border-black flex justify-between items-end text-[9px] md:text-xs font-mono">
             <div className="text-center">
-              <div className="border-t border-black pt-1 px-2 md:px-4">
-                Auth Sign
+              <div className="border-t border-black pt-1 px-1 md:px-2">
+                Auth
               </div>
             </div>
             <div className="text-center">
-              <div className="border-t border-black pt-1 px-2 md:px-4">
-                Driver Sign
+              <div className="border-t border-black pt-1 px-1 md:px-2">
+                Driver
               </div>
             </div>
           </div>
-          <p className="text-[9px] md:text-[10px] text-center mt-4 italic text-zinc-500 font-mono">
+          <p className="text-[8px] text-center mt-2 italic text-zinc-500 font-mono">
             {companySettings.receiptFooter || "Thank you!"}
           </p>
         </div>
           </div>
 
         <div className="p-4 border-t bg-zinc-50 dark:bg-zinc-900/50 print:hidden flex justify-between items-center">
-          <div className="flex items-center space-x-2">
-            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Format:</label>
-            <select
-              value={format}
-              onChange={(e) => setFormat(e.target.value)}
-              className="text-sm border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 outline-none"
-            >
-              <option value="A4">A4</option>
-              <option value="Thermal-80mm">Thermal 80mm</option>
-              <option value="Thermal-58mm">Thermal 58mm</option>
-            </select>
-          </div>
-          <div className="flex space-x-2">
+          <div className="flex gap-2">
             <button
               onClick={() => {
                 const printContent = document.getElementById('print-area')?.innerHTML;
                 if (printContent) {
                    downloadPdfBackend(printContent, format, `Slip-${slip.id}.pdf`);
+                   setTimeout(() => onClose(), 500);
                 }
               }}
-              className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-4 py-2 rounded-lg font-medium hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors shadow-sm"
+              className="flex-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-lg font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors"
             >
-              Download PDF
+              Download
             </button>
             <button
               onClick={() => {
                 const printContent = document.getElementById('print-area')?.innerHTML;
                 if (printContent) {
                    openPdfBackend(printContent, format);
+                   setTimeout(() => onClose(), 500);
                 }
               }}
-              className="bg-zinc-900 dark:bg-primary-600 text-white px-4 py-2 rounded-lg font-medium flex items-center space-x-2 justify-center hover:bg-zinc-800 dark:hover:bg-primary-700 transition-colors shadow-sm"
+              className="flex-1 bg-primary-600 hover:bg-primary-700 text-white px-3 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-1 transition-colors"
             >
-              <Printer className="w-5 h-5 mr-1" />
-              <span>Print</span>
+              <Printer className="w-4 h-4" />
+              Print
             </button>
           </div>
         </div>

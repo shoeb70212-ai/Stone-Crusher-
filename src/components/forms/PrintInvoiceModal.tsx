@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Invoice, Customer } from "../../types";
-import { X, Printer } from "lucide-react";
+import { X, Printer, Download } from "lucide-react";
 import { useErp } from "../../context/ErpContext";
 import { ToWords } from "to-words";
 import { openPdfBackend, downloadPdfBackend } from "../../lib/print-utils";
@@ -50,25 +50,29 @@ export function PrintInvoiceModal({
         <div className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-900 p-4">
           <div
             id="print-invoice-area"
-            className="text-black bg-white mx-auto relative p-4 md:p-8"
-            style={{ width: format === 'A4' ? '794px' : (format === 'Thermal-58mm' ? '220px' : '300px') }}
+            className="text-black bg-white mx-auto relative p-4 md:p-6"
+            style={{ width: format === 'A4' ? '700px' : (format === 'Thermal-58mm' ? '220px' : '300px') }}
           >
             <style dangerouslySetInnerHTML={{ __html: `
             @media print {
               @page {
-                size: ${format === 'A4' ? 'A4' : format === 'Thermal-58mm' ? '58mm auto' : '80mm auto'};
-                margin: 0;
+                size: A4;
+                margin: 8mm;
               }
               body {
                 -webkit-print-color-adjust: exact;
                 color-adjust: exact;
+              }
+              #print-invoice-area {
+                margin: 0 !important;
+                padding: 0 !important;
               }
             }
           `}} />
           
           {format === "A4" ? (
              companySettings.invoiceTemplate === "Modern" ? (
-               <div className="flex flex-col min-h-[1050px] bg-white text-black font-sans m-4 shadow-2xl overflow-hidden rounded-xl relative">
+               <div className="flex flex-col min-h-[900px] bg-white text-black font-sans m-4 shadow-2xl overflow-hidden rounded-xl relative">
                   {companySettings.invoiceWatermark && companySettings.invoiceWatermark !== "None" && (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden z-0 opacity-[0.03]">
                       <div className="text-[150px] font-black transform -rotate-45 whitespace-nowrap" style={{ color: primaryColorHex }}>
@@ -214,7 +218,7 @@ export function PrintInvoiceModal({
 
                </div>
              ) : companySettings.invoiceTemplate === "Minimal" ? (
-               <div className="flex flex-col min-h-[1050px] bg-white text-black font-sans m-4 p-12 relative">
+               <div className="flex flex-col min-h-[900px] bg-white text-black font-sans m-4 p-12 relative">
                   {companySettings.invoiceWatermark && companySettings.invoiceWatermark !== "None" && (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden z-0 opacity-[0.03]">
                       <div className="text-[150px] font-black transform -rotate-45 whitespace-nowrap" style={{ color: primaryColorHex }}>
@@ -330,7 +334,7 @@ export function PrintInvoiceModal({
 
                </div>
              ) : (
-            <div className="flex flex-col min-h-[1050px] bg-white text-black font-sans border-2 border-black m-4 relative">
+            <div className="flex flex-col min-h-[900px] bg-white text-black font-sans border-2 border-black m-4 relative">
               {companySettings.invoiceWatermark && companySettings.invoiceWatermark !== "None" && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden z-0 opacity-[0.03]">
                   <div className="text-[150px] font-black transform -rotate-45 whitespace-nowrap" style={{ color: primaryColorHex }}>
@@ -637,22 +641,10 @@ export function PrintInvoiceModal({
         </div>
         
         <div className="p-4 border-t bg-zinc-50 dark:bg-zinc-900/50 flex justify-between items-center rounded-b-2xl print:hidden">
-          <div className="flex items-center space-x-2">
-            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Format:</label>
-            <select
-              value={format}
-              onChange={(e) => setFormat(e.target.value)}
-              className="text-sm border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 outline-none"
-            >
-              <option value="A4">A4</option>
-              <option value="Thermal-80mm">Thermal 80mm</option>
-              <option value="Thermal-58mm">Thermal 58mm</option>
-            </select>
-          </div>
-          <div className="flex gap-3">
+          <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors shadow-sm"
+              className="flex-1 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm"
             >
               Close
             </button>
@@ -661,22 +653,24 @@ export function PrintInvoiceModal({
                 const element = document.getElementById('print-invoice-area');
                 if(element) {
                    downloadPdfBackend(element, format, `Invoice-${invoice.invoiceNo}.pdf`);
+                   setTimeout(() => onClose(), 500);
                 }
               }}
-              className="px-4 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors shadow-sm"
+              className="flex-1 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm"
             >
-              Download PDF
+              Download
             </button>
             <button
               onClick={() => {
                 const printContent = document.getElementById('print-invoice-area')?.innerHTML;
                 if(printContent) {
                    openPdfBackend(printContent, format);
+                   setTimeout(() => onClose(), 500);
                 }
               }}
-              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-xl shadow-sm transition-colors flex items-center justify-center"
+              className="flex-1 px-3 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-1 text-sm"
             >
-              <Printer className="w-4 h-4 mr-2" />
+              <Printer className="w-4 h-4" />
               Print
             </button>
           </div>
