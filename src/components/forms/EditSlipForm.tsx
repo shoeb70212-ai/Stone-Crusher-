@@ -3,9 +3,11 @@ import { useErp } from "../../context/ErpContext";
 import { Slip, MaterialType, DeliveryMode, MeasurementType } from "../../types";
 import { Combobox } from "../ui/Combobox";
 import { parseFeetInches } from "../../lib/utils";
+import { useToast } from "../ui/Toast";
 
 export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSuccess: () => void, onCancel: () => void }) {
   const { vehicles, addVehicle, updateVehicle, customers, updateSlip, slips, transactions, addTransaction, updateTransaction, deleteTransaction, companySettings } = useErp();
+  const { addToast } = useToast();
   const [formData, setFormData] = useState({
     vehicleNo: slip.vehicleNo || "",
     driverName: slip.driverName || "",
@@ -66,11 +68,11 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
       const tare = parseFloat(formData.tareWeight) || 0;
       const gross = parseFloat(formData.grossWeight) || 0;
       if (tare < 0 || gross < 0) {
-        alert("Weights cannot be negative.");
+        addToast('error', 'Weights cannot be negative.');
         return;
       }
       if (tare > gross) {
-        alert("Tare Weight cannot be greater than Gross Weight.");
+        addToast('error', 'Tare Weight cannot be greater than Gross Weight.');
         return;
       }
     } else if (formData.measurementType === "Volume (Brass)") {
@@ -78,30 +80,30 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
       const w = parseFeetInches(formData.widthFeet);
       const h = parseFeetInches(formData.heightFeet);
       if (l <= 0 || w <= 0 || h <= 0) {
-        alert("Length, width, and height must be positive values.");
+        addToast('error', 'Length, width, and height must be positive values.');
         return;
       }
     }
 
     if (calculatedQty < 0) {
-      alert("Calculated quantity cannot be negative.");
+      addToast('error', 'Calculated quantity cannot be negative.');
       return;
     }
 
     if (parseFloat(formData.ratePerUnit) < 0) {
-      alert("Rate per unit cannot be negative.");
+      addToast('error', 'Rate per unit cannot be negative.');
       return;
     }
 
     const freightAmt = parseFloat(formData.freightAmount) || 0;
     if (freightVisible && freightAmt < 0) {
-      alert("Freight amount cannot be negative.");
+      addToast('error', 'Freight amount cannot be negative.');
       return;
     }
 
     const finalAmountPaid = parseFloat(formData.amountPaid) || 0;
     if (finalAmountPaid < 0) {
-      alert("Amount paid cannot be negative.");
+      addToast('error', 'Amount paid cannot be negative.');
       return;
     }
 
@@ -118,7 +120,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
         }
       } else {
          addVehicle({
-            id: Math.random().toString(36).substring(2, 11),
+            id: crypto.randomUUID(),
             vehicleNo: formData.vehicleNo.toUpperCase(),
             ownerName: formData.driverName || '',
             driverName: formData.driverName,
@@ -191,7 +193,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
           if (finalAmountPaid > 0) {
              if (addTransaction) {
                  addTransaction({
-                    id: "tx_" + Math.random().toString(36).substring(2, 11),
+                    id: "tx_" + crypto.randomUUID(),
                     date: new Date().toISOString(),
                     type: "Income",
                     category: "Slip Payment",
@@ -294,7 +296,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
           <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Delivery Mode</label>
           <select
             value={formData.deliveryMode}
-            onChange={(e) => setFormData({ ...formData, deliveryMode: e.target.value })}
+            onChange={(e) => setFormData({ ...formData, deliveryMode: e.target.value as DeliveryMode })}
             className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white dark:bg-zinc-900"
           >
             <option value="Company Vehicle">Company Vehicle</option>
@@ -305,7 +307,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
           <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Measurement</label>
           <select
             value={formData.measurementType}
-            onChange={(e) => setFormData({ ...formData, measurementType: e.target.value })}
+            onChange={(e) => setFormData({ ...formData, measurementType: e.target.value as MeasurementType })}
             className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none bg-white dark:bg-zinc-900"
           >
             <option value="Volume (Brass)">Volume (Brass)</option>

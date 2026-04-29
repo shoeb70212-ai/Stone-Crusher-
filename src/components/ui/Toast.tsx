@@ -30,7 +30,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const addToast = useCallback((type: ToastType, message: string, duration = 5000) => {
-    const id = Math.random().toString(36).substr(2, 9);
+    const id = crypto.randomUUID();
     setToasts((prev) => [...prev, { id, type, message, duration }]);
   }, []);
 
@@ -83,6 +83,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
       const timer = setTimeout(onClose, toast.duration);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [toast.duration, onClose]);
 
   return (

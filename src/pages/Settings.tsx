@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { useErp } from "../context/ErpContext";
-import { Building2, Users, Receipt, Save, Check, Palette, Truck, X, Mail, Download, Upload, Database, Trash2 } from "lucide-react";
+import { Building2, Users, Receipt, Save, Check, Palette, X, Mail, Download, Upload, Database, Trash2 } from "lucide-react";
 import { hashPassword } from "../lib/auth";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
+import { useToast } from "../components/ui/Toast";
 
 export function Settings() {
-  const { userRole, companySettings, updateCompanySettings, vehicles, updateVehicle, purgeInactiveRecords } = useErp();
+  const { userRole, companySettings, updateCompanySettings, purgeInactiveRecords } = useErp();
+  const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState<"general" | "categories" | "users" | "materials" | "appearance" | "invoicing">(
     "general",
   );
@@ -32,7 +34,7 @@ export function Settings() {
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert('Failed to download backup');
+      addToast('error', 'Failed to download backup.');
     }
   };
 
@@ -49,13 +51,13 @@ export function Settings() {
         const data = JSON.parse(content);
 
         if (!data || typeof data !== 'object' || Array.isArray(data)) {
-          alert('Invalid backup file: payload must be a JSON object.');
+          addToast('error', 'Invalid backup file: payload must be a JSON object.');
           if (fileInputRef.current) fileInputRef.current.value = '';
           return;
         }
         const missing = REQUIRED_BACKUP_KEYS.filter((k) => !(k in data));
         if (missing.length > 0) {
-          alert(`Invalid backup file: missing required keys: ${missing.join(', ')}.`);
+          addToast('error', `Invalid backup file: missing required keys: ${missing.join(', ')}.`);
           if (fileInputRef.current) fileInputRef.current.value = '';
           return;
         }
@@ -63,7 +65,7 @@ export function Settings() {
         pendingRestoreFileRef.current = content;
         setIsRestoreConfirmOpen(true);
       } catch {
-        alert('Invalid backup file — could not parse JSON.');
+        addToast('error', 'Invalid backup file — could not parse JSON.');
         if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
@@ -86,14 +88,14 @@ export function Settings() {
         body: JSON.stringify(data),
       });
       if (res.ok) {
-        alert('Backup restored successfully! The application will now reload.');
-        window.location.reload();
+        addToast('success', 'Backup restored successfully! Reloading…');
+        setTimeout(() => window.location.reload(), 1200);
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(`Failed to restore backup: ${err.error || 'Server error'}`);
+        addToast('error', `Failed to restore backup: ${err.error || 'Server error'}`);
       }
     } catch {
-      alert('Failed to restore backup.');
+      addToast('error', 'Failed to restore backup.');
     }
   };
 
@@ -124,7 +126,7 @@ export function Settings() {
   const handleInviteUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (inviteFormData.password.length < 6) {
-      alert("Password must be at least 6 characters.");
+      addToast('error', 'Password must be at least 6 characters.');
       return;
     }
     const passwordHash = await hashPassword(inviteFormData.password);
@@ -385,7 +387,7 @@ export function Settings() {
               Company Information
             </h3>
             
-            <div className="md:p-6 pb-0">
+            <div className="pb-0">
                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-2">Company Logo</label>
                <div className="flex items-center gap-4">
                   {localSettings.logo ? (
@@ -424,7 +426,7 @@ export function Settings() {
                </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:p-6 md:pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">
                   Company Name
@@ -586,7 +588,7 @@ export function Settings() {
             <h4 className="text-md font-semibold text-zinc-900 dark:text-white mt-8 mb-4 border-b border-zinc-100 dark:border-zinc-700 pb-2">
               Print Settings
             </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">
                   Dispatch Slip Format
@@ -614,7 +616,7 @@ export function Settings() {
             <h4 className="text-md font-semibold text-zinc-900 dark:text-white mt-8 mb-4 border-b border-zinc-100 dark:border-zinc-700 pb-2">
               Database Management
             </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="p-4 border border-zinc-200 dark:border-zinc-700 rounded-xl bg-zinc-50 dark:bg-zinc-800/50">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 flex items-center justify-center">
@@ -839,7 +841,7 @@ export function Settings() {
                 onClick={() => {
                   const newMats = [...(localSettings.materials || [])];
                   newMats.push({
-                    id: Math.random().toString(36).substring(2, 11),
+                    id: crypto.randomUUID(),
                     name: "New Material",
                     defaultPrice: 0,
                     unit: "Ton",
@@ -996,105 +998,6 @@ export function Settings() {
                 )}
                 {isSaved ? "Saved!" : "Save Changes"}
               </button>
-            </div>
-          </div>
-        )}
-        {activeTab === "vehicles" && (
-          <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">
-              Vehicles & Drivers
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-zinc-50 dark:bg-zinc-900/50 border-y border-zinc-200 dark:border-zinc-700">
-                    <th className="py-3 px-4 text-sm font-semibold text-zinc-600 dark:text-zinc-300">
-                      Vehicle No
-                    </th>
-                    <th className="py-3 px-4 text-sm font-semibold text-zinc-600 dark:text-zinc-300">
-                      Owner Info
-                    </th>
-                    <th className="py-3 px-4 text-sm font-semibold text-zinc-600 dark:text-zinc-300">
-                      Driver Info
-                    </th>
-                    <th className="py-3 px-4 text-sm font-semibold text-zinc-600 dark:text-zinc-300">
-                      Default Measurement
-                    </th>
-                    <th className="py-3 px-4 text-sm font-semibold text-zinc-600 dark:text-zinc-300">
-                      Status
-                    </th>
-                    <th className="py-3 px-4 text-sm font-semibold text-zinc-600 dark:text-zinc-300 text-right">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-700/50">
-                  {vehicles.map((vehicle) => (
-                    <tr key={vehicle.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800">
-                      <td className="py-3 px-4 font-semibold text-zinc-900 dark:text-white">
-                        {vehicle.vehicleNo}
-                      </td>
-                      <td className="py-3 px-4 space-y-2">
-                        <input
-                          type="text"
-                          value={vehicle.ownerName || ""}
-                          placeholder="Owner Name"
-                          onChange={(e) => updateVehicle({ ...vehicle, ownerName: e.target.value })}
-                          className="w-full max-w-[200px] border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 text-sm outline-none focus:border-primary-500 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white block"
-                        />
-                        <input
-                          type="text"
-                          value={vehicle.ownerPhone || ""}
-                          placeholder="Owner Phone"
-                          onChange={(e) => updateVehicle({ ...vehicle, ownerPhone: e.target.value })}
-                          className="w-full max-w-[200px] border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 text-sm outline-none focus:border-primary-500 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white block"
-                        />
-                      </td>
-                      <td className="py-3 px-4 space-y-2">
-                        <input
-                          type="text"
-                          value={vehicle.driverName || ""}
-                          placeholder="Driver Name"
-                          onChange={(e) => updateVehicle({ ...vehicle, driverName: e.target.value })}
-                          className="w-full max-w-[200px] border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 text-sm outline-none focus:border-primary-500 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white block"
-                        />
-                        <input
-                          type="text"
-                          value={vehicle.driverPhone || ""}
-                          placeholder="Driver Phone"
-                          onChange={(e) => updateVehicle({ ...vehicle, driverPhone: e.target.value })}
-                          className="w-full max-w-[200px] border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 text-sm outline-none focus:border-primary-500 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white block"
-                        />
-                      </td>
-                      <td className="py-3 px-4 text-zinc-500 dark:text-zinc-400 text-sm">
-                        {vehicle.defaultMeasurementType}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${vehicle.isActive !== false ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"}`}>
-                          {vehicle.isActive !== false ? "Active" : "Inactive"}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <button 
-                          onClick={() => {
-                            updateVehicle({ ...vehicle, isActive: vehicle.isActive === false });
-                          }}
-                          className={`${vehicle.isActive !== false ? "text-rose-600 hover:text-rose-900 dark:text-rose-400" : "text-emerald-600 hover:text-emerald-900 dark:text-emerald-400"} text-sm font-medium`}
-                        >
-                          {vehicle.isActive !== false ? "Deactivate" : "Activate"}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {vehicles.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="py-8 text-center text-zinc-500 dark:text-zinc-400">
-                        No vehicles found. Add one from Dispatch.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
             </div>
           </div>
         )}

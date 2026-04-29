@@ -6,27 +6,9 @@ import { Combobox } from "../components/ui/Combobox";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { PrintInvoiceModal } from "../components/forms/PrintInvoiceModal";
 import { MobileModal } from "../components/ui/MobileModal";
-import { ToWords } from 'to-words';
-
-const toWords = new ToWords({
-  localeCode: 'en-IN',
-  converterOptions: {
-    currency: true,
-    ignoreDecimal: false,
-    ignoreZeroCurrency: false,
-    doNotAddOnly: false,
-    currencyOptions: {
-      name: 'Rupee',
-      plural: 'Rupees',
-      symbol: '₹',
-      fractionalUnit: {
-        name: 'Paisa',
-        plural: 'Paise',
-        symbol: '',
-      },
-    }
-  }
-});
+import { useToast } from "../components/ui/Toast";
+import { downloadCSV } from "../lib/export-utils";
+import { invoiceSchema } from "../lib/validation";
 
 const getPrimaryRGB = (color: string) => {
   switch(color) {
@@ -39,9 +21,13 @@ const getPrimaryRGB = (color: string) => {
   }
 };
 
-export function Invoices() {
+import { ErrorBoundary } from "../components/ErrorBoundary";
+
+function InvoicesContent() {
   const { invoices, customers, slips, addInvoice, updateInvoice, updateSlip, companySettings, addCustomer } = useErp();
+  const { addToast } = useToast();
   const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [invoiceToCancel, setInvoiceToCancel] = useState<string | null>(null);
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
@@ -69,18 +55,23 @@ export function Invoices() {
     );
   }, [slips, newInvoice.customerId, editingInvoiceId]);
 
+  // Restore slip selection when switching to a different invoice to edit.
   useEffect(() => {
     if (editingInvoiceId) {
       const editingInvoice = invoices.find(inv => inv.id === editingInvoiceId);
-      if (editingInvoice && editingInvoice.slipIds) {
-        setSelectedSlipIds(editingInvoice.slipIds);
-      } else {
-        setSelectedSlipIds([]);
-      }
+      setSelectedSlipIds(editingInvoice?.slipIds ?? []);
     } else {
       setSelectedSlipIds([]);
     }
-  }, [newInvoice.customerId, editingInvoiceId, invoices]);
+  }, [editingInvoiceId, invoices]);
+
+  // Clear slip selection when the customer changes mid-edit so slips from the
+  // old customer are not silently carried over to the new one.
+  useEffect(() => {
+    if (editingInvoiceId) {
+      setSelectedSlipIds([]);
+    }
+  }, [newInvoice.customerId]);
 
   const handleStatusChange = (invId: string, newStatus: string) => {
     if (newStatus === "Cancelled") {
@@ -158,7 +149,24 @@ export function Invoices() {
           { ...newItem, amount: newItem.quantity * newItem.rate },
         ],
       });
-      setNewItem({ ...newItem, quantity: 0, rate: 0, amount: 0 }); // reset
+      // Re-compute the historical rate for the same material so the rate field
+      // is pre-filled correctly for the next row (the useEffect won't re-fire
+      // because materialType hasn't changed).
+      let nextRate = 0;
+      if (newInvoice.customerId && newItem.materialType) {
+        const customerInvoices = invoices
+          .filter(inv => inv.customerId === newInvoice.customerId)
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        for (const inv of customerInvoices) {
+          const item = inv.items.find((i: InvoiceItem) => i.materialType === newItem.materialType);
+          if (item) { nextRate = item.rate; break; }
+        }
+        if (nextRate === 0) {
+          const mat = materials.find((m) => m.name === newItem.materialType);
+          nextRate = mat?.defaultPrice || 0;
+        }
+      }
+      setNewItem({ ...newItem, quantity: 0, rate: nextRate, amount: 0 });
     }
   };
 
@@ -166,7 +174,6 @@ export function Invoices() {
     const today = new Date();
     const yearStr = today.getFullYear().toString().slice(-2);
     const prefix = type === "GST" ? "GST" : "CASH";
-    // Extract the highest existing number for this type to prevent collisions on deletion
     const typeInvoices = invoices.filter(inv => inv.type === type);
     let maxNo = 0;
     typeInvoices.forEach(inv => {
@@ -176,7 +183,13 @@ export function Invoices() {
         if (num > maxNo) maxNo = num;
       }
     });
-    const nextNo = maxNo + 1;
+    // Increment until the candidate number is not already taken (guards against
+    // non-standard invoice numbers that may have reset the sequence).
+    let nextNo = maxNo + 1;
+    const existingNos = new Set(invoices.map(inv => inv.invoiceNo));
+    while (existingNos.has(`${prefix}-${yearStr}-${nextNo.toString().padStart(4, "0")}`)) {
+      nextNo++;
+    }
     return `${prefix}-${yearStr}-${nextNo.toString().padStart(4, "0")}`;
   };
 
@@ -200,17 +213,20 @@ export function Invoices() {
   };
 
   const handleGenerate = () => {
+    if (isSubmitting) return;
     if (!newInvoice.customerId || !newInvoice.items?.length || !newInvoice.invoiceNo) return;
+    setIsSubmitting(true);
 
-    let finalCustomerId = newInvoice.customerId;
-    
-    // Check if new customer
-    if (finalCustomerId !== "CASH" && !customers.find(c => c.id === finalCustomerId)) {
+    let finalCustomerId = newInvoice.customerId!;
+
+    // "NEW:<name>" sentinel means the user typed a brand-new customer name.
+    if (finalCustomerId.startsWith("NEW:")) {
+      const newName = finalCustomerId.slice("NEW:".length).trim();
       const newCust = {
-        id: "cust_" + Math.random().toString(36).substring(2, 11),
-        name: finalCustomerId, // The combobox passed the new name directly
+        id: crypto.randomUUID(),
+        name: newName,
         phone: "",
-        openingBalance: 0
+        openingBalance: 0,
       };
       if (addCustomer) addCustomer(newCust);
       finalCustomerId = newCust.id;
@@ -258,7 +274,7 @@ export function Invoices() {
       selectedSlipIds.forEach(id => updateSlip(id, { invoiceId: editingInvoiceId }));
 
     } else {
-      const newInvoiceId = "inv_" + Math.random().toString(36).substring(2, 11);
+      const newInvoiceId = crypto.randomUUID();
       const invoice: Invoice = {
         id: newInvoiceId,
         invoiceNo: newInvoice.invoiceNo,
@@ -277,49 +293,28 @@ export function Invoices() {
       selectedSlipIds.forEach(id => updateSlip(id, { invoiceId: newInvoiceId }));
     }
     
+    setIsSubmitting(false);
     setShowGenerateModal(false);
   };
 
-  const downloadPDF = (invoice: Invoice) => {
-    setPrintInvoice(invoice);
-  };
   const exportData = () => {
-    // Generate CSV for Chartered Accountant
-    const headers = [
-      "Invoice No",
-      "Date",
-      "Type",
-      "Customer Name",
-      "SubTotal",
-      "CGST",
-      "SGST",
-      "Total Amount",
-      "Status"
-    ];
-
-    const csvRows = [headers.join(",")];
-
-    filteredInvoices.forEach(inv => {
-      const customerName = customers.find(c => c.id === inv.customerId)?.name || "Cash Customer";
-      const row = [
-        inv.invoiceNo,
-        new Date(inv.date).toLocaleDateString("en-IN"),
-        inv.type,
-        `"${customerName}"`,
-        inv.subTotal.toFixed(2),
-        inv.cgst.toFixed(2),
-        inv.sgst.toFixed(2),
-        inv.total.toFixed(2),
-        inv.status
-      ];
-      csvRows.push(row.join(","));
-    });
-
-    const csvContent = "data:text/csv;charset=utf-8," + encodeURIComponent(csvRows.join("\n"));
-    const dlAnchorElem = document.createElement('a');
-    dlAnchorElem.setAttribute("href", csvContent);
-    dlAnchorElem.setAttribute("download", `invoices_export_${new Date().toISOString().split('T')[0]}.csv`);
-    dlAnchorElem.click();
+    const rows = filteredInvoices.map((inv: Invoice) => ({
+      invoiceNo: inv.invoiceNo,
+      date: new Date(inv.date).toLocaleDateString("en-IN"),
+      type: inv.type,
+      customer: customers.find((c: { id: string; name: string }) => c.id === inv.customerId)?.name || "Cash Customer",
+      subTotal: inv.subTotal.toFixed(2),
+      cgst: inv.cgst.toFixed(2),
+      sgst: inv.sgst.toFixed(2),
+      total: inv.total.toFixed(2),
+      status: inv.status,
+    }));
+    downloadCSV(
+      rows,
+      { invoiceNo: "Invoice No", date: "Date", type: "Type", customer: "Customer",
+        subTotal: "SubTotal", cgst: "CGST", sgst: "SGST", total: "Total", status: "Status" },
+      `invoices_${new Date().toISOString().split('T')[0]}`,
+    );
   };
 
   const importData = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -331,19 +326,26 @@ export function Invoices() {
       try {
         const importedInvoices = JSON.parse(e.target?.result as string);
         if (Array.isArray(importedInvoices)) {
+          let imported = 0;
+          let skipped = 0;
           importedInvoices.forEach(inv => {
-            // Basic validation
-            if (inv.id && inv.invoiceNo && inv.items) {
-               // Only add if not already present
-               if (!invoices.find(existing => existing.id === inv.id)) {
-                 addInvoice(inv);
-               }
+            if (!inv.id || !inv.invoiceNo) { skipped++; return; }
+            // Validate structure before accepting to prevent data corruption.
+            const result = invoiceSchema.safeParse(inv);
+            if (!result.success) { skipped++; return; }
+            if (!invoices.find(existing => existing.id === inv.id)) {
+              addInvoice(inv);
+              imported++;
             }
           });
-          alert("Import successful!");
+          if (skipped > 0) {
+            addToast('error', `Import complete: ${imported} added, ${skipped} rejected (invalid format).`);
+          } else {
+            addToast('success', `Import successful: ${imported} invoice(s) added.`);
+          }
         }
       } catch (error) {
-        alert("Failed to parse JSON file.");
+        addToast('error', 'Failed to parse JSON file.');
       }
     };
     reader.readAsText(file);
@@ -355,8 +357,9 @@ export function Invoices() {
     (inv) => {
       const matchTab = activeTab === "All" || inv.type === activeTab;
       const matchCustomer = filterCustomerId === "All" || inv.customerId === filterCustomerId;
-      const matchStart = !startDate || inv.date >= startDate;
-      const matchEnd = !endDate || inv.date <= endDate;
+      const invDate = inv.date.slice(0, 10);
+      const matchStart = !startDate || invDate >= startDate;
+      const matchEnd = !endDate || invDate <= endDate;
       return matchTab && matchCustomer && matchStart && matchEnd;
     }
   ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -414,9 +417,9 @@ export function Invoices() {
           ))}
         </div>
 
-        <div className="border-b border-zinc-100 dark:border-zinc-700 px-4 py-3 bg-white dark:bg-zinc-800 flex flex-wrap gap-4 items-center text-sm">
-          <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-            <span className="text-zinc-500 font-medium">Customer:</span>
+        <div className="border-b border-zinc-100 dark:border-zinc-700 px-4 py-3 bg-white dark:bg-zinc-800 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-4 items-start sm:items-center text-sm">
+          <div className="flex items-center gap-2 w-full sm:flex-1 sm:min-w-[200px]">
+            <span className="text-zinc-500 font-medium shrink-0">Customer:</span>
             <select
               value={filterCustomerId}
               onChange={(e) => setFilterCustomerId(e.target.value)}
@@ -427,21 +430,23 @@ export function Invoices() {
               {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <div className="flex items-center gap-2 flex-1 min-w-[280px]">
-            <span className="text-zinc-500 font-medium">Date Range:</span>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-primary-500"
-            />
-            <span className="text-zinc-400">to</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-primary-500"
-            />
+          <div className="flex items-center gap-2 w-full sm:flex-1 sm:min-w-[280px]">
+            <span className="text-zinc-500 font-medium shrink-0">Date:</span>
+            <div className="flex flex-wrap items-center gap-2 flex-1">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="flex-1 min-w-0 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-primary-500"
+              />
+              <span className="text-zinc-400 shrink-0">to</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="flex-1 min-w-0 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
           </div>
         </div>
 
@@ -474,7 +479,7 @@ export function Invoices() {
                        <select
                          value={inv.status}
                          onChange={(e) => handleStatusChange(inv.id, e.target.value)}
-                         className={`px-1.5 py-0.5 rounded text-[9px] font-semibold appearance-none outline-none cursor-pointer ${
+                         className={`px-2 py-1.5 rounded text-xs font-semibold appearance-none outline-none cursor-pointer min-h-[32px] ${
                            inv.status === "Paid"
                              ? "bg-primary-100 text-primary-700"
                              : inv.status === "Cancelled"
@@ -482,9 +487,9 @@ export function Invoices() {
                                : "bg-amber-100 text-amber-700"
                          }`}
                        >
-                         <option value="Pending">P</option>
-                         <option value="Paid">✓</option>
-                         <option value="Cancelled">✕</option>
+                         <option value="Pending">Pending</option>
+                         <option value="Paid">Paid ✓</option>
+                         <option value="Cancelled">Cancel</option>
                        </select>
                      </div>
                    </div>
@@ -495,15 +500,15 @@ export function Invoices() {
                      <div className="flex gap-1">
                        <button
                          onClick={() => openEditModal(inv)}
-                         className="text-indigo-600 dark:text-indigo-400 font-medium text-[10px] px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 rounded"
+                         className="text-indigo-600 dark:text-indigo-400 font-medium text-xs px-3 py-1.5 min-h-[32px] bg-indigo-50 dark:bg-indigo-900/30 rounded"
                        >
                          Edit
                        </button>
                        <button
                          onClick={() => setPrintInvoice(inv)}
-                         className="text-zinc-600 dark:text-zinc-300 font-medium text-[10px] px-2 py-0.5 bg-zinc-100 dark:bg-zinc-700/50 rounded flex items-center"
+                         className="text-zinc-600 dark:text-zinc-300 font-medium text-xs px-3 py-1.5 min-h-[32px] bg-zinc-100 dark:bg-zinc-700/50 rounded flex items-center gap-1"
                        >
-                         <Printer className="w-3 h-3 mr-0.5" />
+                         <Printer className="w-3 h-3" />
                          Print
                        </button>
                      </div>
@@ -578,7 +583,6 @@ export function Invoices() {
                       className="text-indigo-500 hover:text-indigo-700 transition-colors text-sm font-medium"
                       title="Edit Invoice"
                     >
-                      <i className="lucide-edit" />
                       Edit
                     </button>
                     <button
@@ -659,8 +663,13 @@ export function Invoices() {
                   ]}
                   value={newInvoice.customerId || ""}
                   onChange={(val) => {
-                    const existing = customers.find(c => c.name.toLowerCase() === val.toLowerCase());
-                    setNewInvoice({ ...newInvoice, customerId: existing ? existing.id : val });
+                    // "NEW:<name>" is emitted by Combobox when the user creates a new entry.
+                    // All other values are existing option IDs (customer IDs or "CASH").
+                    if (val.startsWith("NEW:")) {
+                      setNewInvoice({ ...newInvoice, customerId: val });
+                    } else {
+                      setNewInvoice({ ...newInvoice, customerId: val });
+                    }
                   }}
                   allowCreate={true}
                   placeholder="Search customer..."
@@ -1007,7 +1016,7 @@ export function Invoices() {
               </button>
               <button
                 onClick={handleGenerate}
-                disabled={!newInvoice.customerId || !newInvoice.items?.length || !newInvoice.invoiceNo}
+                disabled={isSubmitting || !newInvoice.customerId || !newInvoice.items?.length || !newInvoice.invoiceNo}
                 className="px-6 py-2.5 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {editingInvoiceId ? "Save Changes" : "Generate & Save"}
@@ -1022,7 +1031,10 @@ export function Invoices() {
         confirmText="Cancel Invoice"
         onConfirm={() => {
           if (invoiceToCancel) {
+            const inv = invoices.find((i: Invoice) => i.id === invoiceToCancel);
+            inv?.slipIds?.forEach((id: string) => updateSlip(id, { invoiceId: undefined }));
             updateInvoice(invoiceToCancel, { status: "Cancelled" });
+            setInvoiceToCancel(null);
           }
         }}
         onCancel={() => setInvoiceToCancel(null)}
@@ -1038,3 +1050,6 @@ export function Invoices() {
     </div>
   );
 }
+
+
+export function Invoices() { return <ErrorBoundary><InvoicesContent /></ErrorBoundary>; }

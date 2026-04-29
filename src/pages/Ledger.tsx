@@ -52,13 +52,15 @@ export function Ledger() {
   const [custFormData, setCustFormData] = useState({
     name: "",
     phone: "",
+    address: "",
+    gstin: "",
     openingBalance: "0",
   });
 
   const handleCreateTx = (e: React.FormEvent) => {
     e.preventDefault();
     const newTx: Transaction = {
-      id: Math.random().toString(36).substring(2, 11),
+      id: crypto.randomUUID(),
       date: new Date().toISOString(),
       type: txFormData.type,
       amount: Math.round(parseFloat(txFormData.amount) || 0),
@@ -80,14 +82,16 @@ export function Ledger() {
   const handleCreateCustomer = (e: React.FormEvent) => {
     e.preventDefault();
     const newCust: Customer = {
-      id: Math.random().toString(36).substring(2, 11),
+      id: crypto.randomUUID(),
       name: custFormData.name,
       phone: custFormData.phone,
+      address: custFormData.address || undefined,
+      gstin: custFormData.gstin || undefined,
       openingBalance: parseFloat(custFormData.openingBalance) || 0,
     };
     addCustomer(newCust);
     setIsCustModalOpen(false);
-    setCustFormData({ name: "", phone: "", openingBalance: "0" });
+    setCustFormData({ name: "", phone: "", address: "", gstin: "", openingBalance: "0" });
   };
 
   /** Transactions filtered by the selected date range */
@@ -192,29 +196,29 @@ export function Ledger() {
       </div>
 
       {/* Date-range filter for Transactions */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-white dark:bg-zinc-800 p-3 rounded-xl border border-zinc-100 dark:border-zinc-700 shadow-sm">
-        <div className="flex items-center gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 bg-white dark:bg-zinc-800 p-3 rounded-xl border border-zinc-100 dark:border-zinc-700 shadow-sm">
+        <div className="flex items-center gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 shrink-0">
           <Calendar className="w-4 h-4 text-primary-500" />
           <span>Period:</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 flex-1 w-full sm:w-auto">
           <input
             type="date"
             value={txStartDate}
             onChange={(e) => setTxStartDate(e.target.value)}
-            className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
+            className="flex-1 min-w-0 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
           />
-          <span className="text-zinc-400">to</span>
+          <span className="text-zinc-400 shrink-0">to</span>
           <input
             type="date"
             value={txEndDate}
             onChange={(e) => setTxEndDate(e.target.value)}
-            className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
+            className="flex-1 min-w-0 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
           />
         </div>
         <button
           onClick={handleExportTransactions}
-          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-sm font-semibold rounded-lg hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors shadow-sm"
+          className="w-full sm:w-auto sm:ml-auto flex items-center justify-center gap-1.5 px-3 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-sm font-semibold rounded-lg hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors shadow-sm"
         >
           <Download className="w-4 h-4" />
           Export CSV
@@ -680,6 +684,34 @@ export function Ledger() {
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                  Address
+                </label>
+                <input
+                  type="text"
+                  value={custFormData.address}
+                  onChange={(e) =>
+                    setCustFormData({ ...custFormData, address: e.target.value })
+                  }
+                  className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none"
+                  placeholder="Optional"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                  GSTIN
+                </label>
+                <input
+                  type="text"
+                  value={custFormData.gstin}
+                  onChange={(e) =>
+                    setCustFormData({ ...custFormData, gstin: e.target.value.toUpperCase() })
+                  }
+                  className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none uppercase"
+                  placeholder="Optional"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
                   Opening Balance
                 </label>
                 <input
@@ -714,8 +746,10 @@ export function Ledger() {
         // Collect all entries for this customer
         const allEntries: Array<{ date: Date; desc: string; debit: number; credit: number }> = [];
 
+        // Include both Tallied and Pending slips to match getCustomerBalance,
+        // so the running total at the bottom equals the Closing Balance footer.
         slips
-          .filter((s) => s.customerId === viewCustomerLedger.id && s.status === "Tallied")
+          .filter((s) => s.customerId === viewCustomerLedger.id && (s.status === "Tallied" || s.status === "Pending"))
           .forEach((s) => {
             allEntries.push({
               date: new Date(s.date),
@@ -760,7 +794,13 @@ export function Ledger() {
             })
           : allEntries;
 
-        let runningBalance = viewCustomerLedger.openingBalance;
+        // Pre-compute running balance outside JSX so render is idempotent
+        // (React may call render multiple times in Concurrent/Strict Mode).
+        let bal = viewCustomerLedger.openingBalance;
+        const entriesWithBalance = filteredEntries.map((e) => {
+          bal = bal + e.debit - e.credit;
+          return { ...e, runningBalance: bal };
+        });
 
         return (
         <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center p-4 z-50">
@@ -817,8 +857,8 @@ export function Ledger() {
               </div>
             </div>
 
-            <div className="p-3 md:p-5 overflow-auto flex-1 w-full" ref={statementRef}>
-              <table className="w-full text-sm text-left ">
+            <div className="overflow-x-auto flex-1 w-full p-3 md:p-5" ref={statementRef}>
+              <table className="w-full min-w-[560px] text-sm text-left">
                 <thead className="text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-900/50 uppercase rounded-lg">
                   <tr>
                     <th className="px-4 py-3 rounded-l-lg">Date</th>
@@ -864,32 +904,29 @@ export function Ledger() {
                     </td>
                   </tr>
 
-                  {filteredEntries.map((entry, idx) => {
-                    runningBalance = runningBalance + entry.debit - entry.credit;
-                    return (
-                      <tr
-                        key={idx}
-                        className="border-b border-zinc-50 dark:border-zinc-700/50 hover:bg-zinc-50 dark:hover:bg-zinc-800"
-                      >
-                        <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">
-                          {entry.date.toLocaleDateString()}
-                        </td>
-                        <td className="px-4 py-3 text-zinc-900 dark:text-white">
-                          {entry.desc}
-                        </td>
-                        <td className="px-4 py-3 text-right text-rose-600 font-medium">
-                          {entry.debit > 0 ? entry.debit.toLocaleString() : "-"}
-                        </td>
-                        <td className="px-4 py-3 text-right text-primary-600 font-medium">
-                          {entry.credit > 0 ? entry.credit.toLocaleString() : "-"}
-                        </td>
-                        <td className="px-4 py-3 text-right font-bold text-zinc-900 dark:text-white">
-                          {Math.abs(runningBalance).toLocaleString()}{" "}
-                          {runningBalance < 0 ? "Cr" : runningBalance > 0 ? "Dr" : ""}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {entriesWithBalance.map((entry, idx) => (
+                    <tr
+                      key={idx}
+                      className="border-b border-zinc-50 dark:border-zinc-700/50 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                    >
+                      <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">
+                        {entry.date.toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3 text-zinc-900 dark:text-white">
+                        {entry.desc}
+                      </td>
+                      <td className="px-4 py-3 text-right text-rose-600 font-medium">
+                        {entry.debit > 0 ? entry.debit.toLocaleString() : "-"}
+                      </td>
+                      <td className="px-4 py-3 text-right text-primary-600 font-medium">
+                        {entry.credit > 0 ? entry.credit.toLocaleString() : "-"}
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-zinc-900 dark:text-white">
+                        {Math.abs(entry.runningBalance).toLocaleString()}{" "}
+                        {entry.runningBalance < 0 ? "Cr" : entry.runningBalance > 0 ? "Dr" : ""}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

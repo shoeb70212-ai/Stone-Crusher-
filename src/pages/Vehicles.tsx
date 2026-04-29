@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useErp } from "../context/ErpContext";
-import { Truck, Plus, X, Building2, User, FileText } from "lucide-react";
+import { Truck, Plus, X, FileText, Edit2 } from "lucide-react";
 import { MeasurementType, Vehicle } from "../types";
 import { format, parseISO } from "date-fns";
 import { Slip } from "../types";
@@ -10,6 +10,7 @@ import { Printer } from "lucide-react";
 export function Vehicles() {
   const { vehicles, addVehicle, updateVehicle, slips, companySettings } = useErp();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [printSlip, setPrintSlip] = useState<Slip | null>(null);
 
@@ -27,11 +28,32 @@ export function Vehicles() {
 
   const [searchTerm, setSearchTerm] = useState("");
 
-  const handleCreate = (e: React.FormEvent) => {
+  const resetForm = () => {
+    setFormData({ vehicleNo: "", ownerName: "", driverName: "", driverPhone: "", measurementType: "Volume (Brass)", lengthFeet: "", widthFeet: "", heightFeet: "", tareWeight: "" });
+    setEditingVehicleId(null);
+    setIsModalOpen(false);
+  };
+
+  const openEditModal = (v: Vehicle) => {
+    setEditingVehicleId(v.id);
+    setFormData({
+      vehicleNo: v.vehicleNo,
+      ownerName: v.ownerName,
+      driverName: v.driverName || "",
+      driverPhone: v.driverPhone || "",
+      measurementType: v.defaultMeasurementType,
+      lengthFeet: v.measurement.lengthFeet?.toString() || "",
+      widthFeet: v.measurement.widthFeet?.toString() || "",
+      heightFeet: v.measurement.heightFeet?.toString() || "",
+      tareWeight: v.measurement.tareWeight?.toString() || "",
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const newVehicle: Vehicle = {
-      id: Math.random().toString(36).substring(2, 11),
-      vehicleNo: formData.vehicleNo,
+    const vehicleData = {
+      vehicleNo: formData.vehicleNo.toUpperCase(),
       ownerName: formData.ownerName,
       driverName: formData.driverName,
       driverPhone: formData.driverPhone,
@@ -43,19 +65,13 @@ export function Vehicles() {
         tareWeight: parseFloat(formData.tareWeight) || undefined,
       },
     };
-    addVehicle(newVehicle);
-    setIsModalOpen(false);
-    setFormData({
-      vehicleNo: "",
-      ownerName: "",
-      driverName: "",
-      driverPhone: "",
-      measurementType: "Volume (Brass)",
-      lengthFeet: "",
-      widthFeet: "",
-      heightFeet: "",
-      tareWeight: "",
-    });
+    if (editingVehicleId) {
+      const existing = vehicles.find(v => v.id === editingVehicleId);
+      if (existing) updateVehicle({ ...existing, ...vehicleData });
+    } else {
+      addVehicle({ id: crypto.randomUUID(), ...vehicleData });
+    }
+    resetForm();
   };
 
   const filteredVehicles = useMemo(() => {
@@ -124,7 +140,7 @@ export function Vehicles() {
             className="w-full sm:w-64 px-4 py-2 border border-zinc-300 dark:border-zinc-700 rounded-lg text-sm bg-white dark:bg-zinc-800 focus:ring-2 focus:ring-primary-500 outline-none text-zinc-900 dark:text-zinc-100"
           />
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { setEditingVehicleId(null); setFormData({ vehicleNo: "", ownerName: "", driverName: "", driverPhone: "", measurementType: "Volume (Brass)", lengthFeet: "", widthFeet: "", heightFeet: "", tareWeight: "" }); setIsModalOpen(true); }}
             className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center transition-colors shadow-sm whitespace-nowrap"
           >
             <Plus className="w-5 h-5 mr-2" />
@@ -157,18 +173,26 @@ export function Vehicles() {
                         ? `${v.measurement.lengthFeet}' L × ${v.measurement.widthFeet}' W × ${v.measurement.heightFeet}' H`
                         : `Tare Weight: ${v.measurement.tareWeight} Tons`}
                 </div>
-                <button
-                  onClick={() => setSelectedVehicle(v)}
-                  className="mt-2 text-indigo-600 hover:text-indigo-800 font-medium px-3 py-2 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors inline-flex items-center justify-center text-sm flex-1"
-                >
-                  <FileText className="w-4 h-4 mr-2" /> Trips
-                </button>
-                <button
-                  onClick={() => updateVehicle({ ...v, isActive: v.isActive === false })}
-                  className={`mt-2 font-medium px-3 py-2 rounded-lg transition-colors inline-flex items-center justify-center text-sm flex-1 ${v.isActive !== false ? "text-rose-600 bg-rose-50 hover:bg-rose-100" : "text-emerald-600 bg-emerald-50 hover:bg-emerald-100"}`}
-                >
-                  {v.isActive !== false ? "Deactivate" : "Activate"}
-                </button>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => setSelectedVehicle(v)}
+                    className="text-indigo-600 hover:text-indigo-800 font-medium px-3 py-2 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors inline-flex items-center justify-center text-sm flex-1"
+                  >
+                    <FileText className="w-4 h-4 mr-2" /> Trips
+                  </button>
+                  <button
+                    onClick={() => openEditModal(v)}
+                    className="text-zinc-600 hover:text-zinc-800 font-medium px-3 py-2 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors inline-flex items-center justify-center text-sm"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => updateVehicle({ ...v, isActive: v.isActive === false })}
+                    className={`font-medium px-3 py-2 rounded-lg transition-colors inline-flex items-center justify-center text-sm flex-1 ${v.isActive !== false ? "text-rose-600 bg-rose-50 hover:bg-rose-100" : "text-emerald-600 bg-emerald-50 hover:bg-emerald-100"}`}
+                  >
+                    {v.isActive !== false ? "Deactivate" : "Activate"}
+                  </button>
+                </div>
               </div>
             ))}
             {sortedVehicles.length === 0 && (
@@ -231,6 +255,12 @@ export function Vehicles() {
                         <FileText className="w-4 h-4 mr-1.5" /> Trips
                       </button>
                       <button
+                        onClick={() => openEditModal(v)}
+                        className="text-zinc-600 hover:text-zinc-800 font-medium px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors inline-flex items-center whitespace-nowrap"
+                      >
+                        <Edit2 className="w-4 h-4 mr-1.5" /> Edit
+                      </button>
+                      <button
                         onClick={() => updateVehicle({ ...v, isActive: v.isActive === false })}
                         className={`font-medium px-3 py-1.5 rounded-lg transition-colors inline-flex items-center whitespace-nowrap ${v.isActive !== false ? "text-rose-600 bg-rose-50 hover:bg-rose-100" : "text-emerald-600 bg-emerald-50 hover:bg-emerald-100"}`}
                       >
@@ -255,17 +285,17 @@ export function Vehicles() {
           <div className="bg-white dark:bg-zinc-800 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl">
             <div className="px-4 py-3 md:px-6 md:py-4 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50 sticky top-0">
               <h3 className="text-lg font-bold text-zinc-900 dark:text-white">
-                Add New Vehicle
+                {editingVehicleId ? "Edit Vehicle" : "Add New Vehicle"}
               </h3>
               <button
-                onClick={() => setIsModalOpen(false)}
+                onClick={resetForm}
                 className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:text-zinc-300"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreate} className="p-3 md:p-5 space-y-6">
+            <form onSubmit={handleSubmit} className="p-3 md:p-5 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:p-6">
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
@@ -456,7 +486,7 @@ export function Vehicles() {
               <div className="flex justify-end space-x-3 pt-4 border-t border-zinc-100 dark:border-zinc-700">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={resetForm}
                   className="px-5 py-2 text-zinc-600 dark:text-zinc-300 font-medium hover:bg-zinc-100 dark:hover:bg-zinc-700 dark:bg-zinc-800 rounded-lg transition-colors"
                 >
                   Cancel

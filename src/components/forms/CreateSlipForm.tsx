@@ -4,9 +4,11 @@ import { MaterialType, DeliveryMode, MeasurementType, Slip } from "../../types";
 import { Plus, Truck } from "lucide-react";
 import { Combobox } from "../ui/Combobox";
 import { parseFeetInches } from "../../lib/utils";
+import { useToast } from "../ui/Toast";
 
 export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void }) {
   const { vehicles, customers, addSlip, slips, companySettings, addVehicle, updateVehicle, addCustomer, addTransaction } = useErp();
+  const { addToast } = useToast();
   
   const [formData, setFormData] = useState({
     vehicleNo: "",
@@ -26,8 +28,8 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
     amountPaid: "",
     customerId: "CASH",
     notes: "",
-    operatorName: localStorage.getItem('lastOperatorName') || "",
-    loaderName: localStorage.getItem('lastLoaderName') || "",
+    operatorName: (() => { try { return localStorage.getItem('lastOperatorName') || ""; } catch { return ""; } })(),
+    loaderName: (() => { try { return localStorage.getItem('lastLoaderName') || ""; } catch { return ""; } })(),
   });
 
   useEffect(() => {
@@ -81,10 +83,16 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
   );
 
   const [manualTotalAmount, setManualTotalAmount] = useState<string>(calculatedTotalAmount.toString());
+  const [hasManualOverride, setHasManualOverride] = useState(false);
 
+  // Only sync the calculated total back into the field when the user has not
+  // manually overridden it. This prevents dimension/rate changes from silently
+  // discarding a value the user typed.
   useEffect(() => {
-    setManualTotalAmount(calculatedTotalAmount.toString());
-  }, [calculatedTotalAmount]);
+    if (!hasManualOverride) {
+      setManualTotalAmount(calculatedTotalAmount.toString());
+    }
+  }, [calculatedTotalAmount, hasManualOverride]);
 
   const finalAmount = parseFloat(manualTotalAmount) || 0;
 
@@ -95,11 +103,11 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
       const tare = parseFloat(formData.tareWeight) || 0;
       const gross = parseFloat(formData.grossWeight) || 0;
       if (tare < 0 || gross < 0) {
-        alert("Weights cannot be negative.");
+        addToast('error', 'Weights cannot be negative.');
         return;
       }
       if (tare > gross) {
-        alert("Tare Weight cannot be greater than Gross Weight.");
+        addToast('error', 'Tare Weight cannot be greater than Gross Weight.');
         return;
       }
     } else if (formData.measurementType === "Volume (Brass)") {
@@ -107,24 +115,24 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
       const w = parseFeetInches(formData.widthFeet);
       const h = parseFeetInches(formData.heightFeet);
       if (l <= 0 || w <= 0 || h <= 0) {
-        alert("Length, width, and height must be positive values.");
+        addToast('error', 'Length, width, and height must be positive values.');
         return;
       }
     }
 
     if (calculatedQty < 0) {
-      alert("Calculated quantity cannot be negative.");
+      addToast('error', 'Calculated quantity cannot be negative.');
       return;
     }
 
     if (parseFloat(formData.ratePerUnit) < 0) {
-      alert("Rate per unit cannot be negative.");
+      addToast('error', 'Rate per unit cannot be negative.');
       return;
     }
 
     const freightAmt = parseFloat(formData.freightAmount) || 0;
     if (freightVisible && freightAmt < 0) {
-      alert("Freight amount cannot be negative.");
+      addToast('error', 'Freight amount cannot be negative.');
       return;
     }
 
@@ -134,7 +142,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
     } else if (formData.paymentStatus === "Partial") {
       finalAmountPaid = parseFloat(formData.amountPaid) || 0;
       if (finalAmountPaid < 0) {
-        alert("Amount paid cannot be negative.");
+        addToast('error', 'Amount paid cannot be negative.');
         return;
       }
     }
@@ -150,7 +158,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
           });
         }
       } else {
-         let newVehicleId = Math.random().toString(36).substring(2, 11);
+         let newVehicleId = crypto.randomUUID();
          addVehicle({
             id: newVehicleId,
              vehicleNo: formData.vehicleNo.toUpperCase(),
@@ -171,7 +179,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
     let finalCustomerId = formData.customerId || "CASH";
     if (finalCustomerId !== "CASH" && !customers.find(c => c.id === finalCustomerId)) {
       const newCust = {
-        id: "cust_" + Math.random().toString(36).substring(2, 11),
+        id: "cust_" + crypto.randomUUID(),
         name: finalCustomerId,
         phone: "",
         openingBalance: 0
@@ -181,7 +189,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
     }
 
     const newSlip: Slip = {
-      id: Math.random().toString(36).substring(2, 11),
+      id: crypto.randomUUID(),
       date: new Date().toISOString(),
       vehicleNo: formData.vehicleNo.toUpperCase(),
       driverName: formData.driverName,
@@ -211,7 +219,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
 
     if (finalAmountPaid > 0) {
        addTransaction({
-           id: "tx_" + Math.random().toString(36).substring(2, 11),
+           id: "tx_" + crypto.randomUUID(),
            date: new Date().toISOString(),
            type: "Income",
            category: "Slip Payment",
@@ -222,8 +230,10 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
        });
     }
 
-    if (formData.operatorName) localStorage.setItem('lastOperatorName', formData.operatorName);
-    if (formData.loaderName) localStorage.setItem('lastLoaderName', formData.loaderName);
+    try {
+      if (formData.operatorName) localStorage.setItem('lastOperatorName', formData.operatorName);
+      if (formData.loaderName) localStorage.setItem('lastLoaderName', formData.loaderName);
+    } catch { /* localStorage unavailable — not critical */ }
 
     onSuccess(newSlip);
   };
@@ -527,12 +537,23 @@ return (
         </div>
 
         <div>
-          <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Total ₹</label>
+          <div className="flex items-center justify-between mb-0.5">
+            <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400">Total ₹</label>
+            {hasManualOverride && (
+              <button
+                type="button"
+                onClick={() => { setHasManualOverride(false); setManualTotalAmount(calculatedTotalAmount.toString()); }}
+                className="text-[9px] text-primary-600 dark:text-primary-400 hover:underline"
+              >
+                Reset to auto
+              </button>
+            )}
+          </div>
           <input
             type="number"
             step="1"
             value={manualTotalAmount}
-            onChange={(e) => setManualTotalAmount(e.target.value)}
+            onChange={(e) => { setHasManualOverride(true); setManualTotalAmount(e.target.value); }}
             className="w-full border-2 border-primary-300 dark:border-primary-600 rounded px-1.5 py-1 text-xs font-bold bg-primary-50 dark:bg-primary-900/20"
           />
           <div className="text-[9px] text-zinc-500 mt-0.5">

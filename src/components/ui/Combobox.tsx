@@ -19,7 +19,8 @@ export function Combobox({ options, value, onChange, placeholder = "Select...", 
   useEffect(() => {
     if (!isOpen) {
       if (allowCreate) {
-        setSearch(value);
+        // Strip the "NEW:" sentinel so the input displays the plain name.
+        setSearch(value.startsWith("NEW:") ? value.slice("NEW:".length) : value);
       } else {
         setSearch(selectedOption ? selectedOption.label : "");
       }
@@ -43,7 +44,9 @@ export function Combobox({ options, value, onChange, placeholder = "Select...", 
 
   const handleCreate = () => {
     if (allowCreate && search.trim()) {
-      onChange(search.trim());
+      // Prefix with "NEW:" so callers can reliably distinguish a created name
+      // from an existing option value (which is always an ID or known key).
+      onChange(`NEW:${search.trim()}`);
       setIsOpen(false);
     }
   };
@@ -52,7 +55,7 @@ export function Combobox({ options, value, onChange, placeholder = "Select...", 
     <div className={`relative ${className}`} ref={wrapperRef}>
       <input
         type="text"
-        value={isOpen ? search : (selectedOption ? selectedOption.label : (allowCreate ? value : ""))}
+        value={isOpen ? search : (selectedOption ? selectedOption.label : (allowCreate ? (value.startsWith("NEW:") ? value.slice("NEW:".length) : value) : ""))}
         onChange={(e) => {
           setSearch(e.target.value);
           setIsOpen(true);

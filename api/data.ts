@@ -11,10 +11,6 @@
 import { Pool, PoolClient } from "pg";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-// Simple rate limiter for serverless (uses Vercel's built-in platform features)
-// In production, consider using Vercel's edge middleware for advanced rate limiting
-
-const RATE_LIMIT_HEADER = 'x-ratelimit-remaining';
 const RATE_LIMIT = 100; // Conservative limit for serverless
 
 function getRateLimitKey(req: VercelRequest): string {

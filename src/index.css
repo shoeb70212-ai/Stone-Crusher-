@@ -739,16 +739,18 @@ body {
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   DYNAMIC VIEWPORT HEIGHT (100dvh) - Fixes mobile browser issues
+   DYNAMIC VIEWPORT HEIGHT (100dvh) - Fixes mobile browser issues.
+   Scoped to mobile only; desktop relies on flex-1 for scrolling.
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 @supports (height: 100dvh) {
-  .app-container {
-    height: 100dvh;
-  }
-  
-  .app-content {
-    height: 100dvh;
-    height: calc(100dvh - 56px - env(safe-area-inset-bottom));
+  @media (max-width: 640px) {
+    .app-container {
+      height: 100dvh;
+    }
+
+    .app-content {
+      height: calc(100dvh - 56px - env(safe-area-inset-bottom));
+    }
   }
 }
 
@@ -801,19 +803,9 @@ body {
     height: 24px;
   }
   
-  /* Links need proper touch area */
-  a {
-    padding: 8px 12px;
-    display: inline-block;
-  }
-  
   /* Table row touch targets */
   tr {
     min-height: 56px;
-  }
-  
-  td, th {
-    padding: 14px 12px !important;
   }
 }
 

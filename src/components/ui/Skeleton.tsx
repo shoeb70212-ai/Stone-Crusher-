@@ -24,24 +24,6 @@ export function Skeleton({ className = '', variant = 'rectangular', width, heigh
   );
 }
 
-export function SkeletonCard() {
-  return (
-    <div className="bg-white dark:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 p-4">
-      <div className="flex items-center gap-3 mb-4">
-        <Skeleton variant="circular" width={40} height={40} />
-        <div className="flex-1">
-          <Skeleton variant="text" width="60%" height={16} className="mb-2" />
-          <Skeleton variant="text" width="40%" height={12} />
-        </div>
-      </div>
-      <Skeleton variant="rectangular" height={80} className="mb-3" />
-      <div className="flex gap-2">
-        <Skeleton variant="rectangular" width={60} height={24} />
-        <Skeleton variant="rectangular" width={60} height={24} />
-      </div>
-    </div>
-  );
-}
 
 export function SkeletonTable({ rows = 5, columns = 4 }: { rows?: number; columns?: number }) {
   return (
@@ -72,24 +54,6 @@ export function SkeletonTable({ rows = 5, columns = 4 }: { rows?: number; column
   );
 }
 
-export function SkeletonForm() {
-  return (
-    <div className="space-y-4">
-      <div>
-        <Skeleton variant="text" width={100} height={14} className="mb-2" />
-        <Skeleton variant="rectangular" height={44} />
-      </div>
-      <div>
-        <Skeleton variant="text" width={100} height={14} className="mb-2" />
-        <Skeleton variant="rectangular" height={44} />
-      </div>
-      <div className="flex gap-3">
-        <Skeleton variant="rectangular" width={100} height={44} />
-        <Skeleton variant="rectangular" width={100} height={44} />
-      </div>
-    </div>
-  );
-}
 
 export function PageSkeleton() {
   return (

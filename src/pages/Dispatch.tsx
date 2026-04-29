@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useErp } from "../context/ErpContext";
 import { Slip } from "../types";
+import { format, parseISO } from "date-fns";
 import {
   Plus,
   Truck,
@@ -14,6 +15,7 @@ import { CreateSlipForm } from "../components/forms/CreateSlipForm";
 import { EditSlipForm } from "../components/forms/EditSlipForm";
 import { PrintSlipModal } from "../components/forms/PrintSlipModal";
 import { MobileModal } from "../components/ui/MobileModal";
+import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { cn } from "../lib/utils";
 
 function statusStyle(status: string) {
@@ -35,8 +37,10 @@ export function Dispatch() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingSlip, setEditingSlip] = useState<Slip | null>(null);
   const [printSlip, setPrintSlip] = useState<Slip | null>(null);
+  const [slipToCancel, setSlipToCancel] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "pending">("all");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [activeQuickFilter, setActiveQuickFilter] = useState<"today" | "week" | "month" | null>(null);
 
   // Filters
   const [filterDate, setFilterDate] = useState("");
@@ -49,19 +53,20 @@ export function Dispatch() {
 
   const quickDateFilter = (period: "today" | "week" | "month") => {
     const today = new Date();
+    setActiveQuickFilter(period);
     if (period === "today") {
-      setFilterDate(today.toISOString().split('T')[0]);
+      setFilterDate(format(today, 'yyyy-MM-dd'));
       setFilterStartDate("");
       setFilterEndDate("");
     } else if (period === "week") {
       const startOfWeek = new Date(today);
       startOfWeek.setDate(today.getDate() - today.getDay());
-      setFilterStartDate(startOfWeek.toISOString().split('T')[0]);
+      setFilterStartDate(format(startOfWeek, 'yyyy-MM-dd'));
       setFilterEndDate("");
       setFilterDate("");
     } else if (period === "month") {
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-      setFilterStartDate(startOfMonth.toISOString().split('T')[0]);
+      setFilterStartDate(format(startOfMonth, 'yyyy-MM-dd'));
       setFilterEndDate("");
       setFilterDate("");
     }
@@ -84,6 +89,7 @@ export function Dispatch() {
     setFilterCustomer("All");
     setFilterDeliveryMode("All");
     setFilterVehicle("");
+    setActiveQuickFilter(null);
   };
 
   const getActiveFilterCount = () => {
@@ -115,9 +121,9 @@ export function Dispatch() {
       if (filterCustomer !== "All" && s.customerId !== filterCustomer)
         return false;
       
-      // Single date filter
+      // Single date filter — use parseISO + format to avoid UTC-vs-local mismatch
       if (filterDate) {
-        const slipDate = new Date(s.date).toISOString().split('T')[0];
+        const slipDate = format(parseISO(s.date), 'yyyy-MM-dd');
         if (slipDate !== filterDate) return false;
       }
       // Date range filter
@@ -145,7 +151,7 @@ export function Dispatch() {
           <button
             onClick={() => quickDateFilter("today")}
             className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-              filterDate === new Date().toISOString().split('T')[0]
+              activeQuickFilter === "today"
                 ? "bg-primary-500 text-white"
                 : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
             }`}
@@ -155,7 +161,7 @@ export function Dispatch() {
           <button
             onClick={() => quickDateFilter("week")}
             className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-              filterStartDate && !filterDate
+              activeQuickFilter === "week"
                 ? "bg-primary-500 text-white"
                 : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
             }`}
@@ -165,7 +171,7 @@ export function Dispatch() {
           <button
             onClick={() => quickDateFilter("month")}
             className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-              filterStartDate && new Date(filterStartDate).getDate() === 1 && !filterDate
+              activeQuickFilter === "month"
                 ? "bg-primary-500 text-white"
                 : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
             }`}
@@ -194,7 +200,7 @@ export function Dispatch() {
           <input
             type="date"
             value={filterStartDate}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFilterStartDate(e.target.value); setFilterDate(""); }}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFilterStartDate(e.target.value); setFilterDate(""); setActiveQuickFilter(null); }}
             className="w-full text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg px-2 py-1.5 outline-none focus:border-primary-500"
           />
         </div>
@@ -366,7 +372,7 @@ export function Dispatch() {
             <button
               onClick={() => quickDateFilter("today")}
               className={`px-2 py-1 text-[10px] font-medium rounded transition-colors ${
-                filterDate === new Date().toISOString().split('T')[0]
+                filterDate === format(new Date(), 'yyyy-MM-dd')
                   ? "bg-primary-500 text-white"
                   : "bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-300 dark:hover:bg-zinc-600"
               }`}
@@ -542,7 +548,7 @@ export function Dispatch() {
                               Load
                             </button>
                             <button
-                              onClick={() => window.confirm("Cancel?") && updateSlipStatus(slip.id, "Cancelled")}
+                              onClick={() => setSlipToCancel(slip.id)}
                               className="p-2.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 active:scale-95 transition-all"
                               title="Cancel"
                             >
@@ -695,10 +701,7 @@ export function Dispatch() {
                                 Loaded
                               </button>
                               <button
-                                onClick={() =>
-                                  window.confirm("Cancel this slip?") &&
-                                  updateSlipStatus(slip.id, "Cancelled")
-                                }
+                                onClick={() => setSlipToCancel(slip.id)}
                                 className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
                                 title="Cancel"
                               >
@@ -790,6 +793,21 @@ export function Dispatch() {
       {printSlip && (
         <PrintSlipModal slip={printSlip} onClose={() => setPrintSlip(null)} />
       )}
+
+      {/* ── Cancel Slip Confirmation ── */}
+      <ConfirmationModal
+        isOpen={!!slipToCancel}
+        title="Cancel Slip"
+        message="Are you sure you want to cancel this slip? This action cannot be undone."
+        confirmText="Cancel Slip"
+        onConfirm={() => {
+          if (slipToCancel) {
+            updateSlipStatus(slipToCancel, "Cancelled");
+            setSlipToCancel(null);
+          }
+        }}
+        onCancel={() => setSlipToCancel(null)}
+      />
     </div>
   );
 }

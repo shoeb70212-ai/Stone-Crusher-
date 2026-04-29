@@ -16,25 +16,6 @@ export const customerSchema = z.object({
   openingBalance: z.coerce.number().default(0),
 });
 
-export const vehicleSchema = z.object({
-  vehicleNo: z
-    .string()
-    .min(1, "Vehicle number is required")
-    .regex(/^[A-Z]{2}[0-9]{2}[A-Z]{0,3}[0-9]{4}$/i, "Invalid vehicle number format"),
-  ownerName: z.string().min(1, "Owner name is required").max(100),
-  ownerPhone: z
-    .string()
-    .regex(/^[0-9+\-\s]{10,15}$/, "Invalid phone number")
-    .optional()
-    .or(z.literal("")),
-  driverName: z.string().max(100).optional(),
-  driverPhone: z
-    .string()
-    .regex(/^[0-9+\-\s]{10,15}$/, "Invalid phone number")
-    .optional()
-    .or(z.literal("")),
-});
-
 export const slipSchema = z.object({
   vehicleNo: z.string().min(1, "Vehicle number is required"),
   driverName: z.string().max(100).optional(),
@@ -76,31 +57,13 @@ export const invoiceSchema = z.object({
   ).min(1, "At least one item is required"),
 });
 
-export const userSchema = z.object({
-  name: z.string().min(1, "Name is required").max(100),
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(["Admin", "Partner", "Manager"]),
-});
-
-export const materialSchema = z.object({
-  name: z.string().min(1, "Material name is required").max(100),
-  defaultPrice: z.coerce.number().min(0, "Price must be positive"),
-  unit: z.enum(["Ton", "Brass", "Kg", "Nos"]),
-  hsnCode: z.string().max(20).optional(),
-  gstRate: z.coerce.number().min(0).max(100).default(5),
-});
-
 export const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(1, "Password is required"),
 });
 
 export type CustomerInput = z.infer<typeof customerSchema>;
-export type VehicleInput = z.infer<typeof vehicleSchema>;
 export type SlipInput = z.infer<typeof slipSchema>;
 export type TransactionInput = z.infer<typeof transactionSchema>;
 export type InvoiceInput = z.infer<typeof invoiceSchema>;
-export type UserInput = z.infer<typeof userSchema>;
-export type MaterialInput = z.infer<typeof materialSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;

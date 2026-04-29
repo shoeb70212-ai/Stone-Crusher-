@@ -47,32 +47,3 @@ export function OfflineIndicator() {
   );
 }
 
-export function ConnectionStatus() {
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  return (
-    <div 
-      className="flex items-center gap-1.5 text-xs"
-      role="status"
-      aria-label={isOnline ? 'Connected' : 'Disconnected'}
-    >
-      <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-      <span className="text-zinc-500 dark:text-zinc-400">
-        {isOnline ? 'Online' : 'Offline'}
-      </span>
-    </div>
-  );
-}

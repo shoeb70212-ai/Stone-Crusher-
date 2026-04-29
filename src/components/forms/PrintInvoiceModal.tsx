@@ -2,17 +2,8 @@ import React, { useState } from "react";
 import { Invoice, Customer } from "../../types";
 import { X, Printer, Download } from "lucide-react";
 import { useErp } from "../../context/ErpContext";
-import { ToWords } from "to-words";
-import { openPdfBackend, downloadPdfBackend } from "../../lib/print-utils";
-
-const toWords = new ToWords({
-  localeCode: 'en-IN',
-  converterOptions: {
-    currency: true,
-    ignoreDecimal: false,
-    ignoreZeroCurrency: false,
-  }
-});
+import { openPdfInNewTab, downloadPdf } from "../../lib/print-utils";
+import { toWords } from "../../lib/utils";
 
 export function PrintInvoiceModal({ 
   invoice, 
@@ -441,7 +432,7 @@ export function PrintInvoiceModal({
                           </tr>
                          );
                       })}
-                      {Array.from({ length: Math.max(0, 15 - invoice.items.length) }).map((_, i) => (
+                      {Array.from({ length: Math.max(0, 8 - invoice.items.length) }).map((_, i) => (
                         <tr key={'pad-'+i}>
                             <td className="border-r border-black px-1 py-3 border-b-0"></td>
                             <td className="border-r border-black px-2 py-3 border-b-0"></td>
@@ -651,21 +642,26 @@ export function PrintInvoiceModal({
             <button
               onClick={() => {
                 const element = document.getElementById('print-invoice-area');
-                if(element) {
-                   downloadPdfBackend(element, format, `Invoice-${invoice.invoiceNo}.pdf`);
-                   setTimeout(() => onClose(), 500);
+                if (element) {
+                  downloadPdf(element, `Invoice-${invoice.invoiceNo}.pdf`);
+                  setTimeout(() => onClose(), 500);
                 }
               }}
-              className="flex-1 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm"
+              className="flex-1 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm flex items-center justify-center gap-1"
             >
+              <Download className="w-4 h-4" />
               Download
             </button>
             <button
               onClick={() => {
+                // Open window synchronously to bypass popup blocker
+                const win = window.open('', '_blank');
                 const printContent = document.getElementById('print-invoice-area')?.innerHTML;
-                if(printContent) {
-                   openPdfBackend(printContent, format);
-                   setTimeout(() => onClose(), 500);
+                if (printContent) {
+                  openPdfInNewTab(printContent, win);
+                  setTimeout(() => onClose(), 500);
+                } else if (win) {
+                  win.close();
                 }
               }}
               className="flex-1 px-3 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-1 text-sm"

@@ -70,7 +70,7 @@ export function Login({ onLogin }: LoginProps) {
         }
       }
 
-      setError('Invalid email or password. (Default: admin@admin.com / admin123)');
+      setError('Invalid email or password.');
     } finally {
       setIsSubmitting(false);
     }

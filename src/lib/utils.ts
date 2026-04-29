@@ -1,9 +1,27 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { ToWords } from "to-words";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+/** Shared instance for converting amounts to Indian-English words (currency mode). */
+export const toWords = new ToWords({
+  localeCode: "en-IN",
+  converterOptions: {
+    currency: true,
+    ignoreDecimal: false,
+    ignoreZeroCurrency: false,
+    doNotAddOnly: false,
+    currencyOptions: {
+      name: "Rupee",
+      plural: "Rupees",
+      symbol: "₹",
+      fractionalUnit: { name: "Paisa", plural: "Paise", symbol: "" },
+    },
+  },
+});
 
 /**
  * Parses a feet.inches notation commonly used in the stone crusher industry.

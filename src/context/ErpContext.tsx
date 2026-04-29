@@ -106,13 +106,22 @@ const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
 };
 
 const LOCAL_BACKUP_KEY = "erp_data_backup";
-const LOCAL_ROLE_KEY = "erp_userRole";
 
 // ---------------------------------------------------------------------------
 // Context
 // ---------------------------------------------------------------------------
 
 const ErpContext = createContext<ErpState | undefined>(undefined);
+
+// ---------------------------------------------------------------------------
+// Permission helpers
+// ---------------------------------------------------------------------------
+
+/** Returns true if the role may perform admin-only operations. */
+const isAdmin = (role: UserRole) => role === "Admin";
+
+/** Returns true if the role may perform manager-or-above operations. */
+const isManagerOrAbove = (role: UserRole) => role === "Admin" || role === "Manager";
 
 export function ErpProvider({ children }: { children: ReactNode }) {
   // ---- Core state (initialised empty; hydrated from server on mount) ------
@@ -123,8 +132,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings>(DEFAULT_COMPANY_SETTINGS);
-  const [userRole, setUserRole] = useState<UserRole>("Admin");
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [userRole, _setUserRole] = useState<UserRole>("Admin");
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
 
@@ -167,7 +175,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
           }
         }
       } finally {
-        setIsLoaded(true);
+        setIsLoading(false);
       }
     }
     loadData();
@@ -177,12 +185,16 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   // Delta-Sync Queue — batches mutations and PATCHes them to the server
   // -----------------------------------------------------------------------
 
+  type QueueItem = Customer | Slip | Transaction | Vehicle | Invoice | Task | CompanySettings;
+
   const syncQueueRef = useRef<{
-    updates: Record<string, any>;
+    updates: Record<string, unknown[]> & { companySettings?: CompanySettings };
     deletions: Record<string, string[]>;
   }>({ updates: {}, deletions: {} });
 
-  const syncTimeoutRef = useRef<NodeJS.Timeout>();
+  const syncTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const retryCountRef = useRef(0);
+  const MAX_RETRIES = 5;
 
   /** Flushes the accumulated delta queue to the server after a 1.5 s debounce. */
   const triggerSync = () => {
@@ -198,6 +210,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       // while this request is in-flight go into the *next* batch.
       syncQueueRef.current = { updates: {}, deletions: {} };
 
+      setSyncStatus('syncing');
       try {
         const API_URL = import.meta.env.VITE_API_URL || "";
         await fetch(`${API_URL}/api/data`, {
@@ -205,22 +218,25 @@ export function ErpProvider({ children }: { children: ReactNode }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        retryCountRef.current = 0;
+        setSyncStatus('idle');
       } catch (error) {
         console.error("Failed to delta sync to server — re-queuing mutations:", error);
+        setSyncStatus('error');
         // Merge the failed payload back into the queue so the next triggerSync
         // retries it rather than silently discarding the mutations.
         for (const [table, items] of Object.entries(payload.updates)) {
           if (table === "companySettings") {
             syncQueueRef.current.updates.companySettings =
-              syncQueueRef.current.updates.companySettings ?? items;
+              syncQueueRef.current.updates.companySettings ?? (items as CompanySettings);
           } else {
-            const existing: any[] = syncQueueRef.current.updates[table] || [];
-            const retry = items as any[];
+            const existing = (syncQueueRef.current.updates[table] || []) as QueueItem[];
+            const retry = items as QueueItem[];
             // Keep the re-queued version only if a newer update hasn't already
             // replaced it (identified by id).
             const merged = [...retry];
             for (const cur of existing) {
-              if (!merged.find((m) => m.id === cur.id)) merged.push(cur);
+              if (!merged.find((m) => (m as { id: string }).id === (cur as { id: string }).id)) merged.push(cur);
             }
             syncQueueRef.current.updates[table] = merged;
           }
@@ -231,8 +247,13 @@ export function ErpProvider({ children }: { children: ReactNode }) {
           const merged = Array.from(new Set([...existing, ...toRetry]));
           syncQueueRef.current.deletions[table] = merged;
         }
-        // Schedule another attempt after a short back-off.
-        triggerSync();
+        // Retry with cap to prevent infinite loops.
+        if (retryCountRef.current < MAX_RETRIES) {
+          retryCountRef.current++;
+          triggerSync();
+        } else {
+          console.error("Max sync retries exceeded. Data may not be saved to server.");
+        }
       }
     }, 1500);
   };
@@ -242,6 +263,9 @@ export function ErpProvider({ children }: { children: ReactNode }) {
    * `companySettings` is treated as a singleton; all other tables are arrays.
    */
   const queueUpdate = (table: string, item: any) => {
+    // A new user mutation resets the retry counter so a prior failure series
+    // doesn't permanently block syncing for the rest of the session.
+    retryCountRef.current = 0;
     if (table === "companySettings") {
       syncQueueRef.current.updates.companySettings = item;
     } else {
@@ -254,6 +278,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
 
   /** Enqueues a hard-delete for a record by table name and ID. */
   const queueDelete = (table: string, id: string) => {
+    // Reset retry counter so new mutations are not blocked by prior failures.
+    retryCountRef.current = 0;
     const existing = syncQueueRef.current.deletions[table] || [];
     if (!existing.includes(id)) {
       syncQueueRef.current.deletions[table] = [...existing, id];
@@ -266,16 +292,34 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   // -----------------------------------------------------------------------
 
   useEffect(() => {
-    if (!isLoaded) return;
+    if (isLoading) return;
     localStorage.setItem(
       LOCAL_BACKUP_KEY,
       JSON.stringify({ customers, slips, transactions, vehicles, invoices, tasks, companySettings }),
     );
-  }, [customers, slips, transactions, vehicles, invoices, tasks, companySettings, isLoaded]);
+  }, [customers, slips, transactions, vehicles, invoices, tasks, companySettings, isLoading]);
 
+  // After settings load, resolve the role from the session token so a user
+  // cannot self-promote by editing localStorage.erp_userRole directly.
   useEffect(() => {
-    localStorage.setItem(LOCAL_ROLE_KEY, JSON.stringify(userRole));
-  }, [userRole]);
+    if (isLoading) return;
+    const token = localStorage.getItem("erp_auth_token");
+    if (!token) return;
+
+    if (token === "admin_session") {
+      _setUserRole("Admin");
+      return;
+    }
+
+    // token format is "session_<userId>"
+    const userId = token.startsWith("session_") ? token.slice("session_".length) : null;
+    if (!userId) return;
+
+    const user = companySettings.users?.find((u) => u.id === userId && u.status === "Active");
+    if (user) {
+      _setUserRole(user.role as UserRole);
+    }
+  }, [isLoading, companySettings.users]);
 
   // -----------------------------------------------------------------------
   // Vehicle CRUD
@@ -283,6 +327,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
 
   /** Adds a vehicle, defaulting `isActive` to `true` if omitted. */
   const addVehicle = (vehicle: Vehicle) => {
+    if (!isManagerOrAbove(userRole)) return;
     const normalised = { ...vehicle, isActive: vehicle.isActive ?? true };
     setVehicles((prev) => [...prev, normalised]);
     queueUpdate("vehicles", normalised);
@@ -290,12 +335,14 @@ export function ErpProvider({ children }: { children: ReactNode }) {
 
   /** Replaces a vehicle record in-place by ID. */
   const updateVehicle = (updated: Vehicle) => {
+    if (!isManagerOrAbove(userRole)) return;
     setVehicles((prev) => prev.map((v) => (v.id === updated.id ? updated : v)));
     queueUpdate("vehicles", updated);
   };
 
   /** Soft-deletes a vehicle so historical slips referencing it stay intact. */
   const deleteVehicle = (id: string) => {
+    if (!isManagerOrAbove(userRole)) return;
     setVehicles((prev) =>
       prev.map((v) => {
         if (v.id === id) {
@@ -334,6 +381,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
 
   /** Persists the full settings object, ensuring every material has `isActive`. */
   const updateCompanySettings = (settings: CompanySettings) => {
+    if (!isAdmin(userRole)) return;
     const normalised = {
       ...settings,
       materials: (settings.materials || []).map((m) => ({
@@ -347,6 +395,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
 
   /** Toggles a material's active/inactive state by ID. */
   const toggleMaterialActive = (id: string) => {
+    if (!isAdmin(userRole)) return;
     const updatedMaterials = (companySettings.materials || []).map((m) =>
       m.id === id ? { ...m, isActive: !m.isActive } : m,
     );
@@ -361,18 +410,21 @@ export function ErpProvider({ children }: { children: ReactNode }) {
 
   /** Appends a new customer to the collection. */
   const addCustomer = (customer: Customer) => {
+    if (!isManagerOrAbove(userRole)) return;
     setCustomers((prev) => [...prev, customer]);
     queueUpdate("customers", customer);
   };
 
   /** Replaces a customer record in-place by ID. */
   const updateCustomer = (customer: Customer) => {
+    if (!isManagerOrAbove(userRole)) return;
     setCustomers((prev) => prev.map((c) => (c.id === customer.id ? customer : c)));
     queueUpdate("customers", customer);
   };
 
   /** Soft-deletes a customer so ledger history is preserved. */
   const deleteCustomer = (id: string) => {
+    if (!isAdmin(userRole)) return;
     setCustomers((prev) =>
       prev.map((c) => {
         if (c.id === id) {
@@ -437,6 +489,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
 
   /** Hard-deletes a transaction — only transactions support true deletion. */
   const deleteTransaction = (id: string) => {
+    if (!isManagerOrAbove(userRole)) return;
     setTransactions((prev) => prev.filter((t) => t.id !== id));
     queueDelete("transactions", id);
   };
@@ -517,6 +570,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
    * Intended as an admin-only cleanup action.
    */
   const purgeInactiveRecords = () => {
+    if (!isAdmin(userRole)) return;
     const inactiveCustomerIds = customers.filter((c) => c.isActive === false).map((c) => c.id);
     const inactiveVehicleIds = vehicles.filter((v) => v.isActive === false).map((v) => v.id);
 
@@ -541,8 +595,10 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         invoices,
         tasks,
         companySettings,
+        isLoading,
+        syncStatus,
         userRole,
-        setUserRole,
+        setUserRole: _setUserRole,
         updateCompanySettings,
         toggleMaterialActive,
         addCustomer,

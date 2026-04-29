@@ -75,20 +75,20 @@ Also added closing curly brace:
 
 **Verification:** ✅ Build passes successfully
 
-### 4.3 Mobile Layout Review
+### 4.4 Invoicing & Settings Stability (April 29, 2026)
 
-All pages were reviewed and are already optimized for mobile:
+| Component | Technical Fix | Outcome |
+|-----------|---------------|---------|
+| `PrintInvoiceModal.tsx` | Changed padding logic to `Math.max(0, 8 - items.length)` | Invoices with <8 items fit on one page. |
+| `print-utils.ts` | Implemented `openPdfInNewTab()` with sync window allocation | Prevents browser popup blockers from stopping downloads. |
+| `ErpContext.tsx` | Added `localStorage` hydration for `userRole` in `useState` initializer | Login sessions now survive page refreshes/reloads. |
+| `index.css` | Scoped `@supports (height: 100dvh)` to `@media (max-width: 640px)` | Fixed "cut-off" issue on desktop Settings page; enabled scrolling. |
+| `ErpContext.tsx` | Added missing `isLoading` and `syncStatus` to Provider value | Resolved TypeScript/Runtime sync errors in the UI. |
 
-| Page | Status | Mobile Pattern |
-|------|--------|---------------|
-| Dashboard | ✅ Optimized | Compact stat cards, reduced spacing |
-| Daybook | ✅ Optimized | 2-column grid (desktop: 4), max-height 200px sections |
-| Dispatch | ✅ Optimized | Card list with 3-column detail grid |
-| Invoices | ✅ Optimized + Fixed | Compact list items, status dropdown |
-| Customers | ✅ Optimized | Expandable sections |
-| Vehicles | ✅ Optimized | Compact cards |
-
----
+### 4.5 Verified Settings Logic
+- **Appearance**: Color modes (Light/Dark/System) and Theme colors (Emerald/Blue/etc.) are verified functional and saving.
+- **Invoicing**: Terms & Conditions and Template selection are verified functional and saving.
+- **Access**: Settings is restricted to `Admin` role only; Manager/Partner roles cannot see the module.
 
 ## 5. Current Status of Features
 
@@ -98,9 +98,11 @@ All pages were reviewed and are already optimized for mobile:
 | **Delta Sync** | ✅ Done | PATCH based, collision-safe. |
 | **Vehicle Master** | ✅ Done | Dynamic selection in Dispatch. |
 | **Material Master** | ✅ Done | Dynamic pricing and activation. |
-| **PDF Billing** | ✅ Done | Supports Thermal & A4 formats. |
-| **Mobile Layout** | ✅ Done | Compact views, touch-friendly targets |
-| **Print Fixes** | ✅ Done | Modal closing, PDF sizing fixed |
+| **PDF Billing** | ✅ Done | Single-page fitting (A4) and blocker-safe. |
+| **Mobile Layout** | ✅ Done | Compact views, touch-friendly targets. |
+| **Print Fixes** | ✅ Done | 1-page padding, sync window opening fixed. |
+| **Settings Scroll** | ✅ Done | Fixed desktop clipping in CSS. |
+| **Auth Persistence** | ✅ Done | Sessions survive reload via hydration. |
 | **Mobile App** | 🚧 Pending | Capacitor wrapping required. |
 
 ---
@@ -203,13 +205,11 @@ balance = openingBalance + unbilledSlipTotal + invoiceTotal + expenseDebits - pa
 
 ---
 
-## 11. Next Steps for Development
-
-1. **Admin User Management**: Add a screen under Settings to allow the Admin to manage the `companySettings.users` array (Add/Delete/Deactivate).
-2. **Production Deployment Check**: After deploying to Vercel, monitor the PostgreSQL logs to ensure the dynamic `PATCH` queries are performing efficiently under load.
-3. **Ledger Filters**: Add date-range filtering to the Ledger and Customer Statement views to handle high-volume accounts.
+1. **Capacitor Integration**: Run `npx cap add android` and build the mobile binaries.
+2. **Action-Level Permissions**: Currently, roles only hide pages. Implement logic in `ErpContext` to prevent `Manager` from deleting records or editing sensitive settings.
+3. **Ledger Filters**: Add date-range filtering to handled high-volume accounts.
 
 ---
 
-*Document updated: April 28, 2026*
+*Document updated: April 29, 2026*
 *Original handoff by Antigravity AI*

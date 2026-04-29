@@ -2,6 +2,9 @@ import React, { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { cn } from "../../lib/utils";
 
+// Module-level counter so nested/concurrent modals don't fight over body scroll.
+let openModalCount = 0;
+
 interface MobileModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -14,6 +17,17 @@ interface MobileModalProps {
   /** Max width on desktop – defaults to max-w-2xl */
   maxWidth?: string;
 }
+
+/** Static map so Tailwind JIT can statically analyse all md:max-w-* classes. */
+const MD_MAX_WIDTH: Record<string, string> = {
+  "max-w-sm":  "md:max-w-sm",
+  "max-w-md":  "md:max-w-md",
+  "max-w-lg":  "md:max-w-lg",
+  "max-w-xl":  "md:max-w-xl",
+  "max-w-2xl": "md:max-w-2xl",
+  "max-w-3xl": "md:max-w-3xl",
+  "max-w-4xl": "md:max-w-4xl",
+};
 
 /**
  * On mobile  → slides up as a bottom sheet (90vh, rounded top corners, drag handle).
@@ -29,16 +43,23 @@ export function MobileModal({
   maxWidth = "max-w-2xl",
 }: MobileModalProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const mdMaxWidth = MD_MAX_WIDTH[maxWidth] ?? "md:max-w-2xl";
 
-  // Lock body scroll when open
+  // Lock body scroll when open, using a counter so concurrent modals don't
+  // prematurely re-enable scroll when one of them closes.
   useEffect(() => {
     if (isOpen) {
+      openModalCount++;
       document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
     }
     return () => {
-      document.body.style.overflow = "";
+      if (isOpen) {
+        openModalCount--;
+        if (openModalCount <= 0) {
+          openModalCount = 0;
+          document.body.style.overflow = "";
+        }
+      }
     };
   }, [isOpen]);
 
@@ -66,7 +87,7 @@ export function MobileModal({
           // Mobile: bottom sheet - use maxWidth but can be narrower
           "rounded-t-2xl max-h-[92dvh] w-full max-w-[90vw]",
           // Desktop: centred modal
-          `md:rounded-2xl md:max-h-[90vh] md:w-auto md:${maxWidth}`,
+          `md:rounded-2xl md:max-h-[90vh] md:w-auto ${mdMaxWidth}`,
         )}
       >
         {/* Drag handle – mobile only */}

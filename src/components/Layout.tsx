@@ -11,11 +11,12 @@ import { Settings } from "../pages/Settings";
 import { Invoices } from "../pages/Invoices";
 import { Menu, ShieldAlert } from "lucide-react";
 import { useErp } from "../context/ErpContext";
+import { PageSkeleton } from "./ui/Skeleton";
 
 export function Layout() {
   const [currentView, setCurrentView] = useState("dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const { userRole, companySettings } = useErp();
+  const { userRole, companySettings, isLoading } = useErp();
 
   // Apply visual theme to HTML root
   useEffect(() => {
@@ -120,10 +121,10 @@ export function Layout() {
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
       />
-      <div className="flex-1 flex flex-col overflow-hidden w-full relative min-w-0">
+      <div className="flex-1 flex flex-col min-h-0 w-full relative min-w-0">
         <Header onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
         <main className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-4 lg:p-6 pb-20 md:pb-6 app-content no-pull smooth-scroll has-bottom-nav">
-          {content}
+          {isLoading ? <PageSkeleton /> : content}
         </main>
       </div>
     </div>

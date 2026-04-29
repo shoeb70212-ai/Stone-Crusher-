@@ -237,19 +237,19 @@ return (
         </div>
 
         {dateRangeType === "custom" && (
-          <div className="flex items-center gap-2 bg-white dark:bg-zinc-800 px-3 py-2 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-sm self-start">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1.5 sm:gap-2 bg-white dark:bg-zinc-800 px-3 py-2 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-sm w-full sm:w-auto">
             <input
               type="date"
               value={customStartDate}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomStartDate(e.target.value)}
-              className="text-xs text-zinc-700 dark:text-zinc-200 outline-none bg-transparent w-full"
+              className="text-xs text-zinc-700 dark:text-zinc-200 outline-none bg-transparent w-full sm:w-auto"
             />
-            <span className="text-zinc-400 dark:text-zinc-500 font-semibold text-xs shrink-0">to</span>
+            <span className="hidden sm:inline text-zinc-400 dark:text-zinc-500 font-semibold text-xs shrink-0">to</span>
             <input
               type="date"
               value={customEndDate}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomEndDate(e.target.value)}
-              className="text-xs text-zinc-700 dark:text-zinc-200 outline-none bg-transparent w-full"
+              className="text-xs text-zinc-700 dark:text-zinc-200 outline-none bg-transparent w-full sm:w-auto"
             />
           </div>
         )}
@@ -289,6 +289,7 @@ return (
         })}
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-5">
       {/* Recent Dispatches - Full width on mobile */}
       <div className="bg-white dark:bg-zinc-800 rounded-xl md:rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 p-2.5 md:p-5">
         <div className="flex justify-between items-center mb-2">
@@ -300,7 +301,7 @@ return (
           </span>
         </div>
         <div className="space-y-1.5 max-h-[180px] md:max-h-[220px] overflow-y-auto">
-          {slips.slice().reverse().slice(0, 5).map((slip) => (
+          {[...slips].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5).map((slip) => (
             <div key={slip.id} className="bg-zinc-50 dark:bg-zinc-900/50 p-2 rounded-lg flex flex-col gap-1.5 border border-zinc-100 dark:border-zinc-700/50 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors cursor-pointer">
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
@@ -344,6 +345,7 @@ return (
         </div>
         <div className="space-y-1.5 max-h-[180px] md:max-h-[220px] overflow-y-auto">
           {transactions
+            .slice()
             .reverse()
             .slice(0, 5)
             .map((t) => (
@@ -376,6 +378,8 @@ return (
             </p>
           )}
         </div>
+      </div>
+
       </div>
 
       {/* COMPANY VEHICLES - Compact grid */}

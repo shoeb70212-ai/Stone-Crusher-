@@ -18,9 +18,12 @@ import {
 import { Customer } from "../types";
 import { format, parseISO } from "date-fns";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
+import { customerSchema } from "../lib/validation";
+import { useToast } from "../components/ui/Toast";
 
 export function Customers() {
   const { customers, addCustomer, updateCustomer, deleteCustomer, slips, transactions, getCustomerBalance, invoices } = useErp();
+  const { addToast } = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDataId, setEditingDataId] = useState<string | null>(null);
   const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
@@ -64,27 +67,41 @@ export function Customers() {
 
   const handleCreateOrUpdate = (e: React.FormEvent) => {
     e.preventDefault();
+
+    const validation = customerSchema.safeParse({
+      name: formData.name,
+      phone: formData.phone,
+      address: formData.address,
+      gstin: formData.gstin,
+      openingBalance: parseFloat(formData.openingBalance) || 0,
+    });
+
+    if (!validation.success) {
+      const firstError = validation.error.issues[0]?.message ?? "Invalid customer data";
+      addToast("error", firstError);
+      return;
+    }
+
     if (editingDataId) {
       updateCustomer({
         id: editingDataId,
-        name: formData.name,
-        phone: formData.phone,
-        address: formData.address,
-        gstin: formData.gstin,
-        openingBalance: Math.round(parseFloat(formData.openingBalance) || 0),
+        name: validation.data.name,
+        phone: validation.data.phone ?? "",
+        address: validation.data.address,
+        gstin: validation.data.gstin,
+        openingBalance: Math.round(validation.data.openingBalance),
       });
     } else {
-      const newCustomer: Customer = {
-        id: Math.random().toString(36).substring(2, 11),
-        name: formData.name,
-        phone: formData.phone,
-        address: formData.address,
-        gstin: formData.gstin,
-        openingBalance: Math.round(parseFloat(formData.openingBalance) || 0),
-      };
-      addCustomer(newCustomer);
+      addCustomer({
+        id: crypto.randomUUID(),
+        name: validation.data.name,
+        phone: validation.data.phone ?? "",
+        address: validation.data.address,
+        gstin: validation.data.gstin,
+        openingBalance: Math.round(validation.data.openingBalance),
+      });
     }
-    
+
     setIsModalOpen(false);
     setFormData({ name: "", phone: "", address: "", gstin: "", openingBalance: "0" });
     setEditingDataId(null);
@@ -331,7 +348,7 @@ let results = computedHistory.filter(item => {
                     <span className={`px-1.5 py-0.5 sm:px-2 sm:py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold ${c.isActive !== false ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"}`}>
                       {c.isActive !== false ? "Active" : "Inactive"}
                     </span>
-                    {isExpanded ? <ChevronUp className="w-4 h-4 sm:w-5 h-5 text-zinc-400" /> : <ChevronDown className="w-4 h-4 sm:w-5 h-5 text-zinc-400" />}
+                    {isExpanded ? <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-400" /> : <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-400" />}
                   </div>
                 </div>
 

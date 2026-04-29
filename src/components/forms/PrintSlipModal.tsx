@@ -2,15 +2,18 @@ import React, { useState } from "react";
 import { Slip } from "../../types";
 import { X, Printer } from "lucide-react";
 import { useErp } from "../../context/ErpContext";
-import { openPdfBackend, downloadPdfBackend } from "../../lib/print-utils";
+import { openPdfInNewTab, downloadPdf } from "../../lib/print-utils";
 
 export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => void }) {
   const { companySettings, customers } = useErp();
   const [format, setFormat] = useState(companySettings.slipFormat || "Thermal-58mm");
-  
-  let printWidthClass = "max-w-[260px]"; // reduced for 80mm
-  if (format === "A4") printWidthClass = "max-w-3xl";
-  if (format === "Thermal-58mm") printWidthClass = "max-w-[200px] text-[9px]";
+
+  const primaryColorHex: Record<string, string> = {
+    emerald: "#10b981", blue: "#3b82f6", violet: "#8b5cf6",
+    rose: "#f43f5e", amber: "#f59e0b",
+  };
+  const borderColor = primaryColorHex[companySettings.primaryColor || "emerald"] ?? "#10b981";
+
 
   return (
     <div className="fixed inset-0 bg-zinc-900/80 flex items-center justify-center md:p-4 z-50 overflow-hidden">
@@ -39,7 +42,7 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
               }
             }
           `}} />
-          <div className="text-center mb-2 border-b border-black pb-2" style={format === 'A4' ? { borderColor: '#10b981' } : undefined}>
+          <div className="text-center mb-2 border-b border-black pb-2" style={format === 'A4' ? { borderColor } : undefined}>
             {companySettings.logo && (
                <img src={companySettings.logo} alt="Logo" className={`${format === 'A4' ? 'h-16' : 'h-8'} object-contain mx-auto mb-1 grayscale`} />
             )}
@@ -156,10 +159,10 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
           <div className="flex gap-2">
             <button
               onClick={() => {
-                const printContent = document.getElementById('print-area')?.innerHTML;
-                if (printContent) {
-                   downloadPdfBackend(printContent, format, `Slip-${slip.id}.pdf`);
-                   setTimeout(() => onClose(), 500);
+                const el = document.getElementById('print-area');
+                if (el) {
+                  downloadPdf(el, `Slip-${slip.id}.pdf`);
+                  setTimeout(() => onClose(), 500);
                 }
               }}
               className="flex-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-lg font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors"
@@ -168,10 +171,14 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
             </button>
             <button
               onClick={() => {
+                // Open window synchronously to bypass popup blocker
+                const win = window.open('', '_blank');
                 const printContent = document.getElementById('print-area')?.innerHTML;
                 if (printContent) {
-                   openPdfBackend(printContent, format);
-                   setTimeout(() => onClose(), 500);
+                  openPdfInNewTab(printContent, win);
+                  setTimeout(() => onClose(), 500);
+                } else if (win) {
+                  win.close();
                 }
               }}
               className="flex-1 bg-primary-600 hover:bg-primary-700 text-white px-3 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-1 transition-colors"

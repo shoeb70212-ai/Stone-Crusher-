@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from "react";
 import { useErp } from "../context/ErpContext";
 import { TransactionType, Transaction } from "../types";
+import { transactionSchema } from "../lib/validation";
+import { useToast } from "../components/ui/Toast";
 import {
   Calendar as CalendarIcon,
   ArrowUpRight,
@@ -8,10 +10,7 @@ import {
   Truck,
   Plus,
   X,
-  FileText,
   Printer,
-  Edit2,
-  ListFilter,
   IndianRupee,
   Download,
 } from "lucide-react";
@@ -23,8 +22,9 @@ import { Slip } from "../types";
 import { downloadCSV } from "../lib/export-utils";
 
 export function Daybook() {
-  const { transactions, slips, customers, companySettings, addTransaction, addCustomer } =
+  const { transactions, slips, customers, companySettings, addTransaction } =
     useErp();
+  const { addToast } = useToast();
   const [startDate, setStartDate] = useState(() =>
     format(new Date(), "yyyy-MM-dd"),
   );
@@ -34,7 +34,6 @@ export function Daybook() {
 
   const [activeTab, setActiveTab] = useState<"slip" | "income" | "expense">("slip");
   
-  const [isCustModalOpen, setIsCustModalOpen] = useState(false);
   const [isOpsModalOpen, setIsOpsModalOpen] = useState(false);
   const [editingSlip, setEditingSlip] = useState<Slip | null>(null);
   const [printSlip, setPrintSlip] = useState<Slip | null>(null);
@@ -46,34 +45,35 @@ export function Daybook() {
     customerId: "",
   });
 
-  const [custFormData, setCustFormData] = useState({
-    name: "",
-    phone: "",
-    openingBalance: "0",
-  });
-
-  const handleCreateCustomer = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newCust = {
-      id: Math.random().toString(36).substring(2, 11),
-      name: custFormData.name,
-      phone: custFormData.phone,
-      openingBalance: parseFloat(custFormData.openingBalance) || 0,
-    };
-    addCustomer(newCust);
-    setIsCustModalOpen(false);
-    setCustFormData({ name: "", phone: "", openingBalance: "0" });
-  };
-
   const handleCreateTx = (e: React.FormEvent) => {
     e.preventDefault();
-    const newTx: Transaction = {
-      id: Math.random().toString(36).substring(2, 11),
-      date: new Date().toISOString(),
-      type: activeTab === "income" ? "Income" : "Expense",
-      amount: Math.round(parseFloat(txFormData.amount) || 0),
+    const txType = activeTab === "income" ? "Income" : "Expense";
+    const validation = transactionSchema.safeParse({
+      type: txType,
+      amount: parseFloat(txFormData.amount) || 0,
       category: txFormData.category,
       description: txFormData.description,
+      customerId: txFormData.customerId || undefined,
+    });
+
+    if (!validation.success) {
+      const firstError = validation.error.issues[0]?.message ?? "Invalid transaction data";
+      addToast("error", firstError);
+      return;
+    }
+
+    // Use the selected day's date so backdated transactions appear correctly
+    // in the Daybook view rather than defaulting to today.
+    const txDate = new Date(startDate);
+    txDate.setHours(new Date().getHours(), new Date().getMinutes(), new Date().getSeconds());
+
+    const newTx: Transaction = {
+      id: crypto.randomUUID(),
+      date: txDate.toISOString(),
+      type: txType,
+      amount: Math.round(validation.data.amount),
+      category: validation.data.category,
+      description: validation.data.description ?? "",
       customerId: txFormData.customerId || undefined,
     };
     addTransaction(newTx);
@@ -167,9 +167,8 @@ export function Daybook() {
   };
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 h-full">
-      {/* Left Column: Data & Activity Log */}
-      <div className="xl:col-span-2 space-y-4">
+    <div className="space-y-4 h-full">
+      {/* Data & Activity Log */}
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 sm:gap-4 border-b border-zinc-200 dark:border-zinc-800 pb-3">
           <div className="shrink-0">
             <h2 className="text-base sm:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
@@ -321,7 +320,7 @@ export function Daybook() {
               </div>
             ) : (
               <div className="space-y-1">
-                {dailyData.dayTransactions.filter(t => t.type === "Income").map((item: any) => (
+                {dailyData.dayTransactions.filter((t: Transaction) => t.type === "Income").map((item: Transaction) => (
                   <div key={`tx-${item.id}`} className="bg-white dark:bg-zinc-800 p-2 rounded-lg border border-zinc-100 dark:border-zinc-700 shadow-sm relative">
                     <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 rounded-l-lg"></div>
                     <div className="pl-2 sm:pl-3">
@@ -361,7 +360,7 @@ export function Daybook() {
                 </div>
               ) : (
                 <div className="space-y-1.5">
-                  {dailyData.dayTransactions.filter(t => t.type === "Expense").map((item: any) => (
+                  {dailyData.dayTransactions.filter((t: Transaction) => t.type === "Expense").map((item: Transaction) => (
                     <div key={`tx-${item.id}`} className="bg-white dark:bg-zinc-800 p-2 sm:p-3 rounded-lg border border-zinc-100 dark:border-zinc-700 hover:border-rose-200 transition-colors shadow-sm relative">
                       <div className="absolute left-0 top-0 bottom-0 w-1 bg-rose-500 rounded-l-lg"></div>
                       <div className="pl-2 sm:pl-3">
@@ -383,7 +382,6 @@ export function Daybook() {
               )}
             </div>
           </div>
-        </div>
       </div>
 
 
@@ -500,39 +498,16 @@ export function Daybook() {
         </div>
       )}
 
-      {isCustModalOpen && (
-        <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center p-4 z-[60]">
-          <div className="bg-white dark:bg-zinc-800 rounded-2xl w-full max-w-sm shadow-xl">
-            <div className="px-6 py-4 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white">Add Customer</h3>
-              <button onClick={() => setIsCustModalOpen(false)} className="text-zinc-400 hover:text-zinc-600"><X className="w-5 h-5" /></button>
-            </div>
-            <form onSubmit={handleCreateCustomer} className="p-5 space-y-4">
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Customer Name</label>
-                <input required type="text" value={custFormData.name} onChange={(e) => setCustFormData({ ...custFormData, name: e.target.value })} className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Phone</label>
-                <input required type="text" value={custFormData.phone} onChange={(e) => setCustFormData({ ...custFormData, phone: e.target.value })} className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Opening Balance</label>
-                <input required type="number" step="0.01" value={custFormData.openingBalance} onChange={(e) => setCustFormData({ ...custFormData, openingBalance: e.target.value })} className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none" />
-                <p className="text-xs text-zinc-500">Positive = They owe you. Negative = Advance.</p>
-              </div>
-              <button type="submit" className="w-full py-2 bg-primary-600 text-white font-medium hover:bg-primary-700 rounded-lg">Add Customer</button>
-            </form>
-          </div>
-        </div>
-      )}
-
       {editingSlip && (
-        <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center p-4 z-[60]">
-          <div className="bg-white dark:bg-zinc-800 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl">
-            <div className="px-6 py-4 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50 sticky top-0 z-10">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white">Edit Dispatch Slip</h3>
-              <button onClick={() => setEditingSlip(null)} className="text-zinc-400 hover:text-zinc-600"><X className="w-5 h-5" /></button>
+        <div className="fixed inset-0 bg-zinc-900/50 flex flex-col justify-end sm:items-center sm:justify-center sm:p-4 z-60">
+          <div className="bg-white dark:bg-zinc-800 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl max-h-[92dvh] overflow-y-auto shadow-xl flex flex-col">
+            {/* Drag handle — mobile only */}
+            <div className="sm:hidden flex justify-center pt-3 pb-1 shrink-0">
+              <div className="w-10 h-1 bg-zinc-300 dark:bg-zinc-600 rounded-full" />
+            </div>
+            <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50 sticky top-0 z-10">
+              <h3 className="text-base sm:text-lg font-bold text-zinc-900 dark:text-white">Edit Dispatch Slip</h3>
+              <button onClick={() => setEditingSlip(null)} className="text-zinc-400 hover:text-zinc-600 p-1.5 rounded-lg hover:bg-zinc-100 transition-colors"><X className="w-5 h-5" /></button>
             </div>
             <EditSlipForm slip={editingSlip} onSuccess={() => setEditingSlip(null)} onCancel={() => setEditingSlip(null)} />
           </div>
