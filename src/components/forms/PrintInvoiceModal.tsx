@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Invoice, Customer } from "../../types";
 import { X, Printer, Download, Share2 } from "lucide-react";
 import { useErp } from "../../context/ErpContext";
@@ -17,6 +17,30 @@ export function PrintInvoiceModal({
 }) {
   const { companySettings } = useErp();
   const [format, setFormat] = useState(companySettings.invoiceFormat || "A4");
+
+  const previewWrapRef = useRef<HTMLDivElement>(null);
+  const [previewScale, setPreviewScale] = useState(1);
+
+  // Scale the fixed-width A4 preview so it fits the container without horizontal scroll
+  useEffect(() => {
+    if (format !== 'A4') {
+      setPreviewScale(1);
+      return;
+    }
+    const el = previewWrapRef.current;
+    if (!el) return;
+    const containerWidth = el.clientWidth - 16; // subtract p-2 padding
+    const contentWidth = 700;
+    const scale = Math.min(1, containerWidth / contentWidth);
+    setPreviewScale(scale);
+
+    const observer = new ResizeObserver(() => {
+      const w = el.clientWidth - 16;
+      setPreviewScale(Math.min(1, w / contentWidth));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [format]);
 
   const primaryColorHex = {
     emerald: "#10b981",
@@ -39,13 +63,23 @@ export function PrintInvoiceModal({
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-900 p-2 md:p-4">
-          {/* Horizontal scroll wrapper so the fixed-width invoice doesn't crush columns on narrow screens */}
-          <div className="overflow-x-auto -mx-2 px-2">
+        <div ref={previewWrapRef} className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-900 p-2 md:p-4">
+          {/* Scale wrapper: shrinks to the scaled height so no dead space below A4 */}
+          <div
+            style={format === 'A4' ? {
+              width: 700 * previewScale,
+              height: 'auto',
+              margin: '0 auto',
+            } : { margin: '0 auto' }}
+          >
           <div
             id="print-invoice-area"
-            className="text-black bg-white mx-auto relative p-4 md:p-6"
-            style={{ width: format === 'A4' ? '700px' : (format === 'Thermal-58mm' ? '220px' : '300px'), minWidth: format === 'A4' ? '700px' : undefined }}
+            className="text-black bg-white relative p-4 md:p-6"
+            style={{
+              width: format === 'A4' ? '700px' : (format === 'Thermal-58mm' ? '220px' : '300px'),
+              transformOrigin: 'top left',
+              transform: format === 'A4' && previewScale < 1 ? `scale(${previewScale})` : undefined,
+            }}
           >
             <style dangerouslySetInnerHTML={{ __html: `
             @media print {
@@ -632,8 +666,8 @@ export function PrintInvoiceModal({
             </div>
           )}
           </div>
-          </div>{/* end overflow-x-auto */}
-        </div>
+          </div>{/* end scale wrapper */}
+        </div>{/* end previewWrap */}
 
         <div className="p-3 md:p-4 border-t bg-zinc-50 dark:bg-zinc-900/50 rounded-b-2xl print:hidden">
           <div className="flex gap-2">

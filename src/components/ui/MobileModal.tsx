@@ -102,7 +102,7 @@ export function MobileModal({
               {title}
             </h3>
             {subtitle && (
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 wrap-break-word">
                 {subtitle}
               </p>
             )}
@@ -111,7 +111,7 @@ export function MobileModal({
             {headerRight}
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors active:scale-95"
+              className="p-3 rounded-xl text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors active:scale-95"
               aria-label="Close"
             >
               <X className="w-5 h-5" />

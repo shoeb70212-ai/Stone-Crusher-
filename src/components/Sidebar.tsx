@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Truck,
   BookOpen,
@@ -52,6 +52,18 @@ export function Sidebar({
   const { userRole } = useErp();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+
+  // Lock body scroll when the More drawer is open on mobile
+  useEffect(() => {
+    if (isMoreOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isMoreOpen]);
 
   const filteredNavItems = navItems.filter((item) => {
     if (

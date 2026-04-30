@@ -12,6 +12,7 @@ interface ComboboxProps {
 export function Combobox({ options, value, onChange, placeholder = "Select...", className = "", allowCreate = false }: ComboboxProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [opensUp, setOpensUp] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const selectedOption = options.find((o) => o.value === value);
@@ -36,6 +37,15 @@ export function Combobox({ options, value, onChange, placeholder = "Select...", 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Determine whether the dropdown should open upward based on available space
+  useEffect(() => {
+    if (!isOpen || !wrapperRef.current) return;
+    const rect = wrapperRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const dropdownHeight = 240; // max-h-60 = 240px
+    setOpensUp(spaceBelow < dropdownHeight && rect.top > dropdownHeight);
+  }, [isOpen]);
 
   const normalizedSearch = search.toLowerCase().replace(/\s+/g, '');
   const filteredOptions = options.filter((o) =>
@@ -71,7 +81,7 @@ export function Combobox({ options, value, onChange, placeholder = "Select...", 
         placeholder={placeholder}
       />
       {isOpen && (
-        <ul className="absolute z-50 w-full mt-1 max-h-60 overflow-auto bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg">
+        <ul className={`absolute z-50 w-full max-h-60 overflow-auto bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg ${opensUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
           {filteredOptions.length > 0 ? (
             filteredOptions.map((option) => (
               <li

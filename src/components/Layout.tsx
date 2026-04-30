@@ -199,7 +199,7 @@ export function Layout() {
       />
       <div className="flex-1 flex flex-col min-h-0 w-full relative min-w-0">
         <Header onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-4 lg:p-6 pb-20 md:pb-6 app-content smooth-scroll has-bottom-nav">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-4 lg:p-6 md:pb-6 app-content smooth-scroll has-bottom-nav">
           {isLoading ? <PageSkeleton /> : content}
         </main>
       </div>

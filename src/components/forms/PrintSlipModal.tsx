@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Slip } from "../../types";
 import { X, Printer, Share2, Bluetooth, Loader2 } from "lucide-react";
 import { useErp } from "../../context/ErpContext";
@@ -24,6 +24,30 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
   const [btConnecting, setBtConnecting] = useState<string | null>(null);
   const [btPrinting, setBtPrinting] = useState(false);
   const [showBtPanel, setShowBtPanel] = useState(false);
+
+  const previewWrapRef = useRef<HTMLDivElement>(null);
+  const [previewScale, setPreviewScale] = useState(1);
+
+  // Scale the fixed-width A4 preview so it fits the container without horizontal scroll
+  useEffect(() => {
+    if (format !== 'A4') {
+      setPreviewScale(1);
+      return;
+    }
+    const el = previewWrapRef.current;
+    if (!el) return;
+    const containerWidth = el.clientWidth - 32; // subtract p-4 padding
+    const contentWidth = 794;
+    const scale = Math.min(1, containerWidth / contentWidth);
+    setPreviewScale(scale);
+
+    const observer = new ResizeObserver(() => {
+      const w = el.clientWidth - 32;
+      setPreviewScale(Math.min(1, w / contentWidth));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [format]);
 
   const primaryColorHex: Record<string, string> = {
     emerald: "#10b981", blue: "#3b82f6", violet: "#8b5cf6",
@@ -108,11 +132,23 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-900 p-4">
+        <div ref={previewWrapRef} className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-900 p-4">
+          {/* Outer wrapper shrinks to the scaled height so there's no dead space below */}
+          <div
+            style={format === 'A4' ? {
+              width: 794 * previewScale,
+              height: 'auto',
+              margin: '0 auto',
+            } : { margin: '0 auto' }}
+          >
           <div
             id="print-area"
-            className="text-black bg-white mx-auto relative p-2 md:p-4"
-            style={{ width: format === 'A4' ? '794px' : (format === 'Thermal-58mm' ? '180px' : '240px') }}
+            className="text-black bg-white relative p-2 md:p-4"
+            style={{
+              width: format === 'A4' ? '794px' : (format === 'Thermal-58mm' ? '180px' : '240px'),
+              transformOrigin: 'top left',
+              transform: format === 'A4' && previewScale < 1 ? `scale(${previewScale})` : undefined,
+            }}
           >
             <style dangerouslySetInnerHTML={{ __html: `
             @media print {
@@ -233,7 +269,8 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
             {companySettings.receiptFooter || "Thank you!"}
           </p>
         </div>
-          </div>
+          </div>{/* end scale wrapper */}
+          </div>{/* end previewWrap */}
 
         <div className="p-4 border-t bg-zinc-50 dark:bg-zinc-900/50 print:hidden space-y-3">
           {/* Bluetooth printer panel — native only */}
