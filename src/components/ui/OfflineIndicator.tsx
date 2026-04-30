@@ -1,21 +1,55 @@
-import React, { useState, useEffect } from 'react';
-import { WifiOff, Wifi, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { WifiOff, RefreshCw } from 'lucide-react';
+import { isNative } from '../../lib/capacitor';
+import { hapticsWarning } from '../../lib/haptics';
 
-export function OfflineIndicator() {
+interface OfflineIndicatorProps {
+  /** Called when the device comes back online so callers can flush their sync queue. */
+  onReconnect?: () => void;
+}
+
+export function OfflineIndicator({ onReconnect }: OfflineIndicatorProps = {}) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showRetry, setShowRetry] = useState(false);
 
+  const handleOnline = useCallback(() => {
+    setIsOnline(true);
+    setShowRetry(false);
+    onReconnect?.();
+  }, [onReconnect]);
+
+  const handleOffline = useCallback(() => {
+    setIsOnline(false);
+    setShowRetry(true);
+    hapticsWarning();
+  }, []);
+
   useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true);
-      setShowRetry(false);
-    };
+    if (isNative()) {
+      // Use @capacitor/network for reliable cross-platform background events
+      let cleanup: (() => void) | undefined;
 
-    const handleOffline = () => {
-      setIsOnline(false);
-      setShowRetry(true);
-    };
+      import('@capacitor/network').then(({ Network }) => {
+        // Sync initial state
+        Network.getStatus().then((status) => {
+          if (!status.connected) handleOffline();
+        });
 
+        Network.addListener('networkStatusChange', (status) => {
+          if (status.connected) {
+            handleOnline();
+          } else {
+            handleOffline();
+          }
+        }).then((handle) => {
+          cleanup = () => handle.remove();
+        });
+      });
+
+      return () => cleanup?.();
+    }
+
+    // Web: use standard browser events
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
@@ -23,7 +57,7 @@ export function OfflineIndicator() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [handleOnline, handleOffline]);
 
   if (isOnline && !showRetry) return null;
 

@@ -4,10 +4,13 @@ import { Slip, MaterialType, DeliveryMode, MeasurementType } from "../../types";
 import { Combobox } from "../ui/Combobox";
 import { parseFeetInches } from "../../lib/utils";
 import { useToast } from "../ui/Toast";
+import { useKeepAwake } from "../../lib/use-keep-awake";
 
 export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSuccess: () => void, onCancel: () => void }) {
   const { vehicles, addVehicle, updateVehicle, customers, updateSlip, slips, transactions, addTransaction, updateTransaction, deleteTransaction, companySettings } = useErp();
   const { addToast } = useToast();
+  // Keep the screen on while editing a slip at the weigh-bridge
+  useKeepAwake();
   const [formData, setFormData] = useState({
     vehicleNo: slip.vehicleNo || "",
     driverName: slip.driverName || "",

@@ -1,8 +1,15 @@
-import React, { useState } from 'react';
-import { Shield, Lock, Mail, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Shield, Lock, Mail, AlertCircle, Fingerprint } from 'lucide-react';
 import { useErp } from '../context/ErpContext';
 import { verifyPassword, DEFAULT_ADMIN_PASSWORD_HASH } from '../lib/auth';
 import { loginSchema, type LoginInput } from '../lib/validation';
+import {
+  isBiometricAvailable,
+  isBiometricEnabled,
+  authenticateWithBiometrics,
+  saveBiometricCredentials,
+} from '../lib/biometrics';
+import { secureSet } from '../lib/secure-storage';
 
 interface LoginProps {
   onLogin: () => void;
@@ -14,7 +21,14 @@ export function Login({ onLogin }: LoginProps) {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
+  const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
+  const [pendingToken, setPendingToken] = useState<string | null>(null);
+  const [canUseBiometric, setCanUseBiometric] = useState(false);
   const { companySettings, setUserRole } = useErp();
+
+  useEffect(() => {
+    isBiometricAvailable().then(setCanUseBiometric);
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,8 +58,15 @@ export function Login({ onLogin }: LoginProps) {
         const valid = await verifyPassword(password, DEFAULT_ADMIN_PASSWORD_HASH);
         if (email === 'admin@admin.com' && valid) {
           setUserRole('Admin');
-          localStorage.setItem('erp_auth_token', 'admin_session');
-          onLogin();
+          const token = 'admin_session';
+          await secureSet('erp_auth_token', token);
+          localStorage.setItem('erp_auth_token', token); // mirror for synchronous reads
+          if (canUseBiometric && !isBiometricEnabled()) {
+            setPendingToken(token);
+            setShowBiometricPrompt(true);
+          } else {
+            onLogin();
+          }
           return;
         }
       } else {
@@ -62,9 +83,16 @@ export function Login({ onLogin }: LoginProps) {
           const valid = await verifyPassword(password, user.passwordHash);
           if (valid) {
             setUserRole(user.role);
+            const token = `session_${user.id}`;
             // Use a non-guessable session marker scoped to this user.
-            localStorage.setItem('erp_auth_token', `session_${user.id}`);
-            onLogin();
+            await secureSet('erp_auth_token', token);
+            localStorage.setItem('erp_auth_token', token); // mirror for synchronous reads
+            if (canUseBiometric && !isBiometricEnabled()) {
+              setPendingToken(token);
+              setShowBiometricPrompt(true);
+            } else {
+              onLogin();
+            }
             return;
           }
         }
@@ -75,6 +103,58 @@ export function Login({ onLogin }: LoginProps) {
       setIsSubmitting(false);
     }
   };
+
+  /** Handles the biometric enrollment dialog after a successful password login. */
+  const handleBiometricEnrollment = async (enable: boolean) => {
+    if (enable && pendingToken) {
+      await saveBiometricCredentials(pendingToken);
+    }
+    setShowBiometricPrompt(false);
+    onLogin();
+  };
+
+  /** Attempts biometric quick-login when the user taps the fingerprint button. */
+  const handleBiometricQuickLogin = async () => {
+    const token = await authenticateWithBiometrics();
+    if (token) {
+      await secureSet('erp_auth_token', token);
+      localStorage.setItem('erp_auth_token', token); // mirror for synchronous reads
+      onLogin();
+    } else {
+      setError('Biometric authentication failed. Use your password instead.');
+    }
+  };
+
+  // Biometric enrollment prompt shown after a successful password login
+  if (showBiometricPrompt) {
+    return (
+      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900 flex items-center justify-center p-4">
+        <div className="max-w-sm w-full bg-white dark:bg-zinc-800 rounded-2xl shadow-xl overflow-hidden border border-zinc-100 dark:border-zinc-700 p-8 text-center">
+          <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Fingerprint className="w-8 h-8 text-primary-600 dark:text-primary-400" />
+          </div>
+          <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-2">Enable Biometric Login?</h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6">
+            Sign in faster next time with your fingerprint or face ID instead of your password.
+          </p>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => handleBiometricEnrollment(true)}
+              className="w-full py-3 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-xl transition-colors"
+            >
+              Enable Biometric Login
+            </button>
+            <button
+              onClick={() => handleBiometricEnrollment(false)}
+              className="w-full py-3 bg-zinc-100 dark:bg-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl transition-colors"
+            >
+              Skip
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900 flex items-center justify-center p-4">
@@ -144,6 +224,17 @@ export function Login({ onLogin }: LoginProps) {
           >
             {isSubmitting ? 'Signing in…' : 'Sign In'}
           </button>
+
+          {canUseBiometric && isBiometricEnabled() && (
+            <button
+              type="button"
+              onClick={handleBiometricQuickLogin}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-zinc-100 dark:bg-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl transition-colors"
+            >
+              <Fingerprint className="w-5 h-5" />
+              Use Biometrics
+            </button>
+          )}
         </form>
       </div>
     </div>

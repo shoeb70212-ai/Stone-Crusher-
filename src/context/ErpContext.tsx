@@ -7,6 +7,7 @@ import React, {
   ReactNode,
 } from "react";
 import { Customer, Slip, Transaction, Vehicle, Invoice, CompanySettings, Task } from "../types";
+import { isNative } from "../lib/capacitor";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -74,6 +75,9 @@ interface ErpState {
   getCustomerBalance: (customerId: string) => number;
   /** Hard-deletes all soft-deleted customers & vehicles from the database. */
   purgeInactiveRecords: () => void;
+  /** Immediately flushes any pending mutations in the sync queue to the server.
+   *  Called by OfflineIndicator when the device comes back online. */
+  flushSync: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -298,6 +302,28 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       JSON.stringify({ customers, slips, transactions, vehicles, invoices, tasks, companySettings }),
     );
   }, [customers, slips, transactions, vehicles, invoices, tasks, companySettings, isLoading]);
+
+  // -----------------------------------------------------------------------
+  // App badge count — shows pending slips + incomplete tasks on the icon
+  // -----------------------------------------------------------------------
+
+  useEffect(() => {
+    if (isLoading || !isNative()) return;
+
+    const pendingSlips = slips.filter(
+      (s) => s.status === 'Pending' || s.status === 'Tallied',
+    ).length;
+    const incompleteTasks = tasks.filter((t) => !t.completed).length;
+    const count = pendingSlips + incompleteTasks;
+
+    import('@capawesome/capacitor-badge').then(({ Badge }) => {
+      Badge.isSupported().then(({ isSupported }) => {
+        if (isSupported) {
+          Badge.set({ count }).catch(() => {});
+        }
+      });
+    });
+  }, [slips, tasks, isLoading]);
 
   // After settings load, resolve the role from the session token so a user
   // cannot self-promote by editing localStorage.erp_userRole directly.
@@ -620,6 +646,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         deleteTask,
         getCustomerBalance,
         purgeInactiveRecords,
+        flushSync: triggerSync,
       }}
     >
       {children}

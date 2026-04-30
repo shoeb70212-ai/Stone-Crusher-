@@ -12,11 +12,87 @@ import { Invoices } from "../pages/Invoices";
 import { Menu, ShieldAlert } from "lucide-react";
 import { useErp } from "../context/ErpContext";
 import { PageSkeleton } from "./ui/Skeleton";
+import { isNative } from "../lib/capacitor";
+
+/** Valid view names used by deep links and app shortcuts. */
+const VALID_VIEWS = new Set([
+  'dashboard', 'dispatch', 'invoices', 'customers',
+  'daybook', 'ledger', 'vehicles', 'settings',
+]);
 
 export function Layout() {
   const [currentView, setCurrentView] = useState("dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { userRole, companySettings, isLoading } = useErp();
+
+  // Register home screen shortcuts (long-press app icon on Android / iOS)
+  useEffect(() => {
+    if (!isNative()) return;
+
+    import('@capawesome/capacitor-app-shortcuts').then(({ AppShortcuts }) => {
+      AppShortcuts.set({
+        shortcuts: [
+          {
+            id: 'new_slip',
+            title: 'New Slip',
+            description: 'Create a dispatch slip',
+            // URL handled by the appUrlOpen deep link listener above
+          },
+          {
+            id: 'dispatch',
+            title: 'Dispatch',
+            description: 'View dispatch board',
+          },
+          {
+            id: 'daybook',
+            title: 'New Transaction',
+            description: 'Add a Daybook entry',
+          },
+          {
+            id: 'invoices',
+            title: 'Invoices',
+            description: 'View invoices',
+          },
+        ],
+      }).catch(() => {
+        // Non-critical — shortcuts not supported on this platform version
+      });
+
+      // Handle shortcut taps that launch the app
+      AppShortcuts.addListener('click', (event) => {
+        const view = event.shortcutId === 'new_slip' ? 'dispatch' : event.shortcutId;
+        if (VALID_VIEWS.has(view)) {
+          setCurrentView(view);
+        }
+      }).catch(() => {});
+    });
+  }, []);
+
+  // Deep link handler — listens for crushtrack://view/<name> URLs
+  useEffect(() => {
+    if (!isNative()) return;
+
+    let cleanup: (() => void) | undefined;
+
+    import('@capacitor/app').then(({ App }) => {
+      App.addListener('appUrlOpen', (event) => {
+        // Expected format: crushtrack://view/dispatch
+        try {
+          const url = new URL(event.url);
+          const view = url.pathname.replace(/^\//, ''); // strip leading slash
+          if (VALID_VIEWS.has(view)) {
+            setCurrentView(view);
+          }
+        } catch {
+          // Malformed URL — ignore
+        }
+      }).then((handle) => {
+        cleanup = () => handle.remove();
+      });
+    });
+
+    return () => cleanup?.();
+  }, []);
 
   // Apply visual theme to HTML root
   useEffect(() => {

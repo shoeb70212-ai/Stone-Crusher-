@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useErp } from "../context/ErpContext";
-import { Building2, Users, Receipt, Save, Check, Palette, X, Mail, Download, Upload, Database, Trash2 } from "lucide-react";
+import { Building2, Users, Receipt, Save, Check, Palette, X, Mail, Download, Upload, Database, Trash2, Smartphone } from "lucide-react";
 import { hashPassword } from "../lib/auth";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { useToast } from "../components/ui/Toast";
+import { getDeviceSummary, type DeviceSummary } from "../lib/device-info";
 
 export function Settings() {
   const { userRole, companySettings, updateCompanySettings, purgeInactiveRecords } = useErp();
@@ -19,6 +20,14 @@ export function Settings() {
   const pendingRestoreFileRef = React.useRef<string | null>(null);
   const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false);
   const [isPurgeConfirmOpen, setIsPurgeConfirmOpen] = useState(false);
+  const [deviceInfo, setDeviceInfo] = useState<DeviceSummary | null>(null);
+
+  // Load device summary once when the general tab is first shown
+  useEffect(() => {
+    if (activeTab === 'general' && !deviceInfo) {
+      getDeviceSummary().then(setDeviceInfo);
+    }
+  }, [activeTab, deviceInfo]);
 
   const handleDownloadBackup = async () => {
     try {
@@ -683,6 +692,39 @@ export function Settings() {
                 </div>
               )}
             </div>
+
+            {userRole === "Admin" && deviceInfo && (
+              <>
+                <h4 className="text-md font-semibold text-zinc-900 dark:text-white mt-8 mb-4 border-b border-zinc-100 dark:border-zinc-700 pb-2">
+                  Device Information
+                </h4>
+                <div className="p-4 border border-zinc-200 dark:border-zinc-700 rounded-xl bg-zinc-50 dark:bg-zinc-800/50">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-8 h-8 rounded-full bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400 flex items-center justify-center">
+                      <Smartphone className="w-4 h-4" />
+                    </div>
+                    <h5 className="font-semibold text-zinc-900 dark:text-white">This Device</h5>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    {[
+                      { label: 'Platform', value: deviceInfo.platform },
+                      { label: 'OS Version', value: deviceInfo.osVersion },
+                      { label: 'Manufacturer', value: deviceInfo.manufacturer },
+                      { label: 'Model', value: deviceInfo.model },
+                    ].map(({ label, value }) => (
+                      <div key={label}>
+                        <dt className="text-xs text-zinc-500 dark:text-zinc-400">{label}</dt>
+                        <dd className="font-medium text-zinc-800 dark:text-zinc-200 truncate">{value}</dd>
+                      </div>
+                    ))}
+                    <div className="col-span-2">
+                      <dt className="text-xs text-zinc-500 dark:text-zinc-400">Device ID</dt>
+                      <dd className="font-mono text-xs text-zinc-700 dark:text-zinc-300 break-all select-all">{deviceInfo.id}</dd>
+                    </div>
+                  </dl>
+                </div>
+              </>
+            )}
 
             <div className="flex justify-end pt-4 border-t border-zinc-100 dark:border-zinc-700">
               <button

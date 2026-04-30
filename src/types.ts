@@ -199,6 +199,8 @@ export interface Slip {
   loaderName?: string;
   /** Set when this slip is included on a formal invoice. */
   invoiceId?: string;
+  /** Local file URI of a scanned document photo attached to this slip. */
+  attachmentUri?: string;
 }
 
 // ---------------------------------------------------------------------------

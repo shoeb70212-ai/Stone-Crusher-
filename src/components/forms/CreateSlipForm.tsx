@@ -5,10 +5,18 @@ import { Plus, Truck } from "lucide-react";
 import { Combobox } from "../ui/Combobox";
 import { parseFeetInches } from "../../lib/utils";
 import { useToast } from "../ui/Toast";
+import { useKeepAwake } from "../../lib/use-keep-awake";
+import { captureDocument } from "../../lib/camera";
+import { scanBarcode } from "../../lib/barcode";
+import { scanNfcVehicleTag, isNfcAvailable } from "../../lib/nfc";
+import { Camera, QrCode, Nfc } from "lucide-react";
+import { isNative } from "../../lib/capacitor";
 
 export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void }) {
   const { vehicles, customers, addSlip, slips, companySettings, addVehicle, updateVehicle, addCustomer, addTransaction } = useErp();
   const { addToast } = useToast();
+  // Keep the screen on while the operator is filling in the slip form at the weigh-bridge
+  useKeepAwake();
   
   const [formData, setFormData] = useState({
     vehicleNo: "",
@@ -84,6 +92,13 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
 
   const [manualTotalAmount, setManualTotalAmount] = useState<string>(calculatedTotalAmount.toString());
   const [hasManualOverride, setHasManualOverride] = useState(false);
+  const [attachmentUri, setAttachmentUri] = useState<string | undefined>(undefined);
+  const [nfcAvailable, setNfcAvailable] = useState(false);
+  const [nfcScanning, setNfcScanning] = useState(false);
+
+  useEffect(() => {
+    isNfcAvailable().then(setNfcAvailable);
+  }, []);
 
   // Only sync the calculated total back into the field when the user has not
   // manually overridden it. This prevents dimension/rate changes from silently
@@ -214,6 +229,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
       notes: formData.notes,
       operatorName: formData.operatorName || undefined,
       loaderName: formData.loaderName || undefined,
+      attachmentUri: attachmentUri || undefined,
     };
     addSlip(newSlip);
 
@@ -249,7 +265,87 @@ return (
         
         <div className="grid grid-cols-1 gap-1.5">
           <div>
-            <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Vehicle *</label>
+            <div className="flex items-center justify-between mb-0.5">
+              <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400">Vehicle *</label>
+              <div className="flex items-center gap-2">
+                {isNative() && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const value = await scanBarcode();
+                        if (!value) return;
+                        const scanned = value.toUpperCase();
+                        const v = vehicles.find((vehicle) => vehicle.vehicleNo === scanned);
+                        if (v) {
+                          setFormData({
+                            ...formData,
+                            vehicleNo: v.vehicleNo,
+                            driverName: v.driverName || "",
+                            driverPhone: v.driverPhone || "",
+                            measurementType: v.defaultMeasurementType,
+                            lengthFeet: v.measurement.lengthFeet?.toString() || "",
+                            widthFeet: v.measurement.widthFeet?.toString() || "",
+                            heightFeet: v.measurement.heightFeet?.toString() || "",
+                            tareWeight: v.measurement.tareWeight?.toString() || "",
+                          });
+                        } else {
+                          setFormData({ ...formData, vehicleNo: scanned });
+                        }
+                      } catch {
+                        addToast('error', 'Barcode scan failed. Check camera permissions.');
+                      }
+                    }}
+                    className="flex items-center gap-1 text-[10px] text-primary-600 dark:text-primary-400 font-medium"
+                    aria-label="Scan vehicle QR code"
+                  >
+                    <QrCode className="w-3 h-3" />
+                    Scan QR
+                  </button>
+                )}
+                {nfcAvailable && (
+                  <button
+                    type="button"
+                    disabled={nfcScanning}
+                    onClick={async () => {
+                      setNfcScanning(true);
+                      try {
+                        const vehicleNo = await scanNfcVehicleTag();
+                        if (!vehicleNo) {
+                          addToast('error', 'No NFC tag detected. Try again.');
+                          return;
+                        }
+                        const v = vehicles.find((vehicle) => vehicle.vehicleNo === vehicleNo);
+                        if (v) {
+                          setFormData({
+                            ...formData,
+                            vehicleNo: v.vehicleNo,
+                            driverName: v.driverName || "",
+                            driverPhone: v.driverPhone || "",
+                            measurementType: v.defaultMeasurementType,
+                            lengthFeet: v.measurement.lengthFeet?.toString() || "",
+                            widthFeet: v.measurement.widthFeet?.toString() || "",
+                            heightFeet: v.measurement.heightFeet?.toString() || "",
+                            tareWeight: v.measurement.tareWeight?.toString() || "",
+                          });
+                        } else {
+                          setFormData({ ...formData, vehicleNo });
+                        }
+                      } catch {
+                        addToast('error', 'NFC scan failed.');
+                      } finally {
+                        setNfcScanning(false);
+                      }
+                    }}
+                    className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium disabled:opacity-50"
+                    aria-label="Tap NFC tag to identify vehicle"
+                  >
+                    <Nfc className="w-3 h-3" />
+                    {nfcScanning ? 'Scanning…' : 'Tap NFC'}
+                  </button>
+                )}
+              </div>
+            </div>
             <Combobox
               options={vehicles.filter(v => v.isActive !== false).map((v) => ({ label: v.vehicleNo, value: v.vehicleNo }))}
               value={formData.vehicleNo}
@@ -506,6 +602,44 @@ return (
               placeholder="Loader"
             />
           </div>
+        </div>
+
+        {/* Document attachment — camera capture for challan scan */}
+        <div>
+          <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Challan Photo</label>
+          {attachmentUri ? (
+            <div className="relative">
+              <img
+                src={attachmentUri}
+                alt="Attached challan"
+                className="w-full h-24 object-cover rounded border border-zinc-200 dark:border-zinc-700"
+              />
+              <button
+                type="button"
+                onClick={() => setAttachmentUri(undefined)}
+                className="absolute top-1 right-1 bg-rose-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold leading-none"
+                aria-label="Remove photo"
+              >
+                ×
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const result = await captureDocument();
+                  if (result) setAttachmentUri(result.uri);
+                } catch {
+                  addToast('error', 'Camera access failed. Check app permissions.');
+                }
+              }}
+              className="w-full flex items-center justify-center gap-1.5 py-2 border border-dashed border-zinc-300 dark:border-zinc-600 rounded text-[10px] text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              Attach Challan
+            </button>
+          )}
         </div>
       </div>
 

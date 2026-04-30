@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { Invoice, Customer } from "../../types";
-import { X, Printer, Download } from "lucide-react";
+import { X, Printer, Download, Share2 } from "lucide-react";
 import { useErp } from "../../context/ErpContext";
-import { openPdfInNewTab, downloadPdf } from "../../lib/print-utils";
+import { openPdfInNewTab, downloadPdf, sharePdf } from "../../lib/print-utils";
+import { isNative } from "../../lib/capacitor";
 import { toWords } from "../../lib/utils";
 
 export function PrintInvoiceModal({ 
@@ -639,19 +640,34 @@ export function PrintInvoiceModal({
             >
               Close
             </button>
-            <button
-              onClick={() => {
-                const element = document.getElementById('print-invoice-area');
-                if (element) {
-                  downloadPdf(element, `Invoice-${invoice.invoiceNo}.pdf`);
-                  setTimeout(() => onClose(), 500);
-                }
-              }}
-              className="flex-1 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm flex items-center justify-center gap-1"
-            >
-              <Download className="w-4 h-4" />
-              Download
-            </button>
+            {isNative() ? (
+              <button
+                onClick={() => {
+                  const element = document.getElementById('print-invoice-area');
+                  if (element) {
+                    sharePdf(element, `Invoice-${invoice.invoiceNo}.pdf`, `Invoice ${invoice.invoiceNo}`);
+                  }
+                }}
+                className="flex-1 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm flex items-center justify-center gap-1"
+              >
+                <Share2 className="w-4 h-4" />
+                Share
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  const element = document.getElementById('print-invoice-area');
+                  if (element) {
+                    downloadPdf(element, `Invoice-${invoice.invoiceNo}.pdf`);
+                    setTimeout(() => onClose(), 500);
+                  }
+                }}
+                className="flex-1 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm flex items-center justify-center gap-1"
+              >
+                <Download className="w-4 h-4" />
+                Download
+              </button>
+            )}
             <button
               onClick={() => {
                 // Open window synchronously to bypass popup blocker

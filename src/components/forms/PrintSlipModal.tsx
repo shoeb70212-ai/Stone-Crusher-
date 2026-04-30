@@ -1,12 +1,29 @@
 import React, { useState } from "react";
 import { Slip } from "../../types";
-import { X, Printer } from "lucide-react";
+import { X, Printer, Share2, Bluetooth, Loader2 } from "lucide-react";
 import { useErp } from "../../context/ErpContext";
-import { openPdfInNewTab, downloadPdf } from "../../lib/print-utils";
+import { openPdfInNewTab, downloadPdf, sharePdf } from "../../lib/print-utils";
+import { isNative } from "../../lib/capacitor";
+import {
+  scanForPrinters,
+  connectPrinter,
+  disconnectPrinter,
+  printSlip,
+  getConnectedPrinterId,
+  type BluetoothDevice,
+  type SlipPrintData,
+} from "../../lib/escpos";
+import { useToast } from "../ui/Toast";
 
 export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => void }) {
   const { companySettings, customers } = useErp();
+  const { addToast } = useToast();
   const [format, setFormat] = useState(companySettings.slipFormat || "Thermal-58mm");
+  const [btDevices, setBtDevices] = useState<BluetoothDevice[]>([]);
+  const [btScanning, setBtScanning] = useState(false);
+  const [btConnecting, setBtConnecting] = useState<string | null>(null);
+  const [btPrinting, setBtPrinting] = useState(false);
+  const [showBtPanel, setShowBtPanel] = useState(false);
 
   const primaryColorHex: Record<string, string> = {
     emerald: "#10b981", blue: "#3b82f6", violet: "#8b5cf6",
@@ -14,6 +31,69 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
   };
   const borderColor = primaryColorHex[companySettings.primaryColor || "emerald"] ?? "#10b981";
 
+  const handleBluetoothScan = async () => {
+    setBtScanning(true);
+    setBtDevices([]);
+    try {
+      const found = await scanForPrinters();
+      setBtDevices(found);
+      if (found.length === 0) addToast('warning', 'No Bluetooth devices found. Ensure printer is on and in range.');
+    } catch {
+      addToast('error', 'Bluetooth scan failed. Check permissions.');
+    } finally {
+      setBtScanning(false);
+    }
+  };
+
+  const handleConnect = async (device: BluetoothDevice) => {
+    setBtConnecting(device.deviceId);
+    try {
+      const ok = await connectPrinter(device.deviceId);
+      if (ok) {
+        addToast('success', `Connected to ${device.name}`);
+      } else {
+        addToast('error', `Could not find print service on ${device.name}. Try a different device.`);
+      }
+    } catch {
+      addToast('error', 'Connection failed. Check Bluetooth permissions.');
+    } finally {
+      setBtConnecting(null);
+    }
+  };
+
+  const handleBtPrint = async () => {
+    setBtPrinting(true);
+    try {
+      const customerName = slip.customerId === 'CASH' || !slip.customerId
+        ? 'Counter Sale'
+        : (customers.find(c => c.id === slip.customerId)?.name ?? slip.customerId);
+
+      const data: SlipPrintData = {
+        token: slip.id.toUpperCase().slice(0, 6),
+        date: new Date(slip.date).toLocaleDateString('en-IN'),
+        vehicleNo: slip.vehicleNo,
+        driverName: slip.driverName,
+        customerName,
+        materialType: slip.materialType,
+        quantity: `${slip.quantity.toFixed(1)} ${slip.measurementType === 'Volume (Brass)' ? 'Br' : 'T'}`,
+        ratePerUnit: slip.ratePerUnit,
+        totalAmount: slip.totalAmount,
+        amountPaid: slip.amountPaid,
+        operatorName: slip.operatorName,
+        companyName: companySettings.name || 'CrushTrack',
+        receiptFooter: companySettings.receiptFooter,
+      };
+
+      await printSlip(data);
+      addToast('success', 'Slip printed successfully');
+      onClose();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Print failed';
+      addToast('error', msg);
+    } finally {
+      setBtPrinting(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-zinc-900/80 flex items-center justify-center md:p-4 z-50 overflow-hidden">
@@ -155,20 +235,92 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
         </div>
           </div>
 
-        <div className="p-4 border-t bg-zinc-50 dark:bg-zinc-900/50 print:hidden flex justify-between items-center">
+        <div className="p-4 border-t bg-zinc-50 dark:bg-zinc-900/50 print:hidden space-y-3">
+          {/* Bluetooth printer panel — native only */}
+          {isNative() && showBtPanel && (
+            <div className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Bluetooth Printers</span>
+                <button
+                  onClick={handleBluetoothScan}
+                  disabled={btScanning}
+                  className="text-[10px] text-primary-600 dark:text-primary-400 font-medium disabled:opacity-50 flex items-center gap-1"
+                >
+                  {btScanning && <Loader2 className="w-3 h-3 animate-spin" />}
+                  {btScanning ? 'Scanning…' : 'Scan'}
+                </button>
+              </div>
+              {btDevices.length === 0 && !btScanning && (
+                <p className="text-[10px] text-zinc-400">Tap Scan to find nearby printers</p>
+              )}
+              {btDevices.map((device) => {
+                const isConnected = getConnectedPrinterId() === device.deviceId;
+                const isConnecting = btConnecting === device.deviceId;
+                return (
+                  <div key={device.deviceId} className="flex items-center justify-between py-1 border-b border-zinc-100 dark:border-zinc-700 last:border-0">
+                    <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate flex-1 mr-2">{device.name}</span>
+                    {isConnected ? (
+                      <button
+                        onClick={handleBtPrint}
+                        disabled={btPrinting}
+                        className="text-[10px] bg-emerald-500 hover:bg-emerald-600 text-white px-2 py-1 rounded font-medium disabled:opacity-50 flex items-center gap-1"
+                      >
+                        {btPrinting && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                        {btPrinting ? 'Printing…' : 'Print'}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleConnect(device)}
+                        disabled={!!btConnecting}
+                        className="text-[10px] bg-primary-500 hover:bg-primary-600 text-white px-2 py-1 rounded font-medium disabled:opacity-50 flex items-center gap-1"
+                      >
+                        {isConnecting && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                        {isConnecting ? 'Connecting…' : 'Connect'}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <div className="flex gap-2">
-            <button
-              onClick={() => {
-                const el = document.getElementById('print-area');
-                if (el) {
-                  downloadPdf(el, `Slip-${slip.id}.pdf`);
-                  setTimeout(() => onClose(), 500);
-                }
-              }}
-              className="flex-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-lg font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors"
-            >
-              Download
-            </button>
+            {isNative() ? (
+              <>
+                <button
+                  onClick={() => setShowBtPanel((v) => !v)}
+                  className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-lg font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-center gap-1"
+                  title="Bluetooth thermal print"
+                >
+                  <Bluetooth className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => {
+                    const el = document.getElementById('print-area');
+                    if (el) {
+                      sharePdf(el, `Slip-${slip.id.slice(0, 8).toUpperCase()}.pdf`, 'Share Loading Token');
+                    }
+                  }}
+                  className="flex-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-lg font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-center gap-1"
+                >
+                  <Share2 className="w-4 h-4" />
+                  Share
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => {
+                  const el = document.getElementById('print-area');
+                  if (el) {
+                    downloadPdf(el, `Slip-${slip.id}.pdf`);
+                    setTimeout(() => onClose(), 500);
+                  }
+                }}
+                className="flex-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-lg font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors"
+              >
+                Download
+              </button>
+            )}
             <button
               onClick={() => {
                 // Open window synchronously to bypass popup blocker

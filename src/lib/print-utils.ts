@@ -1,14 +1,19 @@
 /**
- * Utility functions for generating, printing, and downloading PDF invoices.
+ * Utility functions for generating, printing, downloading, and sharing PDF invoices.
  *
  * Architecture notes:
  * - `printHtml` uses a hidden iframe + browser print dialog (fallback path).
  * - `generatePdfBlob` is the shared core that converts HTML → PDF blob via html2pdf.js.
  * - `openPdfInNewTab` and `downloadPdf` are the two primary entry points.
+ * - `sharePdf` / `saveNativePdf` use @capacitor/share and @capacitor/filesystem
+ *   when running inside the Capacitor native shell; they fall back to the
+ *   browser download path on web.
  * - Popup blockers require `window.open` to be called synchronously inside the
  *   user-initiated click handler. Callers MUST open the window themselves and
  *   pass it in — this module never calls `window.open` on its own.
  */
+
+import { isNative } from './capacitor';
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -205,4 +210,153 @@ export async function downloadPdf(
     console.error('PDF download failed, falling back to iframe print:', error);
     printHtml(htmlContent);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Native share sheet (P0 — Share Sheet Integration)
+// ---------------------------------------------------------------------------
+
+/**
+ * Shares a PDF via the native OS share sheet (WhatsApp, email, Drive, etc.).
+ * On web, falls back to a standard browser download.
+ *
+ * @param source   - HTMLElement or raw HTML string for the PDF content.
+ * @param filename - Suggested filename, e.g. "Invoice-INV001.pdf".
+ * @param title    - Share dialog title shown on Android.
+ */
+export async function sharePdf(
+  source: HTMLElement | string,
+  filename: string,
+  title = 'Share Document',
+): Promise<void> {
+  const htmlContent = typeof source === 'string' ? source : source.innerHTML;
+  if (!htmlContent) return;
+
+  if (!isNative()) {
+    // Web: fall back to browser download
+    return downloadPdf(source, filename);
+  }
+
+  try {
+    const { Filesystem, Directory } = await import('@capacitor/filesystem');
+    const { Share } = await import('@capacitor/share');
+
+    const blob = await generatePdfBlob(htmlContent, filename);
+    const base64 = await blobToBase64(blob);
+
+    // Write to a temp file in the cache directory so Share can attach it
+    const result = await Filesystem.writeFile({
+      path: filename,
+      data: base64,
+      directory: Directory.Cache,
+      recursive: true,
+    });
+
+    await Share.share({
+      title,
+      url: result.uri,
+      dialogTitle: title,
+    });
+  } catch (error) {
+    console.error('Native share failed, falling back to download:', error);
+    return downloadPdf(source, filename);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Native filesystem save (P0 — File Export to Device Storage)
+// ---------------------------------------------------------------------------
+
+/**
+ * Saves a PDF directly to the device's Documents/Downloads folder.
+ * On web, falls back to a standard browser download.
+ *
+ * @param source   - HTMLElement or raw HTML string for the PDF content.
+ * @param filename - Target filename, e.g. "Invoice-INV001.pdf".
+ * @returns The saved file URI on native, or undefined on web.
+ */
+export async function saveNativePdf(
+  source: HTMLElement | string,
+  filename: string,
+): Promise<string | undefined> {
+  const htmlContent = typeof source === 'string' ? source : source.innerHTML;
+  if (!htmlContent) return;
+
+  if (!isNative()) {
+    await downloadPdf(source, filename);
+    return;
+  }
+
+  try {
+    const { Filesystem, Directory } = await import('@capacitor/filesystem');
+
+    const blob = await generatePdfBlob(htmlContent, filename);
+    const base64 = await blobToBase64(blob);
+
+    const result = await Filesystem.writeFile({
+      path: filename,
+      data: base64,
+      directory: Directory.Documents,
+      recursive: true,
+    });
+
+    return result.uri;
+  } catch (error) {
+    console.error('Native file save failed, falling back to download:', error);
+    await downloadPdf(source, filename);
+    return;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Native filesystem save for CSV (P0 — File Export to Device Storage)
+// ---------------------------------------------------------------------------
+
+/**
+ * Saves a CSV string to the device's Documents folder on native,
+ * or triggers a browser download on web.
+ *
+ * @param csvContent - The raw CSV string (UTF-8 with BOM already included).
+ * @param filename   - Target filename without path, e.g. "Ledger_2024.csv".
+ * @returns The saved file URI on native, or undefined on web.
+ */
+export async function saveNativeCsv(
+  csvContent: string,
+  filename: string,
+): Promise<string | undefined> {
+  if (!isNative()) return;
+
+  try {
+    const { Filesystem, Directory } = await import('@capacitor/filesystem');
+
+    const result = await Filesystem.writeFile({
+      path: filename,
+      data: btoa(unescape(encodeURIComponent(csvContent))),
+      directory: Directory.Documents,
+      recursive: true,
+    });
+
+    return result.uri;
+  } catch (error) {
+    console.error('Native CSV save failed:', error);
+    return;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Internal helper
+// ---------------------------------------------------------------------------
+
+/** Converts a Blob to a base64 data string (without the data-URI prefix). */
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Strip "data:<mime>;base64," prefix
+      resolve(result.split(',')[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }

@@ -1,19 +1,28 @@
 /**
  * Export utilities for generating CSV downloads and PDF statements.
  * Used by Ledger, Daybook, and Customer Statement views.
+ *
+ * On native (Capacitor), CSV files are saved to the device Documents folder
+ * via @capacitor/filesystem and shared via the OS share sheet.
+ * On web, the existing browser-download path is preserved unchanged.
  */
 
+import { isNative } from './capacitor';
+import { saveNativeCsv } from './print-utils';
+
 /**
- * Converts an array of objects to CSV format and triggers a browser download.
+ * Converts an array of objects to CSV format and triggers a download.
+ * On native: saves to Documents folder and opens the share sheet.
+ * On web: triggers a standard browser anchor download.
  * @param data - Array of row objects with consistent keys.
  * @param headers - Map of key → display column name.
  * @param filename - The output filename (without extension).
  */
-export function downloadCSV(
+export async function downloadCSV(
   data: Record<string, any>[],
   headers: Record<string, string>,
   filename: string
-): void {
+): Promise<void> {
   if (data.length === 0) {
     alert("No data to export.");
     return;
@@ -34,7 +43,23 @@ export function downloadCSV(
   );
 
   const csvContent = [headerRow, ...rows].join("\n");
-  const blob = new Blob(["\uFEFF" + csvContent], {
+  const csvWithBom = "\uFEFF" + csvContent;
+
+  if (isNative()) {
+    // On device: save to Documents folder, then optionally share
+    const { Share } = await import('@capacitor/share');
+    const uri = await saveNativeCsv(csvWithBom, `${filename}.csv`);
+    if (uri) {
+      try {
+        await Share.share({ title: filename, url: uri, dialogTitle: `Share ${filename}` });
+      } catch {
+        // User dismissed share sheet \u2014 file was still saved successfully
+      }
+    }
+    return;
+  }
+
+  const blob = new Blob([csvWithBom], {
     type: "text/csv;charset=utf-8;",
   });
 
