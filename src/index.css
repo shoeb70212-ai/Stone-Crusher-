@@ -432,47 +432,14 @@ body {
   /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      TOUCH-OPTIMIZED CONTROLS
      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-  button, 
+  button,
   .btn,
   [role="button"] {
-    min-height: 44px;
-    padding: 10px 14px;
-    font-size: 14px;
-    font-weight: 500;
-    border-radius: var(--radius-md);
     touch-action: manipulation;
   }
 
-  .btn-sm {
-    min-height: 36px;
-    padding: 6px 12px;
-    font-size: 13px;
-  }
-
-  .btn-icon {
-    width: 44px;
-    height: 44px;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  /* Input fields with better touch targets */
-  input, 
-  select, 
-  textarea {
-    padding: 12px 14px !important;
-    min-height: 48px;
-    font-size: 16px !important; /* Prevents iOS zoom */
-    border-radius: var(--radius-md);
-  }
-
-  /* Table cells with better touch targets */
-  td, th {
-    padding: 10px 8px !important;
-    font-size: 13px;
-  }
+  /* Table cells with better touch targets - only for data tables, not print */
+  /* Note: kept permissive; print tables override with their own inline styles */
 
   /* Card padding for mobile */
   .card-mobile {
@@ -758,16 +725,7 @@ body {
    ENHANCED TOUCH TARGETS - Minimum 48px with 8px spacing
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 @media (max-width: 640px) {
-  /* Minimum touch target size */
-  button, 
-  .btn,
-  [role="button"],
-  a,
-  input[type="checkbox"],
-  input[type="radio"] {
-    min-height: 48px;
-    min-width: 48px;
-  }
+  /* Touch targets - applied via .btn-touch class, not globally, to avoid fighting compact form UI */
   
   /* Extra padding for buttons */
   .btn {
@@ -788,19 +746,12 @@ body {
     min-height: 48px;
   }
   
-  /* Form inputs - minimum height */
-  input, 
-  select, 
-  textarea {
-    min-height: 52px;
-    padding: 14px 16px !important;
-  }
-  
   /* Checkbox and radio custom styling */
   input[type="checkbox"],
   input[type="radio"] {
     width: 24px;
     height: 24px;
+    min-height: unset;
   }
   
   /* Table row touch targets */
@@ -1195,12 +1146,10 @@ body {
    INPUT & FORM OPTIMIZATION
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 @media (max-width: 640px) {
-  /* Input focus states - larger touch target, better visibility */
+  /* Input focus states */
   input:focus,
   select:focus,
   textarea:focus {
-    border-color: var(--primary-500) !important;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2) !important;
     outline: none;
   }
   

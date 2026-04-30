@@ -97,7 +97,7 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
 
   return (
     <div className="fixed inset-0 bg-zinc-900/80 flex items-center justify-center md:p-4 z-50 overflow-hidden">
-      <div className={`bg-white dark:bg-zinc-800 md:rounded-2xl w-full h-full md:h-auto shadow-xl flex flex-col md:max-h-[90vh] ${format === 'A4' ? 'max-w-3xl' : 'max-w-sm'}`}>
+      <div className={`bg-white dark:bg-zinc-800 md:rounded-2xl w-full h-full md:h-auto shadow-xl flex flex-col md:max-h-[90vh] ${format === 'A4' ? 'md:max-w-3xl' : 'md:max-w-sm'}`}>
         <div className="p-4 border-b flex justify-between items-center print:hidden">
           <h3 className="font-bold text-zinc-900 dark:text-white">Print Loading Token</h3>
           <button
@@ -289,7 +289,7 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
               <>
                 <button
                   onClick={() => setShowBtPanel((v) => !v)}
-                  className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-lg font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-center gap-1"
+                  className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-3 md:py-2 rounded-xl font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-center gap-1 active:scale-95"
                   title="Bluetooth thermal print"
                 >
                   <Bluetooth className="w-4 h-4" />
@@ -301,7 +301,7 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
                       sharePdf(el, `Slip-${slip.id.slice(0, 8).toUpperCase()}.pdf`, 'Share Loading Token');
                     }
                   }}
-                  className="flex-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-lg font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-center gap-1"
+                  className="flex-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-3 md:py-2 rounded-xl font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-center gap-1.5 active:scale-95"
                 >
                   <Share2 className="w-4 h-4" />
                   Share
@@ -316,14 +316,13 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
                     setTimeout(() => onClose(), 500);
                   }
                 }}
-                className="flex-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-lg font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors"
+                className="flex-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-3 md:py-2 rounded-xl font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-center gap-1.5 active:scale-95"
               >
                 Download
               </button>
             )}
             <button
               onClick={() => {
-                // Open window synchronously to bypass popup blocker
                 const win = window.open('', '_blank');
                 const printContent = document.getElementById('print-area')?.innerHTML;
                 if (printContent) {
@@ -333,7 +332,7 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
                   win.close();
                 }
               }}
-              className="flex-1 bg-primary-600 hover:bg-primary-700 text-white px-3 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-1 transition-colors"
+              className="flex-1 bg-primary-600 hover:bg-primary-700 active:bg-primary-800 text-white px-3 py-3 md:py-2 rounded-xl font-semibold text-sm flex items-center justify-center gap-1.5 transition-colors active:scale-95"
             >
               <Printer className="w-4 h-4" />
               Print

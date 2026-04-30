@@ -28,7 +28,7 @@ export function PrintInvoiceModal({
 
   return (
     <div className="fixed inset-0 bg-zinc-900/80 flex items-center justify-center md:p-4 z-50 overflow-hidden">
-      <div className={`bg-white dark:bg-zinc-800 md:rounded-2xl w-full h-full md:h-auto shadow-xl flex flex-col md:max-h-[90vh] ${format === 'A4' ? 'max-w-4xl' : 'max-w-sm'}`}>
+      <div className={`bg-white dark:bg-zinc-800 md:rounded-2xl w-full h-full md:h-auto shadow-xl flex flex-col md:max-h-[90vh] ${format === 'A4' ? 'md:max-w-4xl' : 'md:max-w-sm'}`}>
         <div className="p-4 border-b flex justify-between items-center print:hidden">
           <h3 className="font-bold text-zinc-900 dark:text-white">Print Invoice</h3>
           <button
@@ -39,11 +39,13 @@ export function PrintInvoiceModal({
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-900 p-4">
+        <div className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-900 p-2 md:p-4">
+          {/* Horizontal scroll wrapper so the fixed-width invoice doesn't crush columns on narrow screens */}
+          <div className="overflow-x-auto -mx-2 px-2">
           <div
             id="print-invoice-area"
             className="text-black bg-white mx-auto relative p-4 md:p-6"
-            style={{ width: format === 'A4' ? '700px' : (format === 'Thermal-58mm' ? '220px' : '300px') }}
+            style={{ width: format === 'A4' ? '700px' : (format === 'Thermal-58mm' ? '220px' : '300px'), minWidth: format === 'A4' ? '700px' : undefined }}
           >
             <style dangerouslySetInnerHTML={{ __html: `
             @media print {
@@ -630,13 +632,14 @@ export function PrintInvoiceModal({
             </div>
           )}
           </div>
+          </div>{/* end overflow-x-auto */}
         </div>
-        
-        <div className="p-4 border-t bg-zinc-50 dark:bg-zinc-900/50 flex justify-between items-center rounded-b-2xl print:hidden">
+
+        <div className="p-3 md:p-4 border-t bg-zinc-50 dark:bg-zinc-900/50 rounded-b-2xl print:hidden">
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="flex-1 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm"
+              className="px-3 py-3 md:py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm active:scale-95"
             >
               Close
             </button>
@@ -648,10 +651,10 @@ export function PrintInvoiceModal({
                     sharePdf(element, `Invoice-${invoice.invoiceNo}.pdf`, `Invoice ${invoice.invoiceNo}`);
                   }
                 }}
-                className="flex-1 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm flex items-center justify-center gap-1"
+                className="flex-1 py-3 md:py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm flex items-center justify-center gap-1.5 active:scale-95"
               >
                 <Share2 className="w-4 h-4" />
-                Share
+                Share PDF
               </button>
             ) : (
               <button
@@ -662,7 +665,7 @@ export function PrintInvoiceModal({
                     setTimeout(() => onClose(), 500);
                   }
                 }}
-                className="flex-1 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm flex items-center justify-center gap-1"
+                className="flex-1 py-3 md:py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm flex items-center justify-center gap-1.5 active:scale-95"
               >
                 <Download className="w-4 h-4" />
                 Download
@@ -670,7 +673,6 @@ export function PrintInvoiceModal({
             )}
             <button
               onClick={() => {
-                // Open window synchronously to bypass popup blocker
                 const win = window.open('', '_blank');
                 const printContent = document.getElementById('print-invoice-area')?.innerHTML;
                 if (printContent) {
@@ -680,7 +682,7 @@ export function PrintInvoiceModal({
                   win.close();
                 }
               }}
-              className="flex-1 px-3 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-1 text-sm"
+              className="flex-1 py-3 md:py-2 bg-primary-600 hover:bg-primary-700 active:bg-primary-800 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-1.5 text-sm active:scale-95"
             >
               <Printer className="w-4 h-4" />
               Print
