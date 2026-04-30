@@ -297,13 +297,13 @@ export function Dispatch() {
 
   return (
     <div className="space-y-3">
-      {/* Page header - Compact for mobile */}
+      {/* Page header — title hidden on mobile (bottom nav provides context) */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
+          <h2 className="hidden md:block text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
             Dispatch
           </h2>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 md:mt-0.5">
             {filteredSlips.length} slip{filteredSlips.length !== 1 ? 's' : ''}
           </p>
         </div>

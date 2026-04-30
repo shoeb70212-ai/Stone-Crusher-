@@ -206,18 +206,12 @@ export function Dashboard() {
 
 return (
     <div className="space-y-3 md:space-y-5">
-      {/* Page header - Compact for mobile */}
+      {/* Date range pills — no page title on mobile (bottom nav shows context) */}
       <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
-              Dashboard
-            </h2>
-            <p className="text-[10px] md:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-              {getRangeLabel()} overview
-            </p>
-          </div>
-        </div>
+        {/* Desktop-only heading */}
+        <h2 className="hidden md:block text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
+          Dashboard
+        </h2>
 
         {/* Date range pills - Horizontally scrollable on mobile */}
         <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1 -mx-1 px-1">
@@ -300,31 +294,28 @@ return (
             {slips.length > 6 ? "6+" : slips.length}
           </span>
         </div>
-        <div className="space-y-1.5 max-h-[180px] md:max-h-[220px] overflow-y-auto">
+        <div className="space-y-1 max-h-[180px] md:max-h-[220px] overflow-y-auto">
           {[...slips].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5).map((slip) => (
-            <div key={slip.id} className="bg-zinc-50 dark:bg-zinc-900/50 p-2 rounded-lg flex flex-col gap-1.5 border border-zinc-100 dark:border-zinc-700/50 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors cursor-pointer">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
+            // Single-row layout: vehicle+status left | amount+print right, date below
+            <div key={slip.id} className="bg-zinc-50 dark:bg-zinc-900/50 px-2.5 py-2 rounded-lg border border-zinc-100 dark:border-zinc-700/50 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors cursor-pointer">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 min-w-0">
                   <Truck className="w-3 h-3 text-zinc-400 shrink-0" />
-                  <span className="font-bold text-zinc-900 dark:text-white uppercase tracking-wide text-[11px]">{slip.vehicleNo}</span>
-                </div>
-                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-wide uppercase ${slip.status === "Tallied" ? "bg-primary-100 text-primary-700" : slip.status === "Loaded" ? "bg-blue-100 text-blue-700" : slip.status === "Cancelled" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
-                  {slip.status}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-[10px]">
-                <div className="text-zinc-500 dark:text-zinc-400 font-medium">
-                  {slip.materialType} · {slip.quantity.toFixed(1)}
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-bold text-zinc-900 dark:text-white text-[11px]">
-                    ₹{slip.totalAmount.toLocaleString()}
+                  <span className="font-bold text-zinc-900 dark:text-white uppercase tracking-wide text-[11px] truncate">{slip.vehicleNo}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-wide uppercase shrink-0 ${slip.status === "Tallied" ? "bg-primary-100 text-primary-700" : slip.status === "Loaded" ? "bg-blue-100 text-blue-700" : slip.status === "Cancelled" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
+                    {slip.status}
                   </span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="font-bold text-zinc-900 dark:text-white text-[11px]">₹{slip.totalAmount.toLocaleString()}</span>
                   <button onClick={() => setPrintSlip(slip)} className="text-zinc-400 p-1 rounded bg-white dark:bg-zinc-800 shadow-sm border border-zinc-200 dark:border-zinc-700 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
                     <Printer className="w-3 h-3" />
                   </button>
                 </div>
               </div>
+              <p className="text-[9px] text-zinc-400 dark:text-zinc-500 mt-0.5 pl-[18px]">
+                {slip.materialType} · {slip.quantity.toFixed(1)} · {new Date(slip.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+              </p>
             </div>
           ))}
           {slips.length === 0 && (

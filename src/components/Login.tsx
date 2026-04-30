@@ -125,30 +125,33 @@ export function Login({ onLogin }: LoginProps) {
     }
   };
 
+  /** Company name — from settings if configured, otherwise fallback. */
+  const appName = companySettings.name?.trim() || 'CrushTrack';
+
   // Biometric enrollment prompt shown after a successful password login
   if (showBiometricPrompt) {
     return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900 flex items-center justify-center p-4">
-        <div className="max-w-sm w-full bg-white dark:bg-zinc-800 rounded-2xl shadow-xl overflow-hidden border border-zinc-100 dark:border-zinc-700 p-8 text-center">
-          <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Fingerprint className="w-8 h-8 text-primary-600 dark:text-primary-400" />
+      <div className="h-screen bg-zinc-50 dark:bg-zinc-900 flex items-center justify-center p-6">
+        <div className="w-full max-w-sm text-center">
+          <div className="w-20 h-20 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center mx-auto mb-5">
+            <Fingerprint className="w-10 h-10 text-primary-600 dark:text-primary-400" />
           </div>
           <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-2">Enable Biometric Login?</h2>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6">
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-8">
             Sign in faster next time with your fingerprint or face ID instead of your password.
           </p>
           <div className="flex flex-col gap-3">
             <button
               onClick={() => handleBiometricEnrollment(true)}
-              className="w-full py-3 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-xl transition-colors"
+              className="w-full h-12 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-2xl transition-colors"
             >
               Enable Biometric Login
             </button>
             <button
               onClick={() => handleBiometricEnrollment(false)}
-              className="w-full py-3 bg-zinc-100 dark:bg-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl transition-colors"
+              className="w-full h-12 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 font-medium rounded-2xl transition-colors"
             >
-              Skip
+              Skip for now
             </button>
           </div>
         </div>
@@ -157,70 +160,75 @@ export function Login({ onLogin }: LoginProps) {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white dark:bg-zinc-800 rounded-2xl shadow-xl overflow-hidden border border-zinc-100 dark:border-zinc-700">
-        <div className="bg-primary-600 px-6 py-8 text-center">
-          <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
-            <Shield className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">CrushTrack ERP</h1>
-          <p className="text-primary-100 mt-2 text-sm">Sign in to manage your operations</p>
+    <div className="h-screen flex flex-col overflow-hidden bg-white dark:bg-zinc-900">
+      {/* Top 40% — branded gradient hero area */}
+      <div className="flex-2 bg-linear-to-br from-primary-600 via-primary-600 to-primary-700 flex flex-col items-center justify-center px-6 gap-4">
+        <div className="w-20 h-20 bg-white/20 rounded-3xl flex items-center justify-center backdrop-blur-sm shadow-lg">
+          <Shield className="w-10 h-10 text-white" />
         </div>
-        
-        <form onSubmit={handleLogin} className="p-6 md:p-8 space-y-6">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold text-white tracking-tight">{appName}</h1>
+          <p className="text-primary-100 mt-1 text-sm">Stone Crusher ERP</p>
+        </div>
+      </div>
+
+      {/* Bottom 60% — login form */}
+      <div className="flex-3 bg-white dark:bg-zinc-900 rounded-t-3xl -mt-4 px-6 pt-8 pb-safe flex flex-col">
+        <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-1">Welcome back</h2>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6">Sign in to continue</p>
+
+        <form onSubmit={handleLogin} className="flex flex-col gap-4 flex-1">
           {error && (
-            <div className="bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 p-3 rounded-lg text-sm flex items-center">
-              <AlertCircle className="w-4 h-4 mr-2 shrink-0" />
+            <div className="bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 p-3 rounded-xl text-sm flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
               {error}
             </div>
           )}
-          
-          <div className="space-y-1 relative">
-            <label htmlFor="login-email" className="text-sm font-medium text-zinc-700 dark:text-zinc-300 ml-1">Email Address</label>
+
+          <div className="space-y-1">
             <div className="relative">
-              <Mail className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-              <input 
+              <Mail className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
+              <input
                 id="login-email"
-                type="email" 
+                type="email"
                 required
                 aria-invalid={!!fieldErrors.email}
-                aria-describedby={fieldErrors.email ? "email-error" : undefined}
+                aria-describedby={fieldErrors.email ? 'email-error' : undefined}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className={`w-full pl-10 pr-4 py-3 bg-zinc-50 dark:bg-zinc-900/50 border rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all text-zinc-900 dark:text-white ${fieldErrors.email ? 'border-rose-500 focus:ring-rose-500' : 'border-zinc-200 dark:border-zinc-700'}`}
-                placeholder="admin@admin.com"
+                className={`w-full pl-11 pr-4 py-3 text-sm bg-zinc-100 dark:bg-zinc-800 border-0 rounded-2xl focus:ring-2 focus:ring-primary-500 outline-none transition-all text-zinc-900 dark:text-white placeholder:text-zinc-400 ${fieldErrors.email ? 'ring-2 ring-rose-500' : ''}`}
+                placeholder="Email address"
               />
             </div>
             {fieldErrors.email && (
-              <p id="email-error" className="text-xs text-rose-500 mt-1 ml-1" role="alert">{fieldErrors.email}</p>
+              <p id="email-error" className="text-xs text-rose-500 ml-1" role="alert">{fieldErrors.email}</p>
             )}
           </div>
 
-          <div className="space-y-1 relative">
-            <label htmlFor="login-password" className="text-sm font-medium text-zinc-700 dark:text-zinc-300 ml-1">Password</label>
+          <div className="space-y-1">
             <div className="relative">
-              <Lock className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-              <input 
+              <Lock className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
+              <input
                 id="login-password"
-                type="password" 
+                type="password"
                 required
                 aria-invalid={!!fieldErrors.password}
-                aria-describedby={fieldErrors.password ? "password-error" : undefined}
+                aria-describedby={fieldErrors.password ? 'password-error' : undefined}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className={`w-full pl-10 pr-4 py-3 bg-zinc-50 dark:bg-zinc-900/50 border rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition-all text-zinc-900 dark:text-white ${fieldErrors.password ? 'border-rose-500 focus:ring-rose-500' : 'border-zinc-200 dark:border-zinc-700'}`}
-                placeholder="••••••••"
+                className={`w-full pl-11 pr-4 py-3 text-sm bg-zinc-100 dark:bg-zinc-800 border-0 rounded-2xl focus:ring-2 focus:ring-primary-500 outline-none transition-all text-zinc-900 dark:text-white placeholder:text-zinc-400 ${fieldErrors.password ? 'ring-2 ring-rose-500' : ''}`}
+                placeholder="Password"
               />
             </div>
             {fieldErrors.password && (
-              <p id="password-error" className="text-xs text-rose-500 mt-1 ml-1" role="alert">{fieldErrors.password}</p>
+              <p id="password-error" className="text-xs text-rose-500 ml-1" role="alert">{fieldErrors.password}</p>
             )}
           </div>
 
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white font-medium py-3 rounded-xl transition-colors shadow-sm shadow-primary-600/20"
+            className="w-full h-12 bg-primary-600 hover:bg-primary-700 active:scale-[0.98] disabled:opacity-60 text-white text-base font-semibold rounded-2xl transition-all shadow-sm mt-2"
           >
             {isSubmitting ? 'Signing in…' : 'Sign In'}
           </button>
@@ -229,7 +237,7 @@ export function Login({ onLogin }: LoginProps) {
             <button
               type="button"
               onClick={handleBiometricQuickLogin}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-zinc-100 dark:bg-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl transition-colors"
+              className="w-full h-12 flex items-center justify-center gap-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-2xl transition-colors"
             >
               <Fingerprint className="w-5 h-5" />
               Use Biometrics

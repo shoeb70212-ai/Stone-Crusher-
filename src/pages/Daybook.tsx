@@ -168,81 +168,69 @@ export function Daybook() {
 
   return (
     <div className="space-y-4 h-full">
-      {/* Data & Activity Log */}
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 sm:gap-4 border-b border-zinc-200 dark:border-zinc-800 pb-3">
-          <div className="shrink-0">
-            <h2 className="text-base sm:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
-              Daybook
-            </h2>
-            <p className="text-[10px] sm:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-              Today's cash transactions
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            {/* Simple date selector */}
-            <button
-              onClick={() => document.getElementById('daybook-date')?.click()}
-              className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors"
-            >
-              <CalendarIcon className="w-4 h-4 text-indigo-500" />
-              <span className="text-sm font-medium text-zinc-900 dark:text-white">
-                {format(new Date(startDate), "dd MMM")}
-              </span>
-            </button>
-            <input
-              id="daybook-date"
-              type="date"
-              value={startDate}
-              onChange={(e) => {
-                setStartDate(e.target.value);
-                setEndDate(e.target.value);
-              }}
-              className="hidden"
-            />
-            {/* Quick Action Buttons - Fluid & Responsive */}
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => {
-                  setActiveTab('slip');
-                  setIsOpsModalOpen(true);
-                }}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all shadow-sm active:scale-95"
-                title="New Dispatch Slip"
-              >
-                <Truck className="w-4 h-4" />
-                <span className="text-sm">Slip</span>
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab('income');
-                  setIsOpsModalOpen(true);
-                }}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl transition-all shadow-sm active:scale-95"
-                title="Cash Received"
-              >
-                <ArrowDownRight className="w-4 h-4" />
-                <span className="text-sm">In</span>
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab('expense');
-                  setIsOpsModalOpen(true);
-                }}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-xl transition-all shadow-sm active:scale-95"
-                title="Expense"
-              >
-                <ArrowUpRight className="w-4 h-4" />
-                <span className="text-sm">Out</span>
-              </button>
-            </div>
-            <button
-              onClick={handleExportDaybook}
-              className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-zinc-800 dark:bg-white text-white dark:text-zinc-800 text-sm font-semibold rounded-xl hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors shadow-sm"
-            >
-              <Download className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+      {/* Header — single compact row on mobile, no title (bottom nav provides context) */}
+      <div className="flex items-center gap-2 pb-3 border-b border-zinc-200 dark:border-zinc-800">
+        {/* Desktop-only title */}
+        <h2 className="hidden md:block text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight shrink-0 mr-2">
+          Daybook
+        </h2>
+
+        {/* Date picker pill */}
+        <button
+          onClick={() => document.getElementById('daybook-date')?.click()}
+          className="flex items-center gap-1.5 h-10 px-3 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors shrink-0"
+        >
+          <CalendarIcon className="w-3.5 h-3.5 text-indigo-500" />
+          <span className="text-sm font-semibold text-zinc-900 dark:text-white">
+            {format(new Date(startDate), "dd MMM")}
+          </span>
+        </button>
+        <input
+          id="daybook-date"
+          type="date"
+          value={startDate}
+          onChange={(e) => {
+            setStartDate(e.target.value);
+            setEndDate(e.target.value);
+          }}
+          className="hidden"
+        />
+
+        {/* Quick action buttons */}
+        <button
+          onClick={() => { setActiveTab('slip'); setIsOpsModalOpen(true); }}
+          className="flex items-center justify-center gap-1.5 h-10 px-3 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-semibold rounded-xl transition-all shadow-sm"
+          title="New Dispatch Slip"
+        >
+          <Truck className="w-3.5 h-3.5" />
+          <span>Slip</span>
+        </button>
+        <button
+          onClick={() => { setActiveTab('income'); setIsOpsModalOpen(true); }}
+          className="flex items-center justify-center gap-1.5 h-10 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-sm font-semibold rounded-xl transition-all shadow-sm"
+          title="Cash Received"
+        >
+          <ArrowDownRight className="w-3.5 h-3.5" />
+          <span>In</span>
+        </button>
+        <button
+          onClick={() => { setActiveTab('expense'); setIsOpsModalOpen(true); }}
+          className="flex items-center justify-center gap-1.5 h-10 px-3 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-sm font-semibold rounded-xl transition-all shadow-sm"
+          title="Expense"
+        >
+          <ArrowUpRight className="w-3.5 h-3.5" />
+          <span>Out</span>
+        </button>
+
+        {/* Export — icon-only pill on mobile */}
+        <button
+          onClick={handleExportDaybook}
+          className="flex items-center justify-center h-10 w-10 bg-zinc-800 dark:bg-white text-white dark:text-zinc-800 rounded-xl hover:bg-zinc-700 dark:hover:bg-zinc-200 active:scale-95 transition-all shadow-sm shrink-0 ml-auto"
+          title="Export CSV"
+        >
+          <Download className="w-4 h-4" />
+        </button>
+      </div>
 
         {/* Hero Metrics - Dense grid for mobile */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
