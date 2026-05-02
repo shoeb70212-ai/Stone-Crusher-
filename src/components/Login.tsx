@@ -1,22 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, User, AlertCircle, Fingerprint } from 'lucide-react';
 import { useErp } from '../context/ErpContext';
-import { verifyPassword, hashPassword, isLegacyHash } from '../lib/auth';
 import { loginSchema, type LoginInput } from '../lib/validation';
+import { supabase } from '../lib/supabase';
 import {
   isBiometricAvailable,
   isBiometricEnabled,
-  authenticateWithBiometrics,
   saveBiometricCredentials,
+  clearBiometricCredentials,
 } from '../lib/biometrics';
-import { secureSet } from '../lib/secure-storage';
 import logoSvg from '../assets/logo.svg';
 
 interface LoginProps {
   onLogin: () => void;
 }
-
-const normaliseIdentity = (value: string) => (value || "").trim().toLowerCase();
 
 export function Login({ onLogin }: LoginProps) {
   const [username, setUsername] = useState('');
@@ -25,41 +22,31 @@ export function Login({ onLogin }: LoginProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
-  const [pendingToken, setPendingToken] = useState<string | null>(null);
   const [canUseBiometric, setCanUseBiometric] = useState(false);
 
   // First-run setup state — shown when no users exist yet.
   const [setupMode, setSetupMode] = useState(false);
   const [setupName, setSetupName] = useState('Admin');
-  const [setupEmail, setSetupEmail] = useState('admin@admin.com');
+  const [setupEmail, setSetupEmail] = useState('');
   const [setupPassword, setSetupPassword] = useState('');
   const [setupConfirm, setSetupConfirm] = useState('');
   const [setupError, setSetupError] = useState('');
+  const [setupSubmitting, setSetupSubmitting] = useState(false);
 
-  const { companySettings, isLoading, setUserRole, updateCompanySettings, recordAuditEvent } = useErp();
+  const { companySettings, isLoading, recordAuditEvent, session, userRole } = useErp();
 
   useEffect(() => {
     isBiometricAvailable().then(setCanUseBiometric);
   }, []);
 
-  /** Completes a successful login: stores session token, prompts biometric enroll if applicable. */
-  const completeLogin = async (role: Parameters<typeof setUserRole>[0], token: string) => {
-    setUserRole(role);
-    await secureSet('erp_auth_token', token);
-    localStorage.setItem('erp_auth_token', token);
-    recordAuditEvent({
-      action: "Signed in",
-      entityType: "System",
-      description: `Signed in as ${role}.`,
-      metadata: { role },
-    });
-    if (canUseBiometric && !isBiometricEnabled()) {
-      setPendingToken(token);
-      setShowBiometricPrompt(true);
-    } else {
+  // Once the session and role are both resolved after login, fire onLogin.
+  const pendingLoginRef = React.useRef(false);
+  useEffect(() => {
+    if (pendingLoginRef.current && session && userRole) {
+      pendingLoginRef.current = false;
       onLogin();
     }
-  };
+  }, [session, userRole, onLogin]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,8 +60,14 @@ export function Login({ onLogin }: LoginProps) {
       return;
     }
 
+    const users = companySettings.users ?? [];
+    if (users.length === 0) {
+      setSetupMode(true);
+      setIsSubmitting(false);
+      return;
+    }
+
     const cleanedUsername = username.trim();
-    const loginIdentity = normaliseIdentity(cleanedUsername);
     const validation: LoginInput = { email: cleanedUsername, password };
     const result = loginSchema.safeParse(validation);
 
@@ -90,53 +83,52 @@ export function Login({ onLogin }: LoginProps) {
     }
 
     try {
-      const users = companySettings.users ?? [];
-      const hasUsers = users.length > 0;
-
-      if (!hasUsers) {
-        // No users configured yet — redirect to first-run setup.
-        setSetupMode(true);
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Match against configured user accounts (by email or name).
-      const user = users.find(
+      // Resolve the email — the user may have typed their name instead.
+      const loginIdentity = cleanedUsername.toLowerCase();
+      const matchedUser = users.find(
         (u) =>
-          (normaliseIdentity(u.email) === loginIdentity || normaliseIdentity(u.name) === loginIdentity) &&
+          (u.email.toLowerCase() === loginIdentity || u.name.toLowerCase() === loginIdentity) &&
           u.status === 'Active',
       );
 
-      if (user) {
-        if (!user.passwordHash) {
-          setError('This account has no password set. Ask an Admin to reset it.');
-          return;
-        }
-        const valid = await verifyPassword(password, user.passwordHash);
-        if (valid) {
-          // Silently migrate legacy SHA-256 hashes to PBKDF2 on successful login.
-          if (isLegacyHash(user.passwordHash)) {
-            const newHash = await hashPassword(password);
-            const updatedUsers = users.map((u) =>
-              u.id === user.id ? { ...u, passwordHash: newHash } : u,
-            );
-            void updateCompanySettings({ ...companySettings, users: updatedUsers });
-          }
-          await completeLogin(user.role, `session_${user.id}`);
-          return;
-        }
+      if (!matchedUser) {
+        setError('Invalid username or password.');
+        return;
       }
 
-      setError('Invalid username or password.');
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: matchedUser.email,
+        password,
+      });
+
+      if (authError) {
+        setError('Invalid username or password.');
+        return;
+      }
+
+      recordAuditEvent({
+        action: 'Signed in',
+        entityType: 'System',
+        description: `Signed in as ${matchedUser.role}.`,
+        metadata: { role: matchedUser.role },
+      });
+
+      // Offer biometric enrolment on native devices.
+      if (canUseBiometric && !isBiometricEnabled()) {
+        setShowBiometricPrompt(true);
+      } else {
+        pendingLoginRef.current = true;
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  /** Creates the first admin account on initial setup. */
+  /** Creates the very first admin account via the bootstrap endpoint. */
   const handleSetup = async (e: React.FormEvent) => {
     e.preventDefault();
     setSetupError('');
+
     if (setupPassword.length < 8) {
       setSetupError('Password must be at least 8 characters.');
       return;
@@ -145,72 +137,87 @@ export function Login({ onLogin }: LoginProps) {
       setSetupError('Passwords do not match.');
       return;
     }
-    const passwordHash = await hashPassword(setupPassword);
-    const adminUser = {
-      id: crypto.randomUUID(),
-      name: setupName.trim() || 'Admin',
-      email: normaliseIdentity(setupEmail) || 'admin@admin.com',
-      role: 'Admin' as const,
-      status: 'Active' as const,
-      passwordHash,
-    };
-    const saved = await updateCompanySettings({ ...companySettings, users: [adminUser] });
-    if (!saved) {
-      setSetupError('Could not save the admin account to Supabase. Check your connection and try again.');
-      return;
+
+    setSetupSubmitting(true);
+    try {
+      const API_URL = import.meta.env.VITE_API_URL as string || '';
+      const res = await fetch(`${API_URL}/api/admin-users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bootstrap: true,
+          name: setupName.trim() || 'Admin',
+          email: setupEmail.trim().toLowerCase(),
+          password: setupPassword,
+          role: 'Admin',
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setSetupError(body.error || 'Could not create admin account. Check your connection and try again.');
+        return;
+      }
+
+      // Sign in immediately with the credentials just created.
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: setupEmail.trim().toLowerCase(),
+        password: setupPassword,
+      });
+
+      if (signInError) {
+        setSetupError('Account created but sign-in failed. Please reload and try logging in.');
+        return;
+      }
+
+      pendingLoginRef.current = true;
+    } finally {
+      setSetupSubmitting(false);
     }
-    await completeLogin('Admin', `session_${adminUser.id}`);
   };
 
-  /** Handles the biometric enrollment dialog after a successful password login. */
   const handleBiometricEnrollment = async (enable: boolean) => {
-    if (enable && pendingToken) {
-      await saveBiometricCredentials(pendingToken);
+    if (enable) {
+      // Store the Supabase refresh token so we can restore the session later.
+      const { data } = await supabase.auth.getSession();
+      const refreshToken = data.session?.refresh_token;
+      if (refreshToken) {
+        await saveBiometricCredentials(refreshToken);
+      }
     }
     setShowBiometricPrompt(false);
-    onLogin();
+    pendingLoginRef.current = true;
   };
 
-  /** Attempts biometric quick-login when the user taps the fingerprint button. */
+  /** Attempts biometric quick-login by restoring a saved refresh token. */
   const handleBiometricQuickLogin = async () => {
-    const token = await authenticateWithBiometrics();
-    if (!token) {
+    // Import lazily — NativeBiometric is only available on native.
+    const { authenticateWithBiometrics } = await import('../lib/biometrics');
+    const refreshToken = await authenticateWithBiometrics();
+
+    if (!refreshToken) {
       setError('Biometric authentication failed. Use your password instead.');
       return;
     }
 
-    // Resolve role from the recovered token, identical to the logic in
-    // ErpContext.  Without this, every biometric login would silently use
-    // whatever role was last set (defaulting to Admin on a cold boot).
-    let resolvedRole: Parameters<typeof setUserRole>[0] | null = null;
-    if (token === 'admin_session') {
-      resolvedRole = 'Admin';
-    } else {
-      const userId = token.startsWith('session_') ? token.slice('session_'.length) : null;
-      if (userId) {
-        const user = companySettings.users?.find((u) => u.id === userId && u.status === 'Active');
-        if (user) resolvedRole = user.role as Parameters<typeof setUserRole>[0];
-      }
-    }
+    const { error: sessionError } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
 
-    if (!resolvedRole) {
-      setError('Biometric token is invalid or the account has been deactivated. Use your password.');
+    if (sessionError) {
+      // Stored token is expired or revoked — clear it and fall back to password.
+      await clearBiometricCredentials();
+      setError('Biometric session expired. Please sign in with your password.');
       return;
     }
 
-    setUserRole(resolvedRole);
-    await secureSet('erp_auth_token', token);
-    localStorage.setItem('erp_auth_token', token);
     recordAuditEvent({
-      action: "Signed in",
-      entityType: "System",
-      description: `Signed in with biometrics as ${resolvedRole}.`,
-      metadata: { role: resolvedRole, method: "biometric" },
+      action: 'Signed in',
+      entityType: 'System',
+      description: 'Signed in with biometrics.',
+      metadata: { method: 'biometric' },
     });
-    onLogin();
+    pendingLoginRef.current = true;
   };
 
-  /** Company name — from settings if configured, otherwise fallback. */
   const appName = companySettings.name?.trim() || 'CrushTrack';
 
   // First-run setup screen — no users configured yet
@@ -239,8 +246,8 @@ export function Login({ onLogin }: LoginProps) {
             />
             <input
               required
-              type="text"
-              placeholder="Email / username"
+              type="email"
+              placeholder="Email address"
               value={setupEmail}
               onChange={(e) => setSetupEmail(e.target.value)}
               className="w-full px-4 py-3 text-sm bg-zinc-100 dark:bg-zinc-800 rounded-2xl outline-none focus:ring-2 focus:ring-primary-500 text-zinc-900 dark:text-white placeholder:text-zinc-400"
@@ -263,9 +270,10 @@ export function Login({ onLogin }: LoginProps) {
             />
             <button
               type="submit"
-              className="w-full h-12 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-2xl transition-colors"
+              disabled={setupSubmitting}
+              className="w-full h-12 bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white font-semibold rounded-2xl transition-colors"
             >
-              Create Account & Sign In
+              {setupSubmitting ? 'Creating account…' : 'Create Account & Sign In'}
             </button>
           </form>
         </div>
@@ -381,7 +389,7 @@ export function Login({ onLogin }: LoginProps) {
             disabled={isSubmitting || isLoading}
             className="w-full h-12 bg-primary-600 hover:bg-primary-700 active:scale-[0.98] disabled:opacity-60 text-white text-base font-semibold rounded-2xl transition-all shadow-sm mt-2"
           >
-            {isLoading ? 'Loading accounts...' : isSubmitting ? 'Signing in...' : 'Sign In'}
+            {isLoading ? 'Loading accounts…' : isSubmitting ? 'Signing in…' : 'Sign In'}
           </button>
 
           {canUseBiometric && isBiometricEnabled() && (

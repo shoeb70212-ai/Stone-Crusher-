@@ -14,25 +14,21 @@ import { Camera, QrCode, Nfc } from "lucide-react";
 import { isNative } from "../../lib/capacitor";
 
 export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void }) {
-  const { vehicles, customers, employees, addSlip, slips, companySettings, addVehicle, updateVehicle, addCustomer, addTransaction, userRole } = useErp();
+  const { vehicles, customers, employees, addSlip, slips, companySettings, addVehicle, updateVehicle, addCustomer, addTransaction, userRole, session } = useErp();
   const { addToast } = useToast();
   useKeepAwake();
 
+  // Resolve the operator name from the Supabase session — match by user id or email
+  // against companySettings.users so the slip records the correct person's name.
   const resolvedOperatorName = (() => {
-    try {
-      const token = localStorage.getItem("erp_auth_token");
-      const users = companySettings.users || [];
-      if (token?.startsWith("session_")) {
-        const userId = token.slice("session_".length);
-        const user = users.find((u) => u.id === userId);
-        if (user) return user.name || user.email || "";
-      }
-      if (token === "admin_session") {
-        const admin = users.find((u) => u.role === "Admin" && u.status === "Active");
-        return admin?.name || admin?.email || "Admin";
-      }
-    } catch { /* localStorage unavailable */ }
-    return "";
+    if (!session) return "";
+    const users = companySettings.users || [];
+    const user = users.find(
+      (u) =>
+        u.id === session.user.id ||
+        u.email.toLowerCase() === (session.user.email ?? "").toLowerCase(),
+    );
+    return user?.name || user?.email || "";
   })();
 
   const [formData, setFormData] = useState({

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useErp } from "../context/ErpContext";
 import { CompanySettings } from "../types";
 import { Building2, Users, Receipt, Palette, X, Mail, KeyRound, Lock } from "lucide-react";
-import { hashPassword, verifyPassword } from "../lib/auth";
+import { supabase } from "../lib/supabase";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { useToast } from "../components/ui/Toast";
 import { getDeviceSummary, type DeviceSummary } from "../lib/device-info";
@@ -181,19 +181,29 @@ export function Settings() {
     const duplicate = (localSettings.users || []).some((user) => (user.email || "").trim().toLowerCase() === email);
     if (duplicate) { addToast("error", "A user with this email already exists."); return; }
 
-    const passwordHash = await hashPassword(inviteFormData.password);
-    const newUsers = [...(localSettings.users || [])];
-    newUsers.push({ id: crypto.randomUUID(), name, email, passwordHash, role: inviteFormData.role as any, status: "Active" });
-    const updated = { ...localSettings, users: newUsers };
-    setLocalSettings(updated);
-    const saved = await updateCompanySettings(updated);
-    if (!saved) {
-      addToast("error", "User was not saved to Supabase. Check your connection and try again.");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) { addToast("error", "You must be signed in to invite users."); return; }
+
+    const API_URL = import.meta.env.VITE_API_URL as string || "";
+    const res = await fetch(`${API_URL}/api/admin-users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name, email, password: inviteFormData.password, role: inviteFormData.role }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      addToast("error", body.error || "Failed to create user. Check your connection and try again.");
       return;
     }
+
+    const { user: newUser } = await res.json();
+    const updated = { ...localSettings, users: [...(localSettings.users || []), newUser] };
+    setLocalSettings(updated);
     setIsInviteModalOpen(false);
     setInviteFormData({ name: "", email: "", role: "Partner", password: "" });
-    addToast("success", "User saved to Supabase. They can sign in with this email and password.");
+    addToast("success", "User created. They can sign in with this email and password.");
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -202,18 +212,21 @@ export function Settings() {
     if (changePasswordData.next !== changePasswordData.confirm) { addToast("error", "New passwords do not match."); return; }
     setChangePasswordSubmitting(true);
     try {
-      const token = localStorage.getItem("erp_auth_token");
-      const userId = token?.startsWith("session_") ? token.slice("session_".length) : null;
-      const currentUser = userId ? (localSettings.users || []).find((u) => u.id === userId) : null;
-      if (!currentUser?.passwordHash) { addToast("error", "Cannot find your account. Please log out and log back in."); return; }
-      const currentValid = await verifyPassword(changePasswordData.current, currentUser.passwordHash);
-      if (!currentValid) { addToast("error", "Current password is incorrect."); return; }
-      const newHash = await hashPassword(changePasswordData.next);
-      const updatedUsers = (localSettings.users || []).map((u) => u.id === currentUser.id ? { ...u, passwordHash: newHash } : u);
-      const updated = { ...localSettings, users: updatedUsers };
-      setLocalSettings(updated);
-      const saved = await updateCompanySettings(updated);
-      if (!saved) { addToast("error", "Password was not saved to Supabase. Try again."); return; }
+      // Re-authenticate with current password first to verify identity.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const email = sessionData.session?.user.email;
+      if (!email) { addToast("error", "Cannot find your account. Please sign out and sign back in."); return; }
+
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email,
+        password: changePasswordData.current,
+      });
+      if (verifyError) { addToast("error", "Current password is incorrect."); return; }
+
+      // Update password through Supabase Auth.
+      const { error: updateError } = await supabase.auth.updateUser({ password: changePasswordData.next });
+      if (updateError) { addToast("error", updateError.message || "Failed to update password."); return; }
+
       setIsChangePasswordOpen(false);
       setChangePasswordData({ current: "", next: "", confirm: "" });
       addToast("success", "Password changed successfully.");
@@ -228,12 +241,23 @@ export function Settings() {
     if (resetPasswordValue.length < 8) { addToast("error", "Password must be at least 8 characters."); return; }
     setResetPasswordSubmitting(true);
     try {
-      const newHash = await hashPassword(resetPasswordValue);
-      const updatedUsers = (localSettings.users || []).map((u) => u.id === resetTargetId ? { ...u, passwordHash: newHash } : u);
-      const updated = { ...localSettings, users: updatedUsers };
-      setLocalSettings(updated);
-      const saved = await updateCompanySettings(updated);
-      if (!saved) { addToast("error", "Password reset was not saved to Supabase. Try again."); return; }
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) { addToast("error", "You must be signed in to reset passwords."); return; }
+
+      const API_URL = import.meta.env.VITE_API_URL as string || "";
+      const res = await fetch(`${API_URL}/api/admin-users`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ id: resetTargetId, password: resetPasswordValue }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        addToast("error", body.error || "Failed to reset password. Try again.");
+        return;
+      }
+
       setResetTargetId(null);
       setResetPasswordValue("");
       addToast("success", "Password reset successfully.");

@@ -4,8 +4,7 @@ import { ToastProvider } from "./components/ui/Toast";
 import { OfflineIndicator } from "./components/ui/OfflineIndicator";
 import { Layout } from "./components/Layout";
 import { Login } from "./components/Login";
-import { authenticateWithBiometrics, isBiometricEnabled } from "./lib/biometrics";
-import { secureGet, secureSet } from "./lib/secure-storage";
+import { supabase } from "./lib/supabase";
 import { recordDeviceAccess } from "./lib/device-info";
 
 /**
@@ -29,33 +28,32 @@ function AppShell({ isAuthenticated, onLogin }: { isAuthenticated: boolean; onLo
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    async function checkAuth() {
-      // Standard session token check — reads from native secure store on device
-      const token = await secureGet('erp_auth_token');
-      if (token) {
-        // Mirror into localStorage so ErpContext (synchronous reads) stays in sync
-        try { localStorage.setItem('erp_auth_token', token); } catch { /* ignore */ }
-        setIsAuthenticated(true);
-        return;
-      }
+    // Read the current session on mount — covers page reload with a live session.
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) setIsAuthenticated(true);
+      setAuthChecked(true);
+    });
 
-      // Biometric fast-unlock: no existing session but biometrics are enabled
-      if (isBiometricEnabled()) {
-        const restoredToken = await authenticateWithBiometrics();
-        if (restoredToken) {
-          await secureSet('erp_auth_token', restoredToken);
-          try { localStorage.setItem('erp_auth_token', restoredToken); } catch { /* ignore */ }
-          setIsAuthenticated(true);
-        }
-      }
-    }
+    // Keep isAuthenticated in sync with Supabase's auth state changes
+    // (sign-in from Login, sign-out from Sidebar, token refresh, etc.).
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session);
+    });
 
-    checkAuth();
-    // Record this device for admin audit (non-blocking)
+    // Clear stale legacy auth keys from the old PBKDF2 system on first load.
+    localStorage.removeItem('erp_auth_token');
+
     recordDeviceAccess();
+
+    return () => listener.subscription.unsubscribe();
   }, []);
+
+  // Show nothing until we know whether there is an active session, so we
+  // never flash the login screen to an already-authenticated user.
+  if (!authChecked) return null;
 
   return (
     <ToastProvider>

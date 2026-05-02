@@ -1,8 +1,9 @@
+import { supabase } from "./supabase";
 import { clearBiometricCredentials } from "./biometrics";
-import { secureRemove } from "./secure-storage";
 
+/** Signs the current user out of Supabase Auth and clears all local state. */
 export async function clearAuthSession(): Promise<void> {
-  await secureRemove("erp_auth_token");
+  await supabase.auth.signOut();
   localStorage.removeItem("erp_auth_token");
   localStorage.removeItem("erp_user_role");
   await clearBiometricCredentials();

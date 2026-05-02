@@ -8,6 +8,7 @@ import {
   useMemo,
   ReactNode,
 } from "react";
+import type { Session } from "@supabase/supabase-js";
 import {
   Customer,
   Employee,
@@ -20,6 +21,7 @@ import {
   Task,
   AuditLog,
 } from "../types";
+import { supabase } from "../lib/supabase";
 import { isNative } from "../lib/capacitor";
 import { getEmployeeTransactionImpact } from "../lib/employee-ledger";
 
@@ -66,7 +68,8 @@ interface ErpState {
 
   // Auth
   userRole: UserRole;
-  setUserRole: (role: UserRole) => void;
+  session: Session | null;
+  signOut: () => Promise<void>;
   recordAuditEvent: (entry: AuditLogInput) => void;
 
   // Settings
@@ -182,17 +185,33 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings>(DEFAULT_COMPANY_SETTINGS);
+  const [session, setSession] = useState<Session | null>(null);
   const [userRole, _setUserRole] = useState<UserRole>("Admin");
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
 
-  // Restore persisted role on cold boot so the correct role is applied before
-  // companySettings loads from the server (which re-derives it in the effect below).
+  // Restore persisted role on cold boot so the correct role is visible before
+  // companySettings loads from the server.
   useEffect(() => {
     const saved = localStorage.getItem('erp_user_role');
     if (saved === 'Admin' || saved === 'Manager' || saved === 'Partner') {
       _setUserRole(saved);
     }
+  }, []);
+
+  // Subscribe to Supabase Auth state changes.  When the session transitions
+  // the role is re-derived below (in the settings-load effect).
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+      // Clear stale legacy keys so they never pollute a fresh Supabase session.
+      if (!newSession) {
+        localStorage.removeItem('erp_auth_token');
+        localStorage.removeItem('erp_user_role');
+      }
+    });
+    return () => listener.subscription.unsubscribe();
   }, []);
 
   // -----------------------------------------------------------------------
@@ -465,67 +484,68 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     });
   }, [slips, tasks, isLoading]);
 
-  // After settings load, resolve the role from the session token so a user
-  // cannot self-promote by editing localStorage directly. The derived role is
-  // also persisted so it survives a cold restart before the server responds.
+  // After settings load (or when the session changes), re-derive the role so a
+  // user cannot self-promote by editing localStorage.  Priority:
+  //   1. app_metadata.role set by the server (tamper-proof)
+  //   2. companySettings.users lookup by Supabase user id or email
   useEffect(() => {
-    if (isLoading) return;
-    const token = localStorage.getItem("erp_auth_token");
-    if (!token) return;
+    if (isLoading || !session) return;
 
     let resolvedRole: UserRole | null = null;
 
-    if (token === "admin_session") {
-      resolvedRole = "Admin";
+    const appRole = session.user.app_metadata?.role as string | undefined;
+    if (appRole === 'Admin' || appRole === 'Manager' || appRole === 'Partner') {
+      resolvedRole = appRole;
     } else {
-      // token format is "session_<userId>"
-      const userId = token.startsWith("session_") ? token.slice("session_".length) : null;
-      if (userId) {
-        const user = companySettings.users?.find((u) => u.id === userId && u.status === "Active");
-        if (user) resolvedRole = user.role as UserRole;
-      }
+      const users = companySettings.users ?? [];
+      const match = users.find(
+        (u) =>
+          (u.id === session.user.id ||
+            u.email.toLowerCase() === (session.user.email ?? '').toLowerCase()) &&
+          u.status === 'Active',
+      );
+      if (match) resolvedRole = match.role as UserRole;
     }
 
     if (resolvedRole) {
       _setUserRole(resolvedRole);
       localStorage.setItem('erp_user_role', resolvedRole);
     }
-  }, [isLoading, companySettings.users]);
+  }, [isLoading, session, companySettings.users]);
 
   // -----------------------------------------------------------------------
   // Audit logging
   // -----------------------------------------------------------------------
 
   const getCurrentActor = useCallback(() => {
-    const token = localStorage.getItem("erp_auth_token");
-    const users = companySettings.users || [];
-
-    if (token?.startsWith("session_")) {
-      const userId = token.slice("session_".length);
-      const user = users.find((u) => u.id === userId);
-      if (user) {
-        return {
-          actorId: user.id,
-          actorName: user.name || user.email || user.role,
-          actorRole: user.role,
-        };
-      }
+    if (!session) {
+      return { actorName: 'System', actorRole: userRole };
     }
 
-    if (token === "admin_session") {
-      const adminUser = users.find((u) => u.role === "Admin" && u.status === "Active");
+    const users = companySettings.users ?? [];
+    const user = users.find(
+      (u) =>
+        u.id === session.user.id ||
+        u.email.toLowerCase() === (session.user.email ?? '').toLowerCase(),
+    );
+
+    if (user) {
       return {
-        actorId: adminUser?.id,
-        actorName: adminUser?.name || "System Admin",
-        actorRole: "Admin" as const,
+        actorId: user.id,
+        actorName: user.name || user.email || user.role,
+        actorRole: user.role,
       };
     }
 
-    return {
-      actorName: `${userRole} User`,
-      actorRole: userRole,
-    };
-  }, [companySettings.users, userRole]);
+    return { actorName: `${userRole} User`, actorRole: userRole };
+  }, [session, companySettings.users, userRole]);
+
+  /** Signs the current user out of Supabase Auth and clears local state. */
+  const signOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    localStorage.removeItem('erp_auth_token');
+    localStorage.removeItem('erp_user_role');
+  }, []);
 
   const recordAudit = useCallback((entry: AuditLogInput) => {
     const actor = getCurrentActor();
@@ -1212,7 +1232,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     isLoading,
     syncStatus,
     userRole,
-    setUserRole: _setUserRole,
+    session,
+    signOut,
     recordAuditEvent: recordAudit,
     updateCompanySettings,
     toggleMaterialActive,
@@ -1244,7 +1265,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     flushSync: flushSyncQueue,
   }), [
     customers, employees, employeeTransactions, slips, transactions, vehicles, invoices, tasks, auditLogs,
-    companySettings, isLoading, syncStatus, userRole,
+    companySettings, isLoading, syncStatus, userRole, session, signOut,
     recordAudit,
     updateCompanySettings, toggleMaterialActive,
     addCustomer, updateCustomer, deleteCustomer,

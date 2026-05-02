@@ -8,6 +8,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer as createViteServer } from "vite";
+import adminUsersHandler from "./api/admin-users";
 
 dotenv.config();
 
@@ -181,6 +182,11 @@ async function start() {
       res.status(500).json({ error: "Failed to replace local data" });
     }
   });
+
+  // Proxy admin-users to the Vercel handler (same logic, works locally too)
+  app.all("/api/admin-users", (req, res) =>
+    adminUsersHandler(req as never, res as never),
+  );
 
   const vite = await createViteServer({
     appType: "spa",

@@ -1,6 +1,7 @@
 import React from "react";
-import { Save, Check, Mail, Lock, KeyRound, X } from "lucide-react";
+import { Save, Check, Mail, Lock, KeyRound } from "lucide-react";
 import { CompanySettings } from "../../types";
+import { useErp } from "../../context/ErpContext";
 
 interface Props {
   localSettings: CompanySettings;
@@ -18,6 +19,10 @@ export function SettingsUsers({
   localSettings, setLocalSettings, isSaved, userRole,
   onSave, onOpenInvite, onOpenChangePassword, onOpenResetPassword,
 }: Props) {
+  const { session } = useErp();
+  // Identify the currently logged-in user so the Remove button is hidden for them.
+  const currentUserId = session?.user.id ?? null;
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center flex-wrap gap-2">
@@ -53,7 +58,7 @@ export function SettingsUsers({
           </thead>
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
             {(localSettings.users || []).map((user) => {
-              const isCurrentUser = localStorage.getItem("erp_auth_token") === `session_${user.id}`;
+              const isCurrentUser = user.id === currentUserId;
               const updUsers = (patch: Partial<typeof user>) =>
                 setLocalSettings({
                   ...localSettings,
