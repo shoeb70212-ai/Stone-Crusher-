@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { useErp } from "../context/ErpContext";
 import {
   Truck,
@@ -8,6 +8,8 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
 } from "lucide-react";
+import { NAVIGATE_EVENT } from "../components/Layout";
+import { getStatusColor } from "../lib/status-styles";
 import {
   endOfDay,
   startOfDay,
@@ -28,14 +30,36 @@ export function Dashboard() {
   const { slips, transactions, customers, invoices, getCustomerBalance } = useErp();
   const [printSlip, setPrintSlip] = useState<Slip | null>(null);
 
+  const navigateTo = useCallback((view: string) => {
+    window.dispatchEvent(new CustomEvent(NAVIGATE_EVENT, { detail: view }));
+  }, []);
+
   // Default to today since owner wants to see what's happening today
   const [dateRangeType, setDateRangeType] = useState<
     "today" | "week" | "month" | "year" | "custom"
   >("today");
 
-  // Recompute "now" each time the user changes the date range so the "today"
-  // filter stays correct even if the tab has been open since the previous day.
-  const now = useMemo(() => new Date(), [dateRangeType]);
+  // Tick counter forces "now" to refresh at midnight when on the Today view,
+  // so a tab left open overnight doesn't keep showing yesterday's data.
+  const [midnightTick, setMidnightTick] = useState(0);
+  const midnightTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    if (dateRangeType !== "today") return;
+    const msUntilMidnight = () => {
+      const n = new Date();
+      return new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1).getTime() - n.getTime();
+    };
+    const schedule = () => {
+      midnightTimerRef.current = setTimeout(() => {
+        setMidnightTick((t) => t + 1);
+        schedule();
+      }, msUntilMidnight());
+    };
+    schedule();
+    return () => clearTimeout(midnightTimerRef.current);
+  }, [dateRangeType]);
+
+  const now = useMemo(() => new Date(), [dateRangeType, midnightTick]);
 
   const [customStartDate, setCustomStartDate] = useState(
     startOfMonth(now).toISOString().split("T")[0],
@@ -120,14 +144,18 @@ export function Dashboard() {
     };
   }, [transactions, dateStart, dateEnd, prevDateStart, prevDateEnd]);
 
-  // Volume
-  const currentVolume = dateSlips.reduce((acc, s) => acc + s.quantity, 0);
-  const prevVolume = prevDateSlips.reduce((acc, s) => acc + s.quantity, 0);
+  // Volume — exclude Cancelled slips (material was never dispatched)
+  const currentVolume = dateSlips
+    .filter((s) => s.status !== "Cancelled")
+    .reduce((acc, s) => acc + s.quantity, 0);
+  const prevVolume = prevDateSlips
+    .filter((s) => s.status !== "Cancelled")
+    .reduce((acc, s) => acc + s.quantity, 0);
 
-  // Trips by Company Vehicles in period
+  // Trips by Company Vehicles in period — only Loaded/Tallied (not Pending or Cancelled)
   const companyVehicleTrips = dateSlips
     .filter(
-      (s) => s.deliveryMode === "Company Vehicle" && s.status !== "Pending",
+      (s) => s.deliveryMode === "Company Vehicle" && (s.status === "Loaded" || s.status === "Tallied"),
     )
     .reduce(
       (acc, curr) => {
@@ -141,10 +169,12 @@ export function Dashboard() {
     );
 
   const totalReceivables = useMemo(() => {
-    return customers.reduce((sum, c) => {
-      const bal = getCustomerBalance(c.id);
-      return sum + (bal > 0 ? bal : 0);
-    }, 0);
+    return customers
+      .filter((c) => c.isActive !== false)
+      .reduce((sum, c) => {
+        const bal = getCustomerBalance(c.id);
+        return sum + (bal > 0 ? bal : 0);
+      }, 0);
   }, [customers, getCustomerBalance]);
 
   const percentChange = (current: number, previous: number) => {
@@ -160,12 +190,13 @@ export function Dashboard() {
   const stats = [
     {
       label: "Dispatches",
-      value: `${dateSlips.length} Trips`,
-      subValue: `${currentVolume.toFixed(2)} Brass`,
+      value: `${dateSlips.filter(s => s.status !== "Cancelled").length} Trips`,
+      subValue: `${volumePercent}% vs prev period`,
       isPositive: currentVolume >= prevVolume,
       icon: Truck,
       color: "text-blue-600 dark:text-blue-400",
       bg: "bg-blue-100 dark:bg-blue-500/20",
+      navTarget: "dispatch",
     },
     {
       label: "Income",
@@ -175,6 +206,7 @@ export function Dashboard() {
       icon: ArrowDownCircle,
       color: "text-emerald-600 dark:text-emerald-400",
       bg: "bg-emerald-100 dark:bg-emerald-500/20",
+      navTarget: "daybook",
     },
     {
       label: "Expenses",
@@ -184,6 +216,7 @@ export function Dashboard() {
       icon: ArrowUpCircle,
       color: "text-orange-600 dark:text-orange-400",
       bg: "bg-orange-100 dark:bg-orange-500/20",
+      navTarget: "daybook",
     },
     {
       label: "Receivables",
@@ -193,6 +226,7 @@ export function Dashboard() {
       icon: Wallet,
       color: "text-amber-600 dark:text-amber-400",
       bg: "bg-amber-100 dark:bg-amber-500/20",
+      navTarget: "customers",
     },
   ];
 
@@ -204,7 +238,17 @@ export function Dashboard() {
     return "Custom Range";
   };
 
-return (
+  const previousPeriodLabel = `Compared with the previous ${getRangeLabel().toLowerCase()} period`;
+  const recentSlips = useMemo(
+    () => [...slips].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5),
+    [slips],
+  );
+  const recentTransactions = useMemo(
+    () => transactions.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5),
+    [transactions],
+  );
+
+  return (
     <div className="space-y-3 md:space-y-5">
       {/* Date range pills — no page title on mobile (bottom nav shows context) */}
       <div className="flex flex-col gap-2">
@@ -213,21 +257,24 @@ return (
           Dashboard
         </h2>
 
-        {/* Date range pills - Horizontally scrollable on mobile */}
-        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1 -mx-1 px-1">
-          {(["today", "week", "month", "year", "custom"] as const).map((type) => (
-            <button
-              key={type}
-              onClick={() => setDateRangeType(type)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all active:scale-95 ${
-                dateRangeType === type
-                  ? "bg-primary-600 text-white shadow-sm"
-                  : "bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700"
-              }`}
-            >
-              {type === "today" ? "Today" : type === "week" ? "Week" : type === "month" ? "Month" : type === "year" ? "Year" : "Custom"}
-            </button>
-          ))}
+        {/* Date range pills - Horizontally scrollable on mobile with edge fade hint */}
+        <div className="relative">
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-linear-to-l from-zinc-50 dark:from-zinc-900 to-transparent z-10 md:hidden" />
+          <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
+            {(["today", "week", "month", "year", "custom"] as const).map((type) => (
+              <button
+                key={type}
+                onClick={() => setDateRangeType(type)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all active:scale-95 ${
+                  dateRangeType === type
+                    ? "bg-primary-600 text-white shadow-sm"
+                    : "bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700"
+                }`}
+              >
+                {type === "today" ? "Today" : type === "week" ? "Week" : type === "month" ? "Month" : type === "year" ? "Year" : "Custom"}
+              </button>
+            ))}
+          </div>
         </div>
 
         {dateRangeType === "custom" && (
@@ -254,12 +301,14 @@ return (
         {stats.map((stat, i) => {
           const Icon = stat.icon;
           return (
-            <div
+            <button
               key={i}
-              className="bg-white dark:bg-zinc-900/40 p-2.5 md:p-5 rounded-xl md:rounded-2xl shadow-sm border border-zinc-200/80 dark:border-zinc-800 flex flex-col gap-1 relative overflow-hidden active:scale-[0.98] active:shadow-inner transition-all cursor-pointer"
+              onClick={() => navigateTo(stat.navTarget)}
+              aria-label={`${stat.label}: ${stat.value}. ${stat.subValue}. Open ${stat.navTarget}.`}
+              className="bg-white dark:bg-zinc-900/40 p-2.5 md:p-5 rounded-xl md:rounded-2xl shadow-sm border border-zinc-200/80 dark:border-zinc-800 flex flex-col gap-1 relative overflow-hidden active:scale-[0.98] active:shadow-inner transition-all cursor-pointer text-left hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-md"
             >
               <div className="flex justify-between items-start">
-                <p className="text-[10px] md:text-sm font-semibold text-zinc-500 dark:text-zinc-400 leading-tight line-clamp-2 uppercase tracking-wide">
+                <p className="text-xs md:text-sm font-semibold text-zinc-500 dark:text-zinc-400 leading-tight line-clamp-2 uppercase tracking-wide">
                   {stat.label}
                 </p>
                 <div className={`p-1 rounded-lg md:rounded-xl ${stat.bg} shrink-0`}>
@@ -269,16 +318,19 @@ return (
               <p className="text-base md:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white truncate">
                 {stat.value}
               </p>
-              <p className="text-[9px] md:text-xs font-medium leading-tight">
+              <p className="text-xs font-medium leading-tight">
                 {stat.label === "Receivables" ? (
                   <span className="text-zinc-500 dark:text-zinc-400">{stat.subValue}</span>
                 ) : (
-                  <span className={`px-1 py-0.5 rounded-md inline-flex items-center gap-0.5 ${stat.isPositive ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400"}`}>
+                  <span
+                    title={previousPeriodLabel}
+                    className={`px-1.5 py-0.5 rounded-md inline-flex items-center gap-0.5 ${stat.isPositive ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400"}`}
+                  >
                     {stat.isPositive ? "↑" : "↓"} {stat.subValue.split(" vs")[0]}
                   </span>
                 )}
               </p>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -290,30 +342,43 @@ return (
           <h3 className="font-semibold text-zinc-900 dark:text-white text-xs md:text-sm">
             Recent Dispatches
           </h3>
-          <span className="text-[10px] font-semibold bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 px-2 py-0.5 rounded-lg">
-            {slips.length > 6 ? "6+" : slips.length}
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigateTo("dispatch")}
+              className="text-xs font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+            >
+              View all
+            </button>
+            <span className="text-xs font-semibold bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 px-2 py-0.5 rounded-lg">
+              {slips.length > 6 ? "6+" : slips.length}
+            </span>
+          </div>
         </div>
-        <div className="space-y-1 max-h-[180px] md:max-h-[220px] overflow-y-auto">
-          {[...slips].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5).map((slip) => (
+        <div className="space-y-1 max-h-45 md:max-h-55 overflow-y-auto">
+          {recentSlips.map((slip) => (
             // Single-row layout: vehicle+status left | amount+print right, date below
-            <div key={slip.id} className="bg-zinc-50 dark:bg-zinc-900/50 px-2.5 py-2 rounded-lg border border-zinc-100 dark:border-zinc-700/50 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors cursor-pointer">
+            <div key={slip.id} className="bg-zinc-50 dark:bg-zinc-900/50 px-2.5 py-2 rounded-lg border border-zinc-100 dark:border-zinc-700/50 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <Truck className="w-3 h-3 text-zinc-400 shrink-0" />
                   <span className="font-bold text-zinc-900 dark:text-white uppercase tracking-wide text-[11px] truncate">{slip.vehicleNo}</span>
-                  <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-wide uppercase shrink-0 ${slip.status === "Tallied" ? "bg-primary-100 text-primary-700" : slip.status === "Loaded" ? "bg-blue-100 text-blue-700" : slip.status === "Cancelled" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
+                  <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold tracking-wide uppercase shrink-0 ${getStatusColor(slip.status)}`}>
                     {slip.status}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <span className="font-bold text-zinc-900 dark:text-white text-[11px]">₹{slip.totalAmount.toLocaleString()}</span>
-                  <button onClick={() => setPrintSlip(slip)} className="text-zinc-400 p-1 rounded bg-white dark:bg-zinc-800 shadow-sm border border-zinc-200 dark:border-zinc-700 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                  <button
+                    onClick={() => setPrintSlip(slip)}
+                    className="text-zinc-400 p-1 rounded bg-white dark:bg-zinc-800 shadow-sm border border-zinc-200 dark:border-zinc-700 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                    aria-label={`Print slip ${slip.id}`}
+                  >
                     <Printer className="w-3 h-3" />
                   </button>
                 </div>
               </div>
-              <p className="text-[9px] text-zinc-400 dark:text-zinc-500 mt-0.5 pl-[18px]">
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5 pl-4.5">
                 {slip.materialType} · {slip.quantity.toFixed(1)} · {new Date(slip.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
               </p>
             </div>
@@ -330,16 +395,21 @@ return (
           <h3 className="font-semibold text-zinc-900 dark:text-white text-xs md:text-sm">
             Recent Transactions
           </h3>
-          <span className="text-[10px] font-semibold bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 px-2 py-0.5 rounded-lg">
-            {transactions.length > 6 ? "6+" : transactions.length}
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigateTo("daybook")}
+              className="text-xs font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+            >
+              View all
+            </button>
+            <span className="text-xs font-semibold bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 px-2 py-0.5 rounded-lg">
+              {transactions.length > 6 ? "6+" : transactions.length}
+            </span>
+          </div>
         </div>
-        <div className="space-y-1.5 max-h-[180px] md:max-h-[220px] overflow-y-auto">
-          {transactions
-            .slice()
-            .reverse()
-            .slice(0, 5)
-            .map((t) => (
+        <div className="space-y-1.5 max-h-45 md:max-h-55 overflow-y-auto">
+          {recentTransactions.map((t) => (
               <div
                 key={t.id}
                 className="bg-zinc-50 dark:bg-zinc-900/50 p-2 rounded-lg flex items-center justify-between border border-zinc-100 dark:border-zinc-700/50"
@@ -352,11 +422,11 @@ return (
                     <p className="text-[11px] font-semibold text-zinc-900 dark:text-white truncate">
                       {t.category}
                     </p>
-                    <p className="text-[9px] text-zinc-400 dark:text-zinc-500">{t.type}</p>
+                    <p className="text-xs text-zinc-400 dark:text-zinc-500">{t.type}</p>
                   </div>
                 </div>
                 <div
-                  className={`text-[11px] font-bold flex items-center shrink-0 ${t.type === "Income" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
+                  className={`text-xs font-bold flex items-center shrink-0 ${t.type === "Income" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
                 >
                   {t.type === "Income" ? "+" : "-"}₹
                   {t.amount.toLocaleString()}
@@ -396,16 +466,17 @@ return (
                 <span className="text-[11px] md:text-xs font-bold text-primary-600 dark:text-primary-400 block">
                   {data.trips}
                 </span>
-                <span className="text-[8px] md:text-[9px] font-medium text-zinc-500 dark:text-zinc-400 uppercase">
+                <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase">
                   trips
                 </span>
               </div>
             </div>
           ))}
           {Object.keys(companyVehicleTrips).length === 0 && (
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 py-2 col-span-full">
-              No trips recorded
-            </p>
+            <div className="col-span-full rounded-lg border border-dashed border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/50 px-3 py-4 text-center">
+              <p className="text-sm font-semibold text-zinc-600 dark:text-zinc-300">No vehicle trips in this range</p>
+              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Company vehicle activity will appear after slips are loaded or tallied.</p>
+            </div>
           )}
         </div>
       </div>

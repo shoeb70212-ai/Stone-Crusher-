@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useErp } from "../context/ErpContext";
 import { Slip } from "../types";
 import { format, parseISO } from "date-fns";
@@ -15,25 +15,20 @@ import { CreateSlipForm } from "../components/forms/CreateSlipForm";
 import { EditSlipForm } from "../components/forms/EditSlipForm";
 import { PrintSlipModal } from "../components/forms/PrintSlipModal";
 import { MobileModal } from "../components/ui/MobileModal";
+import { MobileChip, MobileFilterSheet } from "../components/ui/MobilePrimitives";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { cn } from "../lib/utils";
-
-function statusStyle(status: string) {
-  switch (status) {
-    case "Tallied":
-      return "bg-primary-100 text-primary-700 dark:bg-primary-500/20 dark:text-primary-300";
-    case "Loaded":
-      return "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300";
-    case "Cancelled":
-      return "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300";
-    default:
-      return "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300";
-  }
-}
+import { useHapticFeedback } from "../lib/use-haptic-feedback";
+import { getStatusColor } from "../lib/status-styles";
+import { useDebounce } from "../lib/use-debounce";
 
 export function Dispatch() {
   const { slips, customers, vehicles, updateSlipStatus, companySettings } =
     useErp();
+  const { tap, success } = useHapticFeedback();
+  const PAGE_SIZE = 50;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingSlip, setEditingSlip] = useState<Slip | null>(null);
   const [printSlip, setPrintSlip] = useState<Slip | null>(null);
@@ -50,6 +45,56 @@ export function Dispatch() {
   const [filterDeliveryMode, setFilterDeliveryMode] = useState("All");
   const [filterCustomer, setFilterCustomer] = useState("All");
   const [filterVehicle, setFilterVehicle] = useState("");
+  // Debounce the text search so the filtered list only recomputes after typing pauses
+  const debouncedFilterVehicle = useDebounce(filterVehicle, 300);
+
+  const filteredSlips = useMemo(() => slips
+    .filter((s) => {
+      if (activeTab === "pending" && s.status !== "Pending") return false;
+
+      // Vehicle search uses the debounced value to avoid filtering on every keystroke.
+      if (debouncedFilterVehicle.trim() && !s.vehicleNo.toLowerCase().includes(debouncedFilterVehicle.trim().toLowerCase())) {
+        return false;
+      }
+
+      if (filterMaterial !== "All" && s.materialType !== filterMaterial)
+        return false;
+      if (
+        filterDeliveryMode !== "All" &&
+        s.deliveryMode !== filterDeliveryMode
+      )
+        return false;
+      if (filterCustomer !== "All" && s.customerId !== filterCustomer)
+        return false;
+
+      if (filterDate) {
+        const slipDate = format(parseISO(s.date), 'yyyy-MM-dd');
+        if (slipDate !== filterDate) return false;
+      } else {
+        if (filterStartDate && new Date(s.date) < new Date(filterStartDate + 'T00:00:00'))
+          return false;
+        if (filterEndDate && new Date(s.date) > new Date(filterEndDate + 'T23:59:59.999'))
+          return false;
+      }
+      return true;
+    })
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+  [slips, activeTab, debouncedFilterVehicle, filterMaterial, filterDeliveryMode, filterCustomer, filterDate, filterStartDate, filterEndDate]);
+
+  // Reset to first page whenever filters change
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [filteredSlips.length]);
+
+  // Infinite scroll sentinel — loads next page when bottom of list comes into view
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setVisibleCount((n) => n + PAGE_SIZE); },
+      { threshold: 0.1 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const quickDateFilter = (period: "today" | "week" | "month") => {
     const today = new Date();
@@ -101,44 +146,6 @@ export function Dispatch() {
     if (filterVehicle.trim() !== "") count++;
     return count;
   };
-
-  const filteredSlips = slips
-    .filter((s) => {
-      if (activeTab === "pending" && s.status !== "Pending") return false;
-      
-      // Vehicle search
-      if (filterVehicle.trim() && !s.vehicleNo.toLowerCase().includes(filterVehicle.trim().toLowerCase())) {
-        return false;
-      }
-      
-      if (filterMaterial !== "All" && s.materialType !== filterMaterial)
-        return false;
-      if (
-        filterDeliveryMode !== "All" &&
-        s.deliveryMode !== filterDeliveryMode
-      )
-        return false;
-      if (filterCustomer !== "All" && s.customerId !== filterCustomer)
-        return false;
-      
-      // Single date filter — use parseISO + format to avoid UTC-vs-local mismatch
-      if (filterDate) {
-        const slipDate = format(parseISO(s.date), 'yyyy-MM-dd');
-        if (slipDate !== filterDate) return false;
-      }
-      // Date range filter
-      else {
-        if (filterStartDate && new Date(s.date) < new Date(filterStartDate))
-          return false;
-        if (filterEndDate) {
-          const end = new Date(filterEndDate);
-          end.setHours(23, 59, 59, 999);
-          if (new Date(s.date) > end) return false;
-        }
-      }
-      return true;
-    })
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const filterPanel = (
     <div className="p-3 md:p-4 space-y-3">
@@ -194,10 +201,11 @@ export function Dispatch() {
       {/* Date Range */}
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
+          <label htmlFor="filter-from-date" className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
             From Date
           </label>
           <input
+            id="filter-from-date"
             type="date"
             value={filterStartDate}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFilterStartDate(e.target.value); setFilterDate(""); setActiveQuickFilter(null); }}
@@ -205,10 +213,11 @@ export function Dispatch() {
           />
         </div>
         <div>
-          <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
+          <label htmlFor="filter-to-date" className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
             To Date
           </label>
           <input
+            id="filter-to-date"
             type="date"
             value={filterEndDate}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilterEndDate(e.target.value)}
@@ -219,24 +228,26 @@ export function Dispatch() {
 
       {/* Vehicle Search */}
       <div>
-        <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
+        <label htmlFor="filter-vehicle" className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
           Vehicle Number
         </label>
         <input
+          id="filter-vehicle"
           type="text"
           value={filterVehicle}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilterVehicle(e.target.value)}
-          placeholder="Search vehicle..."
+          placeholder="Search vehicle no..."
           className="w-full text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg px-2 py-1.5 outline-none focus:border-primary-500"
         />
       </div>
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
+          <label htmlFor="filter-material" className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
             Material
           </label>
           <select
+            id="filter-material"
             value={filterMaterial}
             onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterMaterial(e.target.value)}
             className="w-full text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg px-2 py-1.5 outline-none focus:border-primary-500"
@@ -250,10 +261,11 @@ export function Dispatch() {
           </select>
         </div>
         <div>
-          <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
+          <label htmlFor="filter-customer" className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
             Customer
           </label>
           <select
+            id="filter-customer"
             value={filterCustomer}
             onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterCustomer(e.target.value)}
             className="w-full text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg px-2 py-1.5 outline-none focus:border-primary-500"
@@ -270,10 +282,11 @@ export function Dispatch() {
       </div>
 
       <div>
-        <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
+        <label htmlFor="filter-delivery" className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">
           Delivery Mode
         </label>
         <select
+          id="filter-delivery"
           value={filterDeliveryMode}
           onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterDeliveryMode(e.target.value)}
           className="w-full text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg px-2 py-1.5 outline-none focus:border-primary-500"
@@ -309,7 +322,7 @@ export function Dispatch() {
         </div>
         {/* Desktop create button */}
         <button
-          onClick={() => setIsCreateOpen(true)}
+          onClick={() => { tap(); setIsCreateOpen(true); }}
           className="hidden md:flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-xl font-medium transition-colors active:scale-[0.98]"
         >
           <Plus className="w-4 h-4" />
@@ -348,6 +361,7 @@ export function Dispatch() {
             )}
             <button
               onClick={() => setIsFilterOpen(true)}
+              aria-label="Filter slips"
               className={cn(
                 "flex items-center gap-1.5 text-sm font-medium px-2.5 py-2 rounded-lg transition-colors relative",
                 hasActiveFilters
@@ -365,13 +379,46 @@ export function Dispatch() {
           </div>
         </div>
 
+        {hasActiveFilters && (
+          <div className="md:hidden flex gap-2 overflow-x-auto border-b border-zinc-100 dark:border-zinc-700 px-3 py-2 no-scrollbar">
+            {(filterDate || filterStartDate || filterEndDate) && (
+              <MobileChip
+                onRemove={() => {
+                  setFilterDate("");
+                  setFilterStartDate("");
+                  setFilterEndDate("");
+                  setActiveQuickFilter(null);
+                }}
+              >
+                Date
+              </MobileChip>
+            )}
+            {filterMaterial !== "All" && (
+              <MobileChip onRemove={() => setFilterMaterial("All")}>{filterMaterial}</MobileChip>
+            )}
+            {filterCustomer !== "All" && (
+              <MobileChip onRemove={() => setFilterCustomer("All")}>
+                {filterCustomer === "CASH" ? "Cash" : customers.find((c) => c.id === filterCustomer)?.name || "Customer"}
+              </MobileChip>
+            )}
+            {filterDeliveryMode !== "All" && (
+              <MobileChip onRemove={() => setFilterDeliveryMode("All")}>
+                {filterDeliveryMode === "Company Vehicle" ? "Own" : "Third"}
+              </MobileChip>
+            )}
+            {filterVehicle.trim() && (
+              <MobileChip onRemove={() => setFilterVehicle("")}>{filterVehicle.trim()}</MobileChip>
+            )}
+          </div>
+        )}
+
         {/* Desktop inline filters */}
         <div className="hidden md:flex flex-wrap gap-2 items-end px-3 py-2 bg-zinc-50 dark:bg-zinc-900/50 border-b border-zinc-100 dark:border-zinc-700">
           {/* Quick Dates */}
           <div className="flex gap-1">
             <button
               onClick={() => quickDateFilter("today")}
-              className={`px-2 py-1 text-[10px] font-medium rounded transition-colors ${
+              className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
                 filterDate === format(new Date(), 'yyyy-MM-dd')
                   ? "bg-primary-500 text-white"
                   : "bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-300 dark:hover:bg-zinc-600"
@@ -381,7 +428,7 @@ export function Dispatch() {
             </button>
             <button
               onClick={() => quickDateFilter("week")}
-              className={`px-2 py-1 text-[10px] font-medium rounded transition-colors ${
+              className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
                 filterStartDate && !filterDate
                   ? "bg-primary-500 text-white"
                   : "bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-300 dark:hover:bg-zinc-600"
@@ -391,7 +438,7 @@ export function Dispatch() {
             </button>
             <button
               onClick={() => quickDateFilter("month")}
-              className={`px-2 py-1 text-[10px] font-medium rounded transition-colors ${
+              className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
                 filterStartDate && new Date(filterStartDate).getDate() === 1 && !filterDate
                   ? "bg-primary-500 text-white"
                   : "bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-300 dark:hover:bg-zinc-600"
@@ -404,19 +451,19 @@ export function Dispatch() {
           <div className="h-4 w-px bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
 
           <div>
-            <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-0.5 block">
+            <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-0.5 block">
               Vehicle
             </label>
             <input
               type="text"
               value={filterVehicle}
               onChange={(e) => setFilterVehicle(e.target.value)}
-              placeholder="Search..."
-              className="text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded px-2 py-1.5 outline-none focus:border-primary-500 w-24"
+              placeholder="Search vehicle no..."
+              className="text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded px-2 py-1.5 outline-none focus:border-primary-500 w-40"
             />
           </div>
           <div>
-            <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-0.5 block">
+            <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-0.5 block">
               Material
             </label>
             <select
@@ -433,13 +480,13 @@ export function Dispatch() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-0.5 block">
+            <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-0.5 block">
               Customer
             </label>
             <select
               value={filterCustomer}
               onChange={(e) => setFilterCustomer(e.target.value)}
-              className="text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded px-2 py-1.5 outline-none focus:border-primary-500 max-w-[140px]"
+              className="text-xs border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded px-2 py-1.5 outline-none focus:border-primary-500 max-w-35"
             >
               <option value="All">All</option>
               <option value="CASH">Cash</option>
@@ -451,7 +498,7 @@ export function Dispatch() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-0.5 block">
+            <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase mb-0.5 block">
               Delivery
             </label>
             <select
@@ -479,20 +526,30 @@ export function Dispatch() {
           {/* ── Mobile card list ── */}
           <div
             className={cn(
-              companySettings.mobileLayout === "Compact"
-                ? "hidden"
-                : "md:hidden",
+              "md:hidden",
+              companySettings.mobileLayout === "Compact" ? "mobile-compact-list" : "",
             )}
           >
             {filteredSlips.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-zinc-400 dark:text-zinc-600">
+              <div className="flex flex-col items-center justify-center py-12 text-zinc-400 dark:text-zinc-600 text-center">
                 <Truck className="w-10 h-10 mb-3 opacity-30" />
-                <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">No dispatch slips found</p>
-                <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1 text-center">Create your first slip to get started</p>
+                <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+                  {hasActiveFilters ? "No slips match the selected filters" : "No dispatch slips found"}
+                </p>
+                <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1 max-w-xs">
+                  {hasActiveFilters ? "Clear filters to return to the full dispatch board." : "Create your first slip to get started."}
+                </p>
+                <button
+                  type="button"
+                  onClick={hasActiveFilters ? clearFilters : () => setIsCreateOpen(true)}
+                  className="mt-4 rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-white active:scale-[0.98]"
+                >
+                  {hasActiveFilters ? "Clear Filters" : "Create Slip"}
+                </button>
               </div>
             ) : (
               <div className="space-y-2">
-                {filteredSlips.map((slip) => {
+                {filteredSlips.slice(0, visibleCount).map((slip) => {
                   const cust = customers.find((c) => c.id === slip.customerId);
                   return (
                     <div
@@ -506,7 +563,7 @@ export function Dispatch() {
                           <span className="font-bold text-zinc-900 dark:text-white uppercase tracking-wide text-xs truncate">
                             {slip.vehicleNo}
                           </span>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${statusStyle(slip.status)}`}>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${getStatusColor(slip.status)}`}>
                             {slip.status}
                           </span>
                         </div>
@@ -516,21 +573,21 @@ export function Dispatch() {
                       </div>
 
                       {/* Compact body - horizontal layout */}
-                      <div className="px-3 py-2.5 bg-white dark:bg-zinc-800 grid grid-cols-3 gap-3 text-[11px]">
+                      <div className="px-3 py-2.5 bg-white dark:bg-zinc-800 grid grid-cols-2 min-[380px]:grid-cols-3 gap-3 text-xs">
                         <div className="min-w-0">
-                          <p className="text-zinc-400 font-medium text-[9px] uppercase tracking-wide">Customer</p>
+                          <p className="text-zinc-400 font-medium text-xs uppercase tracking-wide">Customer</p>
                           <p className="font-semibold text-zinc-900 dark:text-white truncate">
                             {slip.customerId === "CASH" ? "Cash" : cust?.name?.slice(0, 12) ?? "—"}
                           </p>
                         </div>
                         <div>
-                          <p className="text-zinc-400 font-medium text-[9px] uppercase tracking-wide">Material</p>
+                          <p className="text-zinc-400 font-medium text-xs uppercase tracking-wide">Material</p>
                           <p className="font-semibold text-zinc-900 dark:text-white truncate">
                             {slip.materialType?.slice(0, 12)}
                           </p>
                         </div>
                         <div>
-                          <p className="text-zinc-400 font-medium text-[9px] uppercase tracking-wide">Quantity</p>
+                          <p className="text-zinc-400 font-medium text-xs uppercase tracking-wide">Quantity</p>
                           <p className="font-semibold text-zinc-900 dark:text-white">
                             {slip.quantity.toFixed(1)}
                           </p>
@@ -542,15 +599,17 @@ export function Dispatch() {
                         {slip.status === "Pending" && (
                           <>
                             <button
-                              onClick={() => updateSlipStatus(slip.id, "Loaded")}
+                              onClick={() => { success(); updateSlipStatus(slip.id, "Loaded"); }}
                               className="flex-1 py-2.5 text-[12px] font-semibold bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 rounded-lg hover:bg-blue-100 active:scale-[0.98] transition-all"
+                              aria-label={`Mark slip ${slip.id} as loaded`}
                             >
                               Load
                             </button>
                             <button
-                              onClick={() => setSlipToCancel(slip.id)}
+                              onClick={() => { tap(); setSlipToCancel(slip.id); }}
                               className="p-2.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 active:scale-95 transition-all"
                               title="Cancel"
+                              aria-label={`Cancel slip ${slip.id}`}
                             >
                               <Ban className="w-4 h-4" />
                             </button>
@@ -558,8 +617,9 @@ export function Dispatch() {
                         )}
                         {slip.status === "Loaded" && (
                           <button
-                            onClick={() => updateSlipStatus(slip.id, "Tallied")}
+                            onClick={() => { success(); updateSlipStatus(slip.id, "Tallied"); }}
                             className="flex-1 py-2.5 text-[12px] font-semibold bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400 rounded-lg hover:bg-primary-100 active:scale-[0.98] transition-all"
+                            aria-label={`Mark slip ${slip.id} as tallied`}
                           >
                             Tally
                           </button>
@@ -568,6 +628,7 @@ export function Dispatch() {
                           onClick={() => setEditingSlip(slip)}
                           className="p-2.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
                           title="Edit"
+                          aria-label={`Edit slip ${slip.id}`}
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
@@ -575,6 +636,7 @@ export function Dispatch() {
                           onClick={() => setPrintSlip(slip)}
                           className="p-2.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
                           title="Print"
+                          aria-label={`Print slip ${slip.id}`}
                         >
                           <Printer className="w-4 h-4" />
                         </button>
@@ -582,6 +644,11 @@ export function Dispatch() {
                     </div>
                   );
                 })}
+                {visibleCount < filteredSlips.length && (
+                  <div ref={loadMoreRef} className="py-3 text-center text-xs text-zinc-400 dark:text-zinc-500">
+                    Showing {visibleCount} of {filteredSlips.length} slips…
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -589,9 +656,7 @@ export function Dispatch() {
           {/* ── Desktop table ── */}
           <div
             className={cn(
-              companySettings.mobileLayout === "Compact"
-                ? "block"
-                : "hidden md:block",
+              "hidden md:block",
               "overflow-x-auto",
             )}
           >
@@ -616,11 +681,11 @@ export function Dispatch() {
                       colSpan={7}
                       className="px-4 py-12 text-center text-sm text-zinc-500"
                     >
-                      No slips found.
+                      No dispatch slips found.
                     </td>
                   </tr>
                 )}
-                {filteredSlips.map((slip) => {
+                {filteredSlips.slice(0, visibleCount).map((slip) => {
                   const cust = customers.find((c) => c.id === slip.customerId);
                   return (
                     <tr
@@ -682,7 +747,7 @@ export function Dispatch() {
                         <span
                           className={cn(
                             "px-2.5 py-1 rounded-full text-xs font-semibold",
-                            statusStyle(slip.status),
+                            getStatusColor(slip.status),
                           )}
                         >
                           {slip.status}
@@ -693,17 +758,17 @@ export function Dispatch() {
                           {slip.status === "Pending" && (
                             <>
                               <button
-                                onClick={() =>
-                                  updateSlipStatus(slip.id, "Loaded")
-                                }
+                                onClick={() => { success(); updateSlipStatus(slip.id, "Loaded"); }}
                                 className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-medium hover:bg-blue-100 transition-colors"
+                                aria-label={`Mark slip ${slip.id} as loaded`}
                               >
                                 Loaded
                               </button>
                               <button
-                                onClick={() => setSlipToCancel(slip.id)}
+                                onClick={() => { tap(); setSlipToCancel(slip.id); }}
                                 className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
                                 title="Cancel"
+                                aria-label={`Cancel slip ${slip.id}`}
                               >
                                 <Ban className="w-4 h-4" />
                               </button>
@@ -711,10 +776,9 @@ export function Dispatch() {
                           )}
                           {slip.status === "Loaded" && (
                             <button
-                              onClick={() =>
-                                updateSlipStatus(slip.id, "Tallied")
-                              }
+                              onClick={() => { success(); updateSlipStatus(slip.id, "Tallied"); }}
                               className="text-xs bg-primary-50 text-primary-600 px-3 py-1.5 rounded-lg font-medium hover:bg-primary-100 transition-colors"
+                              aria-label={`Mark slip ${slip.id} as tallied`}
                             >
                               Tally
                             </button>
@@ -723,6 +787,7 @@ export function Dispatch() {
                             onClick={() => setEditingSlip(slip)}
                             className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
                             title="Edit"
+                            aria-label={`Edit slip ${slip.id}`}
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
@@ -730,6 +795,7 @@ export function Dispatch() {
                             onClick={() => setPrintSlip(slip)}
                             className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
                             title="Print"
+                            aria-label={`Print slip ${slip.id}`}
                           >
                             <Printer className="w-4 h-4" />
                           </button>
@@ -746,22 +812,23 @@ export function Dispatch() {
 
       {/* ── Mobile FAB ── Optimized for thumb zone with safe area */}
       <button
-        onClick={() => setIsCreateOpen(true)}
-        className="md:hidden fixed right-4 bottom-[calc(64px+env(safe-area-inset-bottom))] w-14 h-14 bg-primary-600 text-white hover:bg-primary-700 active:scale-90 shadow-lg shadow-primary-500/30 flex items-center justify-center rounded-full z-50"
+        onClick={() => { tap(); setIsCreateOpen(true); }}
+        className="md:hidden fixed right-4 bottom-[calc(84px+env(safe-area-inset-bottom))] w-14 h-14 bg-primary-600 text-white hover:bg-primary-700 active:scale-90 shadow-lg shadow-primary-500/30 flex items-center justify-center rounded-full z-40"
         aria-label="Create Slip"
       >
         <Plus className="w-7 h-7" />
       </button>
 
       {/* ── Filter bottom sheet (mobile) ── */}
-      <MobileModal
+      <MobileFilterSheet
         isOpen={isFilterOpen}
         onClose={() => setIsFilterOpen(false)}
         title="Filter Slips"
-        maxWidth="max-w-md"
+        onClear={clearFilters}
+        clearDisabled={!hasActiveFilters}
       >
         {filterPanel}
-      </MobileModal>
+      </MobileFilterSheet>
 
       {/* ── Create Slip modal ── */}
       <MobileModal
@@ -769,6 +836,7 @@ export function Dispatch() {
         onClose={() => setIsCreateOpen(false)}
         title="New Slip"
         maxWidth="max-w-xs"
+        mobileMode="taskSheet"
       >
         <CreateSlipForm onSuccess={() => setIsCreateOpen(false)} />
       </MobileModal>
@@ -778,6 +846,7 @@ export function Dispatch() {
         isOpen={!!editingSlip}
         onClose={() => setEditingSlip(null)}
         title="Edit Dispatch Slip"
+        mobileMode="taskSheet"
         subtitle={editingSlip ? `#${editingSlip.id} · ${editingSlip.vehicleNo}` : undefined}
       >
         {editingSlip && (

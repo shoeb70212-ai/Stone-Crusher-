@@ -90,10 +90,6 @@ export interface SlipPrintData {
   customerName: string;
   materialType: string;
   quantity: string;
-  ratePerUnit: number;
-  totalAmount: number;
-  amountPaid?: number;
-  operatorName?: string;
   companyName: string;
   receiptFooter?: string;
 }
@@ -263,17 +259,7 @@ function buildSlipBytes(d: SlipPrintData): Uint8Array {
     text(twoCol('Customer:', d.customerName.slice(0, 16), W)),
     text(twoCol('Material:', d.materialType, W)),
     text(twoCol('Qty:', d.quantity, W)),
-    text(twoCol('Rate:', `Rs${d.ratePerUnit}`, W)),
-    text('-'.repeat(W)),
-    text(twoCol('TOTAL:', `Rs${d.totalAmount}`, W)),
   );
-
-  if (d.amountPaid && d.amountPaid > 0) {
-    parts.push(
-      text(twoCol('Paid:', `Rs${d.amountPaid}`, W)),
-      text(twoCol('Due:', `Rs${Math.max(0, d.totalAmount - d.amountPaid)}`, W)),
-    );
-  }
 
   parts.push(
     text('-'.repeat(W)),

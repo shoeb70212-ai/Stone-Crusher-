@@ -2,8 +2,13 @@
   "buildCommand": "vite build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "functions": {
+    "api/data.ts": {
+      "maxDuration": 15
+    }
+  },
   "rewrites": [
-    { "source": "/api/data", "destination": "/api/data" },
+    { "source": "/api/(.*)", "destination": "/api/data" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

@@ -55,6 +55,31 @@ export function SkeletonTable({ rows = 5, columns = 4 }: { rows?: number; column
 }
 
 
+/** Skeleton for card-based list pages (Dispatch, Customers, Invoices, Vehicles). */
+export function ListSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="bg-white dark:bg-zinc-900/40 rounded-xl border border-zinc-200 dark:border-zinc-800 px-3 py-3 flex items-center gap-3"
+        >
+          <Skeleton variant="circular" width={36} height={36} className="shrink-0" />
+          <div className="flex-1 space-y-1.5 min-w-0">
+            <Skeleton variant="text" width="55%" height={13} />
+            <Skeleton variant="text" width="35%" height={11} />
+          </div>
+          <div className="shrink-0 space-y-1.5 text-right">
+            <Skeleton variant="text" width={64} height={13} />
+            <Skeleton variant="text" width={48} height={11} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
 export function PageSkeleton() {
   return (
     <div className="space-y-6 p-6">

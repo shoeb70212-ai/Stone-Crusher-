@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useErp } from "../../context/ErpContext";
 import { MaterialType, DeliveryMode, MeasurementType, Slip } from "../../types";
-import { Plus, Truck } from "lucide-react";
+import { ChevronDown, Plus, Truck } from "lucide-react";
 import { Combobox } from "../ui/Combobox";
+import { MobileStickyFooter } from "../ui/MobilePrimitives";
 import { parseFeetInches } from "../../lib/utils";
 import { useToast } from "../ui/Toast";
 import { useKeepAwake } from "../../lib/use-keep-awake";
@@ -13,7 +14,7 @@ import { Camera, QrCode, Nfc } from "lucide-react";
 import { isNative } from "../../lib/capacitor";
 
 export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void }) {
-  const { vehicles, customers, addSlip, slips, companySettings, addVehicle, updateVehicle, addCustomer, addTransaction } = useErp();
+  const { vehicles, customers, addSlip, slips, companySettings, addVehicle, updateVehicle, addCustomer, addTransaction, userRole } = useErp();
   const { addToast } = useToast();
   // Keep the screen on while the operator is filling in the slip form at the weigh-bridge
   useKeepAwake();
@@ -95,6 +96,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
   const [attachmentUri, setAttachmentUri] = useState<string | undefined>(undefined);
   const [nfcAvailable, setNfcAvailable] = useState(false);
   const [nfcScanning, setNfcScanning] = useState(false);
+  const [showMoreDetails, setShowMoreDetails] = useState(false);
 
   useEffect(() => {
     isNfcAvailable().then(setNfcAvailable);
@@ -173,21 +175,24 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
           });
         }
       } else {
-         let newVehicleId = crypto.randomUUID();
-         addVehicle({
-            id: newVehicleId,
-             vehicleNo: formData.vehicleNo.toUpperCase(),
-             ownerName: formData.driverName || '',
-             driverName: formData.driverName,
-             driverPhone: formData.driverPhone,
-             defaultMeasurementType: formData.measurementType,
-             measurement: {
-                lengthFeet: parseFloat(formData.lengthFeet) || undefined,
-                widthFeet: parseFloat(formData.widthFeet) || undefined,
-                heightFeet: parseFloat(formData.heightFeet) || undefined,
-                tareWeight: parseFloat(formData.tareWeight) || undefined,
-            }
-        });
+        if (userRole === 'Partner') {
+          addToast('warning', `Vehicle ${formData.vehicleNo.toUpperCase()} was not saved — Partners cannot add vehicles. Ask an Admin or Manager to register it.`);
+        } else {
+          addVehicle({
+            id: crypto.randomUUID(),
+            vehicleNo: formData.vehicleNo.toUpperCase(),
+            ownerName: formData.driverName || '',
+            driverName: formData.driverName,
+            driverPhone: formData.driverPhone,
+            defaultMeasurementType: formData.measurementType,
+            measurement: {
+              lengthFeet: parseFeetInches(formData.lengthFeet) || undefined,
+              widthFeet: parseFeetInches(formData.widthFeet) || undefined,
+              heightFeet: parseFeetInches(formData.heightFeet) || undefined,
+              tareWeight: parseFloat(formData.tareWeight) || undefined,
+            },
+          });
+        }
       }
     }
 
@@ -213,9 +218,9 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
       deliveryMode: formData.deliveryMode,
       measurementType: formData.measurementType,
       measurement: {
-        lengthFeet: parseFloat(formData.lengthFeet) || undefined,
-        widthFeet: parseFloat(formData.widthFeet) || undefined,
-        heightFeet: parseFloat(formData.heightFeet) || undefined,
+        lengthFeet: parseFeetInches(formData.lengthFeet) || undefined,
+        widthFeet: parseFeetInches(formData.widthFeet) || undefined,
+        heightFeet: parseFeetInches(formData.heightFeet) || undefined,
         grossWeight: parseFloat(formData.grossWeight) || undefined,
         tareWeight: parseFloat(formData.tareWeight) || undefined,
       },
@@ -255,18 +260,18 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
   };
 
 return (
-    <form onSubmit={handleCreate} className="space-y-1.5 p-1.5 -mx-1">
+    <form onSubmit={handleCreate} className="space-y-2 p-1.5 -mx-1 md:space-y-1.5">
       {/* Vehicle Details - Always Visible */}
       <div className="bg-white dark:bg-zinc-900 rounded-lg p-2 space-y-1.5">
         <div className="flex items-center gap-2 mb-0.5">
           <Truck className="w-3.5 h-3.5 text-zinc-500" />
           <span className="font-semibold text-xs text-zinc-900 dark:text-white">Vehicle</span>
         </div>
-        
+
         <div className="grid grid-cols-1 gap-1.5">
           <div>
             <div className="flex items-center justify-between mb-0.5">
-              <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400">Vehicle *</label>
+              <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400">Vehicle No *</label>
               <div className="flex items-center gap-2">
                 {isNative() && (
                   <button
@@ -373,27 +378,27 @@ return (
           </div>
         </div>
         
-        <div className="grid grid-cols-2 gap-1.5">
-          <div>
-            <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Driver</label>
-            <input
-              type="text"
-              value={formData.driverName}
-              onChange={(e) => setFormData({ ...formData, driverName: e.target.value })}
-              className="w-full border border-zinc-300 dark:border-zinc-600 rounded px-1.5 py-1 text-xs"
-              placeholder="Driver"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Phone</label>
-            <input
-              type="tel"
-              value={formData.driverPhone}
-              onChange={(e) => setFormData({ ...formData, driverPhone: e.target.value })}
-              className="w-full border border-zinc-300 dark:border-zinc-600 rounded px-1.5 py-1 text-xs"
-              placeholder="Phone"
-            />
-          </div>
+        <div className={`grid grid-cols-2 gap-1.5 ${showMoreDetails ? "" : "hidden md:grid"}`}>
+            <div>
+              <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Driver Name</label>
+              <input
+                type="text"
+                value={formData.driverName}
+                onChange={(e) => setFormData({ ...formData, driverName: e.target.value })}
+                className="w-full border border-zinc-300 dark:border-zinc-600 rounded px-1.5 py-1 text-xs"
+                placeholder="Driver name"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Driver Phone</label>
+              <input
+                type="tel"
+                value={formData.driverPhone}
+                onChange={(e) => setFormData({ ...formData, driverPhone: e.target.value })}
+                className="w-full border border-zinc-300 dark:border-zinc-600 rounded px-1.5 py-1 text-xs"
+                placeholder="Phone number"
+              />
+            </div>
         </div>
       </div>
 
@@ -407,15 +412,15 @@ return (
         <div className="grid grid-cols-2 gap-1.5">
           <div>
             <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Material *</label>
-            <select
+            <Combobox
+              options={(companySettings.materials || [])
+                .filter(m => m.isActive !== false)
+                .map((mat) => ({ label: mat.name, value: mat.name }))}
               value={formData.materialType}
-              onChange={(e) => setFormData({ ...formData, materialType: e.target.value as MaterialType })}
-              className="w-full border border-zinc-300 dark:border-zinc-600 rounded px-1.5 py-1 text-xs"
-            >
-              {(companySettings.materials || []).filter(m => m.isActive !== false).map((mat) => (
-                <option key={mat.id} value={mat.name}>{mat.name}</option>
-              ))}
-            </select>
+              onChange={(val) => setFormData({ ...formData, materialType: val as MaterialType })}
+              placeholder="Select material"
+              mobileTitle="Select Material"
+            />
           </div>
           <div>
             <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Rate ₹ *</label>
@@ -426,7 +431,7 @@ return (
               value={formData.ratePerUnit}
               onChange={(e) => setFormData({ ...formData, ratePerUnit: e.target.value })}
               className="w-full border border-zinc-300 dark:border-zinc-600 rounded px-1.5 py-1 text-xs"
-              placeholder="Rate"
+              placeholder="0"
             />
           </div>
         </div>
@@ -450,7 +455,7 @@ return (
         </div>
 
         {freightVisible && (
-          <div>
+          <div className={showMoreDetails ? "" : "hidden md:block"}>
             <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Freight ₹</label>
             <input
               type="number"
@@ -458,7 +463,7 @@ return (
               value={formData.freightAmount}
               onChange={(e) => setFormData({ ...formData, freightAmount: e.target.value })}
               className="w-full border border-zinc-300 dark:border-zinc-600 rounded px-1.5 py-1 text-xs"
-              placeholder="Freight"
+              placeholder="0"
             />
           </div>
         )}
@@ -531,7 +536,7 @@ return (
         ) : (
           <div className="grid grid-cols-2 gap-1">
             <div>
-              <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Tare (T)</label>
+              <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Tare Wt (T)</label>
               <input
                 required
                 type="number"
@@ -539,11 +544,11 @@ return (
                 value={formData.tareWeight}
                 onChange={(e) => setFormData({ ...formData, tareWeight: e.target.value })}
                 className="w-full border border-zinc-300 dark:border-zinc-600 rounded px-1.5 py-1 text-xs"
-                placeholder="Tare"
+                placeholder="0"
               />
             </div>
             <div>
-              <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Gross (T)</label>
+              <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Gross Wt (T)</label>
               <input
                 required
                 type="number"
@@ -551,7 +556,7 @@ return (
                 value={formData.grossWeight}
                 onChange={(e) => setFormData({ ...formData, grossWeight: e.target.value })}
                 className="w-full border border-zinc-300 dark:border-zinc-600 rounded px-1.5 py-1 text-xs"
-                placeholder="Gross"
+                placeholder="0"
               />
             </div>
           </div>
@@ -573,15 +578,28 @@ return (
         <div>
           <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Customer</label>
           <Combobox
-            options={customers.filter(c => c.isActive !== false).map((c) => ({ label: c.name, value: c.id }))}
-            value={formData.customerId === "CASH" ? "" : formData.customerId}
+            options={[
+              { label: "Cash Sale", value: "CASH" },
+              ...customers.filter(c => c.isActive !== false).map((c) => ({ label: c.name, value: c.id })),
+            ]}
+            value={formData.customerId || "CASH"}
             allowCreate
             onChange={(val) => setFormData({ ...formData, customerId: val || "CASH" })}
             placeholder="Select customer"
+            mobileTitle="Select Customer"
           />
         </div>
-        
-        <div className="grid grid-cols-2 gap-1.5">
+
+        <button
+          type="button"
+          onClick={() => setShowMoreDetails((open) => !open)}
+          className="flex w-full items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-2 text-xs font-semibold text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 md:hidden"
+        >
+          <span>{showMoreDetails ? "Hide" : "More"} details</span>
+          <ChevronDown className={`h-4 w-4 transition-transform ${showMoreDetails ? "rotate-180" : ""}`} />
+        </button>
+
+        <div className={`grid grid-cols-2 gap-1.5 ${showMoreDetails ? "" : "hidden md:grid"}`}>
           <div>
             <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Operator</label>
             <input
@@ -589,7 +607,7 @@ return (
               value={formData.operatorName}
               onChange={(e) => setFormData({ ...formData, operatorName: e.target.value })}
               className="w-full border border-zinc-300 dark:border-zinc-600 rounded px-1.5 py-1 text-xs"
-              placeholder="Operator"
+              placeholder="Operator name"
             />
           </div>
           <div>
@@ -599,13 +617,13 @@ return (
               value={formData.loaderName}
               onChange={(e) => setFormData({ ...formData, loaderName: e.target.value })}
               className="w-full border border-zinc-300 dark:border-zinc-600 rounded px-1.5 py-1 text-xs"
-              placeholder="Loader"
+              placeholder="Loader name"
             />
           </div>
         </div>
 
         {/* Document attachment — camera capture for challan scan */}
-        <div>
+        <div className={showMoreDetails ? "" : "hidden md:block"}>
           <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Challan Photo</label>
           {attachmentUri ? (
             <div className="relative">
@@ -640,6 +658,16 @@ return (
               Attach Challan
             </button>
           )}
+        </div>
+
+        <div className={showMoreDetails ? "" : "hidden md:block"}>
+            <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Notes</label>
+            <textarea
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              className="h-16 w-full resize-none rounded border border-zinc-300 px-1.5 py-1 text-xs dark:border-zinc-600"
+              placeholder="Optional remarks"
+            />
         </div>
       </div>
 
@@ -697,7 +725,7 @@ return (
         
         {formData.paymentStatus === "Partial" && (
           <div>
-            <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Paid ₹</label>
+            <label className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mb-0.5 block">Amount Paid ₹</label>
             <input
               required
               type="number"
@@ -705,19 +733,39 @@ return (
               value={formData.amountPaid}
               onChange={(e) => setFormData({ ...formData, amountPaid: e.target.value })}
               className="w-full border border-zinc-300 dark:border-zinc-600 rounded px-1.5 py-1 text-xs"
-              placeholder="Paid"
+              placeholder="0"
             />
           </div>
         )}
 
         <button
           type="submit"
-          className="w-full py-2 bg-primary-600 text-white font-bold rounded-lg shadow hover:bg-primary-700 active:scale-95 transition-all flex items-center justify-center gap-1 text-xs"
+          className="hidden w-full py-2 bg-primary-600 text-white font-bold rounded-lg shadow hover:bg-primary-700 active:scale-95 transition-all md:flex items-center justify-center gap-1 text-xs"
         >
           <Plus className="w-3.5 h-3.5" />
-          <span>Generate Slip</span>
+          <span>Create Slip</span>
         </button>
+
       </div>
+
+      <MobileStickyFooter>
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1 rounded-xl bg-zinc-50 px-3 py-2 dark:bg-zinc-800">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              Qty / Total
+            </div>
+            <div className="truncate text-sm font-bold text-zinc-900 dark:text-white">
+              {calculatedQty.toFixed(2)} {formData.measurementType === "Volume (Brass)" ? "Brass" : "Tonnes"} - Rs {finalAmount.toLocaleString()}
+            </div>
+          </div>
+          <button
+            type="submit"
+            className="min-h-12 rounded-xl bg-primary-600 px-4 text-sm font-bold text-white shadow hover:bg-primary-700 active:scale-95"
+          >
+            Create Slip
+          </button>
+        </div>
+      </MobileStickyFooter>
     </form>
   );
 }

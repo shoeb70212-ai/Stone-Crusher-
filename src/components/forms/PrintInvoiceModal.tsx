@@ -1,10 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Invoice, Customer } from "../../types";
-import { X, Printer, Download, Share2 } from "lucide-react";
+import { X, Printer, Download, Share2, Loader2, MessageCircle } from "lucide-react";
 import { useErp } from "../../context/ErpContext";
-import { openPdfInNewTab, downloadPdf, sharePdf } from "../../lib/print-utils";
+import { createInvoicePdfBlob, downloadInvoicePdf, printHtml, sharePdf, sharePdfBlob, PRIMARY_COLORS, DEFAULT_PAYMENT_TERM_MS } from "../../lib/print-utils";
+import { buildInvoiceWhatsAppMessage, openWhatsAppMessage } from "../../lib/whatsapp-share";
 import { isNative } from "../../lib/capacitor";
 import { toWords } from "../../lib/utils";
+import { useBodyScrollLock } from "../../lib/use-body-scroll-lock";
+import { useToast } from "../ui/Toast";
 
 export function PrintInvoiceModal({ 
   invoice, 
@@ -16,12 +19,17 @@ export function PrintInvoiceModal({
   customer?: Customer;
 }) {
   const { companySettings } = useErp();
+  const { addToast } = useToast();
   const [format, setFormat] = useState(companySettings.invoiceFormat || "A4");
+  const [isPrinting, setIsPrinting] = useState(false);
+
+  useBodyScrollLock(true);
 
   const previewWrapRef = useRef<HTMLDivElement>(null);
   const [previewScale, setPreviewScale] = useState(1);
 
-  // Scale the fixed-width A4 preview so it fits the container without horizontal scroll
+  // Scale the fixed-width A4 preview so it fits the mobile viewport without
+  // changing the actual print/PDF markup.
   useEffect(() => {
     if (format !== 'A4') {
       setPreviewScale(1);
@@ -29,47 +37,63 @@ export function PrintInvoiceModal({
     }
     const el = previewWrapRef.current;
     if (!el) return;
-    const containerWidth = el.clientWidth - 16; // subtract p-2 padding
+    const containerWidth = Math.max(220, el.clientWidth - 16); // subtract mobile p-2 padding
     const contentWidth = 700;
     const scale = Math.min(1, containerWidth / contentWidth);
     setPreviewScale(scale);
 
     const observer = new ResizeObserver(() => {
-      const w = el.clientWidth - 16;
+      const w = Math.max(220, el.clientWidth - 16);
       setPreviewScale(Math.min(1, w / contentWidth));
     });
     observer.observe(el);
     return () => observer.disconnect();
   }, [format]);
 
-  const primaryColorHex = {
-    emerald: "#10b981",
-    blue: "#3b82f6",
-    violet: "#8b5cf6",
-    rose: "#f43f5e",
-    amber: "#f59e0b"
-  }[companySettings.primaryColor || "emerald"];
+  const primaryColorHex = PRIMARY_COLORS[companySettings.primaryColor || "emerald"];
+
+  const handleWhatsAppShare = async () => {
+    const message = buildInvoiceWhatsAppMessage({ invoice, customer, companySettings });
+    const filename = `Invoice-${invoice.invoiceNo}.pdf`;
+    setIsPrinting(true);
+    try {
+      const blob = await createInvoicePdfBlob(invoice, customer, companySettings);
+      const result = await sharePdfBlob(blob, filename, `Invoice ${invoice.invoiceNo}`, message);
+
+      if (result === 'downloaded') {
+        openWhatsAppMessage(message);
+        addToast("info", "Invoice PDF downloaded. Attach it in WhatsApp.");
+      } else if (result === 'shared') {
+        addToast("success", "Invoice PDF is ready to send. Choose WhatsApp from the share sheet.");
+      }
+    } catch {
+      addToast("error", "Could not prepare the invoice PDF for WhatsApp.");
+    } finally {
+      setIsPrinting(false);
+    }
+  };
 
   return (
-    <div className="fixed inset-0 bg-zinc-900/80 flex items-center justify-center md:p-4 z-50 overflow-hidden">
-      <div className={`bg-white dark:bg-zinc-800 md:rounded-2xl w-full h-full md:h-auto shadow-xl flex flex-col md:max-h-[90vh] ${format === 'A4' ? 'md:max-w-4xl' : 'md:max-w-sm'}`}>
-        <div className="p-4 border-b flex justify-between items-center print:hidden">
+    <div className="fixed inset-0 bg-zinc-900/80 flex items-stretch justify-center md:items-center md:p-4 z-50 overflow-hidden">
+      <div className={`bg-white dark:bg-zinc-800 md:rounded-2xl w-full h-dvh md:h-auto shadow-xl flex flex-col md:max-h-[90vh] ${format === 'A4' ? 'md:max-w-4xl' : 'md:max-w-sm'}`}>
+        <div className="p-4 border-b flex justify-between items-center print:hidden shrink-0">
           <h3 className="font-bold text-zinc-900 dark:text-white">Print Invoice</h3>
           <button
             onClick={onClose}
-            className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:text-zinc-300"
+            className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div ref={previewWrapRef} className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-900 p-2 md:p-4">
+        <div ref={previewWrapRef} className="flex-1 overflow-y-auto overflow-x-hidden md:overflow-auto bg-zinc-100 dark:bg-zinc-900 p-2 md:p-4 overscroll-contain">
           {/* Scale wrapper: shrinks to the scaled height so no dead space below A4 */}
           <div
             style={format === 'A4' ? {
               width: 700 * previewScale,
-              height: 'auto',
+              height: 940 * previewScale,
               margin: '0 auto',
+              overflow: 'visible',
             } : { margin: '0 auto' }}
           >
           <div
@@ -94,13 +118,20 @@ export function PrintInvoiceModal({
               #print-invoice-area {
                 margin: 0 !important;
                 padding: 0 !important;
+                width: ${format === 'A4' ? '700px' : format === 'Thermal-58mm' ? '220px' : '300px'} !important;
+                transform: none !important;
+                transform-origin: top left !important;
+                box-sizing: border-box !important;
+              }
+              #print-invoice-area * {
+                box-sizing: border-box !important;
               }
             }
           `}} />
           
           {format === "A4" ? (
              companySettings.invoiceTemplate === "Modern" ? (
-               <div className="flex flex-col min-h-[900px] bg-white text-black font-sans m-4 shadow-2xl overflow-hidden rounded-xl relative">
+               <div className="flex flex-col min-h-225 bg-white text-black font-sans m-4 shadow-2xl overflow-hidden rounded-xl relative">
                   {companySettings.invoiceWatermark && companySettings.invoiceWatermark !== "None" && (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden z-0 opacity-[0.03]">
                       <div className="text-[150px] font-black transform -rotate-45 whitespace-nowrap" style={{ color: primaryColorHex }}>
@@ -155,7 +186,7 @@ export function PrintInvoiceModal({
                          {companySettings.invoiceShowDueDate && (
                            <tr>
                              <td className="pr-4 py-1 text-gray-500 font-medium">Due Date:</td>
-                             <td className="font-bold text-gray-900">{new Date(new Date(invoice.date).getTime() + 15 * 86400000).toLocaleDateString('en-GB')}</td>
+                             <td className="font-bold text-gray-900">{new Date(new Date(invoice.date).getTime() + DEFAULT_PAYMENT_TERM_MS).toLocaleDateString('en-GB')}</td>
                            </tr>
                          )}
                        </tbody>
@@ -232,7 +263,7 @@ export function PrintInvoiceModal({
                            <span className="text-2xl font-black" style={{ color: primaryColorHex }}>₹{invoice.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                          </div>
                          <div className="text-right text-[10px] text-gray-500 mt-2 font-medium">
-                           {toWords.convert(invoice.total, { doNotAddOnly: false })}
+                           {toWords.convert(invoice.total)}
                          </div>
                       </div>
                       
@@ -246,7 +277,7 @@ export function PrintInvoiceModal({
 
                </div>
              ) : companySettings.invoiceTemplate === "Minimal" ? (
-               <div className="flex flex-col min-h-[900px] bg-white text-black font-sans m-4 p-12 relative">
+               <div className="flex flex-col min-h-225 bg-white text-black font-sans border-2 border-black m-4 relative overflow-hidden">
                   {companySettings.invoiceWatermark && companySettings.invoiceWatermark !== "None" && (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden z-0 opacity-[0.03]">
                       <div className="text-[150px] font-black transform -rotate-45 whitespace-nowrap" style={{ color: primaryColorHex }}>
@@ -255,78 +286,133 @@ export function PrintInvoiceModal({
                          companySettings.invoiceWatermarkText}
                       </div>
                     </div>
-                  )}
-                 {/* Minimal Header */}
-                 <div className="flex justify-between items-start border-b-2 border-black pb-8 mb-8 relative z-10">
-                   <div>
-                     <h1 className="text-4xl font-black uppercase tracking-tighter">{companySettings.name || "COMPANY NAME"}</h1>
-                     <div className="text-sm mt-2 text-gray-600 whitespace-pre-wrap max-w-sm">{companySettings.address}</div>
-                     <div className="text-sm text-gray-600 mt-1">
-                       {companySettings.phone && <span className="mr-4">T: {companySettings.phone}</span>}
-                       {companySettings.gstin && <span>GSTIN: {companySettings.gstin}</span>}
+                 )}
+                 <div className="relative z-10 flex flex-col min-h-225">
+                   {/* Title Bar */}
+                   <div className="border-b-2 border-black bg-gray-100 py-2 text-center text-base font-black uppercase tracking-widest">
+                     {invoice.type === "GST" ? "TAX INVOICE" : "INVOICE"}
+                   </div>
+
+                   {/* Minimal Header */}
+                   <div className="border-b-2 border-black p-5">
+                     <div className="flex justify-between items-start gap-6">
+                       <div className="min-w-0">
+                         <h1 className="text-3xl font-black uppercase leading-tight">{companySettings.name || "COMPANY NAME"}</h1>
+                         <div className="text-[11px] mt-2 text-gray-700 whitespace-pre-wrap max-w-md leading-snug">{companySettings.address}</div>
+                       </div>
+                       <div className="text-right text-[11px] leading-relaxed font-semibold shrink-0">
+                         {companySettings.phone && <p><span className="font-bold">Tel :</span> {companySettings.phone}</p>}
+                         {companySettings.gstin && invoice.type === "GST" && <p><span className="font-bold">GSTIN :</span> {companySettings.gstin}</p>}
+                       </div>
                      </div>
                    </div>
-                   <div className="text-right">
-                     <div className="text-2xl font-light uppercase tracking-widest text-gray-400 mb-4">
-                       {invoice.type === "GST" ? "Tax Invoice" : "Invoice"}
+
+                   {/* Minimal Billed To */}
+                   <div className="grid grid-cols-2 border-b-2 border-black text-[11px] leading-tight">
+                     <div className="border-r border-black">
+                       <div className="border-b border-black bg-gray-50 px-3 py-1.5 text-center font-bold uppercase">Billed To</div>
+                       <div className="grid grid-cols-[74px_1fr] gap-y-1.5 p-3 min-h-28">
+                         <div className="font-bold text-gray-700">Name</div>
+                         <div className="font-bold">{customer?.name || (invoice.customerId === 'CASH' ? 'Cash Customer' : invoice.customerId)}</div>
+                         <div className="font-bold text-gray-700">Address</div>
+                         <div className="whitespace-pre-wrap">{customer?.address || "-"}</div>
+                         <div className="font-bold text-gray-700">Phone</div>
+                         <div>{customer?.phone || "-"}</div>
+                         {invoice.type === "GST" && (
+                           <>
+                             <div className="font-bold text-gray-700">GSTIN</div>
+                             <div className="font-bold uppercase">{customer?.gstin || "-"}</div>
+                           </>
+                         )}
+                       </div>
                      </div>
-                     <div className="text-sm">
-                       <div className="mb-1"><span className="text-gray-500 inline-block w-20">Inv No.</span> <span className="font-medium">{invoice.invoiceNo}</span></div>
-                       <div className="mb-1"><span className="text-gray-500 inline-block w-20">Date</span> <span className="font-medium">{new Date(invoice.date).toLocaleDateString('en-GB')}</span></div>
-                       {companySettings.invoiceShowDueDate && (
-                          <div className="mb-1"><span className="text-gray-500 inline-block w-20">Due Date</span> <span className="font-medium">{new Date(new Date(invoice.date).getTime() + 15 * 86400000).toLocaleDateString('en-GB')}</span></div>
-                       )}
+                     <div>
+                       <div className="border-b border-black bg-gray-50 px-3 py-1.5 text-center font-bold uppercase">Invoice / Payment Details</div>
+                       <div className="grid grid-cols-[92px_1fr] gap-y-1.5 p-3 min-h-28">
+                         <div className="font-bold text-gray-700">Invoice No.</div>
+                         <div className="font-bold">{invoice.invoiceNo}</div>
+                         <div className="font-bold text-gray-700">Invoice Date</div>
+                         <div className="font-bold">{new Date(invoice.date).toLocaleDateString('en-GB')}</div>
+                         {companySettings.invoiceShowDueDate && (
+                           <>
+                             <div className="font-bold text-gray-700">Due Date</div>
+                             <div className="font-bold">{new Date(new Date(invoice.date).getTime() + DEFAULT_PAYMENT_TERM_MS).toLocaleDateString('en-GB')}</div>
+                           </>
+                         )}
+                         <div className="font-bold text-gray-700">Status</div>
+                         <div className="font-bold">{invoice.status}</div>
+                         <div className="font-bold text-gray-700">Type</div>
+                         <div>{invoice.type}</div>
+                         <div className="font-bold text-gray-700">Bank</div>
+                         <div>{companySettings.bankName || "-"}</div>
+                         <div className="font-bold text-gray-700">A/C - IFSC</div>
+                         <div>{[companySettings.accountNumber, companySettings.ifscCode].filter(Boolean).join(" / ") || "-"}</div>
+                       </div>
                      </div>
                    </div>
-                 </div>
 
-                 {/* Minimal Billed To */}
-                 <div className="mb-12 relative z-10">
-                   <div className="text-xs uppercase tracking-widest text-gray-400 mb-2">Billed To</div>
-                   <div className="font-medium text-lg">{customer?.name || (invoice.customerId === 'CASH' ? 'Cash Customer' : invoice.customerId)}</div>
-                   {customer?.address && <div className="text-gray-600 mt-1">{customer.address}</div>}
-                   {customer?.phone && <div className="text-gray-600 mt-1">{customer.phone}</div>}
-                 </div>
-
-                 {/* Minimal Table */}
-                 <div className="flex-1 relative z-10">
-                   <table className="w-full text-sm">
-                     <thead>
-                       <tr className="border-b-2 border-black">
-                         <th className="py-2 text-left font-medium">Description</th>
-                         <th className="py-2 text-right font-medium">Qty</th>
-                         <th className="py-2 text-right font-medium">Rate</th>
-                         <th className="py-2 text-right font-medium">Amount</th>
-                       </tr>
-                     </thead>
-                     <tbody>
-                       {invoice.items.map((item, i) => (
-                         <tr key={i} className="border-b border-gray-200">
-                           <td className="py-4">
-                             <div className="font-medium">{item.materialType}</div>
-                             {item.hsnCode && <div className="text-xs text-gray-500 mt-0.5">HSN: {item.hsnCode}</div>}
-                           </td>
-                           <td className="py-4 text-right">{item.quantity}</td>
-                           <td className="py-4 text-right">{item.rate.toFixed(2)}</td>
-                           <td className="py-4 text-right">{item.amount.toFixed(2)}</td>
+                   {/* Minimal Table */}
+                   <div className="flex-1 flex flex-col relative z-10">
+                     <table className="w-full h-full table-fixed border-collapse text-[11px]">
+                       <thead className="bg-gray-100 font-bold text-center uppercase">
+                         <tr className="border-b-2 border-black">
+                           <th className="border-r border-black px-1 py-2 w-10">Sr.</th>
+                           <th className="border-r border-black px-2 py-2 text-left">Description</th>
+                           <th className="border-r border-black px-1 py-2 w-20">HSN / SAC</th>
+                           <th className="border-r border-black px-1 py-2 w-16">Qty</th>
+                           <th className="border-r border-black px-1 py-2 w-20">Rate</th>
+                           <th className="px-1 py-2 w-24">Amount</th>
                          </tr>
-                       ))}
-                     </tbody>
-                   </table>
-                 </div>
+                       </thead>
+                       <tbody>
+                         {invoice.items.map((item, i) => (
+                           <tr key={i} className="border-b border-black align-top">
+                             <td className="border-r border-black px-1 py-2 text-center">{i + 1}</td>
+                             <td className="border-r border-black px-2 py-2 font-semibold">{item.materialType}</td>
+                             <td className="border-r border-black px-1 py-2 text-center">{item.hsnCode || "-"}</td>
+                             <td className="border-r border-black px-1 py-2 text-center">{item.quantity}</td>
+                             <td className="border-r border-black px-1 py-2 text-right">{item.rate.toFixed(2)}</td>
+                             <td className="px-1 py-2 text-right font-semibold">{item.amount.toFixed(2)}</td>
+                           </tr>
+                         ))}
+                         {Array.from({ length: Math.max(0, 8 - invoice.items.length) }).map((_, i) => (
+                           <tr key={`minimal-pad-${i}`} className="border-b border-black">
+                             <td className="border-r border-black px-1 py-3">&nbsp;</td>
+                             <td className="border-r border-black px-2 py-3">&nbsp;</td>
+                             <td className="border-r border-black px-1 py-3">&nbsp;</td>
+                             <td className="border-r border-black px-1 py-3">&nbsp;</td>
+                             <td className="border-r border-black px-1 py-3">&nbsp;</td>
+                             <td className="px-1 py-3">&nbsp;</td>
+                           </tr>
+                         ))}
+                       </tbody>
+                       <tfoot className="border-t-2 border-black bg-gray-100 font-bold">
+                         <tr>
+                           <td colSpan={3} className="border-r border-black px-2 py-2 text-right uppercase">Total</td>
+                           <td className="border-r border-black px-1 py-2 text-center">{invoice.items.reduce((sum, item) => sum + item.quantity, 0).toFixed(2)}</td>
+                           <td className="border-r border-black px-1 py-2"></td>
+                           <td className="px-1 py-2 text-right">{invoice.subTotal.toFixed(2)}</td>
+                         </tr>
+                       </tfoot>
+                     </table>
+                   </div>
 
-                 {/* Minimal Footer */}
-                 <div className="mt-auto pt-8 flex justify-between items-end relative z-10">
-                   <div className="w-1/2">
+                  {/* Minimal Footer */}
+                  <div className="grid grid-cols-[1fr_240px] border-t-2 border-black text-[11px] leading-tight relative z-10">
+                   <div className="flex flex-col">
+                     <div className="border-b border-black p-2">
+                       <div className="font-bold text-gray-700 mb-1 uppercase">Amount in words</div>
+                       <div className="uppercase font-bold">{toWords.convert(invoice.total)}</div>
+                     </div>
                      {companySettings.termsAndConditions && (
-                       <div className="mb-6">
-                         <div className="text-xs uppercase tracking-widest text-gray-400 mb-2">Terms</div>
+                       <div className="border-b border-black p-2">
+                         <div className="font-bold text-gray-700 mb-1 uppercase">Terms and Conditions</div>
                          <div className="text-xs text-gray-600 whitespace-pre-wrap">{companySettings.termsAndConditions}</div>
                        </div>
                      )}
                      {companySettings.bankName && (
-                       <div>
-                         <div className="text-xs uppercase tracking-widest text-gray-400 mb-2">Payment Details</div>
+                        <div className="p-2">
+                          <div className="font-bold text-gray-700 mb-1 uppercase">Payment Details</div>
                          <div className="text-xs text-gray-600">
                            {companySettings.bankName} • A/C: {companySettings.accountNumber} • IFSC: {companySettings.ifscCode}
                          </div>
@@ -334,35 +420,36 @@ export function PrintInvoiceModal({
                      )}
                    </div>
                    
-                   <div className="w-1/3">
-                     <div className="border-t border-black pt-4">
-                       <div className="flex justify-between mb-2 text-sm text-gray-600">
+                   <div className="border-l-2 border-black flex flex-col">
+                     <div className="flex flex-col h-full">
+                       <div className="flex justify-between border-b border-black p-2">
                          <span>Subtotal</span>
                          <span>{invoice.subTotal.toFixed(2)}</span>
                        </div>
                        {invoice.type === "GST" && (
                          <>
-                           <div className="flex justify-between mb-2 text-sm text-gray-600">
+                            <div className="flex justify-between border-b border-black p-2">
                              <span>CGST</span>
                              <span>{invoice.cgst.toFixed(2)}</span>
                            </div>
-                           <div className="flex justify-between mb-4 text-sm text-gray-600">
+                            <div className="flex justify-between border-b border-black p-2">
                              <span>SGST</span>
                              <span>{invoice.sgst.toFixed(2)}</span>
                            </div>
                          </>
                        )}
-                       <div className="flex justify-between items-baseline pt-4 border-t-2 border-black">
+                        <div className="flex justify-between items-baseline border-t-2 border-black bg-gray-100 p-3">
                          <span className="font-medium uppercase tracking-wider">Total</span>
-                         <span className="text-xl font-bold">₹{invoice.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                         <span className="text-xl font-bold">Rs. {invoice.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                        </div>
                      </div>
                    </div>
                  </div>
 
+                </div>
                </div>
-             ) : (
-            <div className="flex flex-col min-h-[900px] bg-white text-black font-sans border-2 border-black m-4 relative">
+              ) : (
+            <div className="flex flex-col min-h-225 bg-white text-black font-sans border-2 border-black m-4 relative">
               {companySettings.invoiceWatermark && companySettings.invoiceWatermark !== "None" && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden z-0 opacity-[0.03]">
                   <div className="text-[150px] font-black transform -rotate-45 whitespace-nowrap" style={{ color: primaryColorHex }}>
@@ -373,8 +460,15 @@ export function PrintInvoiceModal({
                 </div>
               )}
               <div className="relative z-10 flex flex-col h-full">
+               {/* Title Bar */}
+               <div className="border-b-2 border-black flex items-center justify-center px-3 py-1.5 text-xs font-bold uppercase bg-gray-50">
+                 <div className="text-center text-sm tracking-wider font-extrabold text-black">
+                   {invoice.type === "GST" ? "TAX INVOICE" : "INVOICE"}
+                 </div>
+               </div>
+
                {/* header */}
-               <div className="p-4 flex flex-col">
+               <div className="p-4 flex flex-col border-b-2 border-black">
                  <div className="flex justify-between items-start">
                      <div className="flex-1">
                        <h1 className="text-4xl font-extrabold tracking-tight uppercase" style={{ color: primaryColorHex }}>
@@ -394,13 +488,6 @@ export function PrintInvoiceModal({
                      {companySettings.phone && <p><span className="font-semibold">Tel :</span> {companySettings.phone}</p>}
                      {companySettings.gstin && <p><span className="font-semibold">GSTIN :</span> {companySettings.gstin}</p>}
                    </div>
-                 </div>
-               </div>
-
-               {/* Title Bar */}
-               <div className="border-y-2 border-black flex items-center justify-center px-3 py-1.5 text-xs font-bold uppercase bg-gray-50">
-                 <div className="text-center text-sm tracking-wider font-extrabold text-black">
-                   {invoice.type === "GST" ? "TAX INVOICE" : "INVOICE"}
                  </div>
                </div>
 
@@ -425,7 +512,7 @@ export function PrintInvoiceModal({
                      )}
                    </div>
                  </div>
-                 <div className="w-1/2 flex flex-col p-3 grid grid-cols-[100px_1fr] gap-y-1.5 gap-x-2">
+                 <div className="w-1/2 p-3 grid grid-cols-[100px_1fr] gap-y-1.5 gap-x-2">
                      <div className="font-bold text-gray-700">Invoice No.</div>
                      <div className="font-bold">{invoice.invoiceNo}</div>
                      <div className="font-bold text-gray-700">Invoice Date</div>
@@ -435,21 +522,32 @@ export function PrintInvoiceModal({
 
                {/* Table */}
                <div className="flex-1 flex flex-col">
-                 <table className="w-full text-[11px] table-fixed flex-1">
-                    <thead className="border-b-2 border-black font-bold text-center bg-gray-50">
-                      <tr>
-                        <th className="border-r border-black px-1 py-2 w-10">Sr.<br/>No.</th>
-                        <th className="border-r border-black px-2 py-2 text-left">Name of Product / Service</th>
-                        <th className="border-r border-black px-1 py-2 w-20">HSN / SAC</th>
-                        <th className="border-r border-black px-1 py-2 w-16">Qty</th>
-                        <th className="border-r border-black px-1 py-2 w-20">Rate</th>
-                        <th className="border-r border-black px-1 py-2 w-24">Taxable<br/>Value</th>
-                        {invoice.type === "GST" && <th className="border-r border-black px-1 py-2 w-20">CGST</th>}
-                        {invoice.type === "GST" && <th className="border-r border-black px-1 py-2 w-20">SGST</th>}
-                        <th className="px-1 py-2 w-24">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                 <table className="w-full text-[10.5px] table-fixed flex-1">
+                    <colgroup>
+                      <col style={{ width: '38px' }} />
+                      <col />
+                      <col style={{ width: '68px' }} />
+                      <col style={{ width: '46px' }} />
+                      <col style={{ width: '60px' }} />
+                      <col style={{ width: '74px' }} />
+                      {invoice.type === "GST" && <col style={{ width: '58px' }} />}
+                      {invoice.type === "GST" && <col style={{ width: '58px' }} />}
+                      <col style={{ width: '74px' }} />
+                    </colgroup>
+                     <thead className="border-b-2 border-black font-bold text-center bg-gray-50">
+                       <tr>
+                         <th className="border-r border-black px-1 py-2 leading-snug">Sr.<br/>No.</th>
+                         <th className="border-r border-black px-2 py-2 text-left leading-snug whitespace-normal">Name of Product / Service</th>
+                         <th className="border-r border-black px-1 py-2 leading-snug whitespace-nowrap">HSN / SAC</th>
+                         <th className="border-r border-black px-1 py-2 leading-snug">Qty</th>
+                         <th className="border-r border-black px-1 py-2 leading-snug">Rate</th>
+                         <th className="border-r border-black px-1 py-2 leading-snug">Taxable<br/>Value</th>
+                         {invoice.type === "GST" && <th className="border-r border-black px-1 py-2 leading-snug">CGST</th>}
+                         {invoice.type === "GST" && <th className="border-r border-black px-1 py-2 leading-snug">SGST</th>}
+                         <th className="px-1 py-2 leading-snug">Total</th>
+                       </tr>
+                     </thead>
+                     <tbody>
                       {invoice.items.map((item, i) => {
                          const itemTaxable = item.amount;
                          const itemCgst = invoice.type === "GST" ? (itemTaxable * ((item.gstRate || 5) / 2)) / 100 : 0;
@@ -458,14 +556,14 @@ export function PrintInvoiceModal({
                          return (
                           <tr key={i} className="text-center align-top">
                             <td className="border-r border-black px-1 py-2">{i + 1}</td>
-                            <td className="border-r border-black px-2 py-2 text-left font-semibold text-gray-800">{item.materialType}</td>
-                            <td className="border-r border-black px-1 py-2">{item.hsnCode || "-"}</td>
-                            <td className="border-r border-black px-1 py-2">{item.quantity}</td>
-                            <td className="border-r border-black px-1 py-2 text-right">{item.rate.toFixed(2)}</td>
-                            <td className="border-r border-black px-1 py-2 text-right">{itemTaxable.toFixed(2)}</td>
-                            {invoice.type === "GST" && <td className="border-r border-black px-1 py-2 text-right">{itemCgst.toFixed(2)}</td>}
-                            {invoice.type === "GST" && <td className="border-r border-black px-1 py-2 text-right">{itemSgst.toFixed(2)}</td>}
-                            <td className="px-1 py-2 text-right font-semibold">{itemTotal.toFixed(2)}</td>
+                            <td className="border-r border-black px-2 py-2 text-left font-semibold text-gray-800 whitespace-normal break-words leading-snug">{item.materialType}</td>
+                            <td className="border-r border-black px-1 py-2 tabular-nums whitespace-nowrap">{item.hsnCode || "-"}</td>
+                            <td className="border-r border-black px-1 py-2 tabular-nums whitespace-nowrap">{item.quantity}</td>
+                            <td className="border-r border-black px-1 py-2 text-right tabular-nums whitespace-nowrap">{item.rate.toFixed(2)}</td>
+                            <td className="border-r border-black px-1 py-2 text-right tabular-nums whitespace-nowrap">{itemTaxable.toFixed(2)}</td>
+                            {invoice.type === "GST" && <td className="border-r border-black px-1 py-2 text-right tabular-nums whitespace-nowrap">{itemCgst.toFixed(2)}</td>}
+                            {invoice.type === "GST" && <td className="border-r border-black px-1 py-2 text-right tabular-nums whitespace-nowrap">{itemSgst.toFixed(2)}</td>}
+                            <td className="px-1 py-2 text-right font-semibold tabular-nums whitespace-nowrap">{itemTotal.toFixed(2)}</td>
                           </tr>
                          );
                       })}
@@ -486,12 +584,12 @@ export function PrintInvoiceModal({
                     <tfoot className="border-t-2 border-black font-bold text-center bg-gray-100 h-8">
                       <tr>
                         <td colSpan={3} className="border-r border-black px-2 py-2 text-right uppercase">Total</td>
-                        <td className="border-r border-black px-1 py-2">{invoice.items.reduce((s,i)=>s+i.quantity, 0).toFixed(2)}</td>
+                        <td className="border-r border-black px-1 py-2 tabular-nums whitespace-nowrap">{invoice.items.reduce((s,i)=>s+i.quantity, 0).toFixed(2)}</td>
                         <td className="border-r border-black px-1 py-2"></td>
-                        <td className="border-r border-black px-1 py-2 text-right">{invoice.subTotal.toFixed(2)}</td>
-                        {invoice.type === "GST" && <td className="border-r border-black px-1 py-2 text-right">{invoice.cgst.toFixed(2)}</td>}
-                        {invoice.type === "GST" && <td className="border-r border-black px-1 py-2 text-right">{invoice.sgst.toFixed(2)}</td>}
-                        <td className="px-1 py-2 text-right text-sm">{invoice.total.toFixed(2)}</td>
+                        <td className="border-r border-black px-1 py-2 text-right tabular-nums whitespace-nowrap">{invoice.subTotal.toFixed(2)}</td>
+                        {invoice.type === "GST" && <td className="border-r border-black px-1 py-2 text-right tabular-nums whitespace-nowrap">{invoice.cgst.toFixed(2)}</td>}
+                        {invoice.type === "GST" && <td className="border-r border-black px-1 py-2 text-right tabular-nums whitespace-nowrap">{invoice.sgst.toFixed(2)}</td>}
+                        <td className="px-1 py-2 text-right text-[11px] tabular-nums whitespace-nowrap">{invoice.total.toFixed(2)}</td>
                       </tr>
                     </tfoot>
                  </table>
@@ -502,7 +600,7 @@ export function PrintInvoiceModal({
                  <div className="w-2/3 flex flex-col border-r border-black">
                    <div className="border-b border-black p-2">
                      <div className="font-bold text-gray-700 mb-1">Total in words</div>
-                     <div className="uppercase font-bold tracking-wide">{toWords.convert(invoice.total, { doNotAddOnly: false })}</div>
+                     <div className="uppercase font-bold tracking-wide">{toWords.convert(invoice.total)}</div>
                    </div>
                    <div className="flex border-b border-black flex-1">
                       <div className="w-full flex flex-col">
@@ -565,17 +663,14 @@ export function PrintInvoiceModal({
                    <div className="flex justify-between border-b border-black p-3 bg-gray-100">
                       <div className="font-extrabold">Total Amount After Tax</div>
                       <div className="font-extrabold text-base text-black">₹{invoice.total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
-                   </div>
-                   <div className="flex-1 flex flex-col justify-between p-3">
-                      <div className="text-[9px] text-center text-gray-600 mb-6 font-medium italic">
-                         Certified that the particulars given above are true and correct.
-                      </div>
-                      <div className="text-center font-extrabold tracking-wide mb-12 uppercase text-sm" style={{ color: primaryColorHex }}>
-                         For {companySettings.name}
-                      </div>
-                      <div className="text-center text-[10px] font-bold border-t border-black pt-2 mx-4 uppercase">
-                         Authorised Signatory
-                      </div>
+                    </div>
+                     <div className="flex-1 flex flex-col justify-between p-3">
+                       <div className="text-center font-extrabold tracking-wide mb-12 uppercase text-sm" style={{ color: primaryColorHex }}>
+                          For {companySettings.name}
+                       </div>
+                       <div className="text-center text-[10px] font-bold border-t border-black pt-2 mx-4 uppercase">
+                          Authorised Signatory
+                       </div>
                    </div>
                  </div>
                </div>
@@ -669,57 +764,88 @@ export function PrintInvoiceModal({
           </div>{/* end scale wrapper */}
         </div>{/* end previewWrap */}
 
-        <div className="p-3 md:p-4 border-t bg-zinc-50 dark:bg-zinc-900/50 rounded-b-2xl print:hidden">
-          <div className="flex gap-2">
+        <div className="shrink-0 sticky bottom-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:p-4 md:pb-4 border-t bg-zinc-50 dark:bg-zinc-900/50 md:rounded-b-2xl print:hidden">
+          <div className="grid grid-cols-2 gap-2 sm:flex">
             <button
               onClick={onClose}
-              className="px-3 py-3 md:py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm active:scale-95"
+              disabled={isPrinting}
+              className="min-h-11 px-3 py-3 md:py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm active:scale-95 disabled:opacity-50"
             >
               Close
             </button>
+            <button
+              type="button"
+              disabled={isPrinting}
+              onClick={handleWhatsAppShare}
+              aria-label="Send invoice on WhatsApp"
+              className="min-h-11 flex-1 py-3 md:py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold rounded-xl transition-colors text-sm flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50"
+            >
+              <MessageCircle className="w-4 h-4" />
+              WhatsApp
+            </button>
             {isNative() ? (
               <button
-                onClick={() => {
+                disabled={isPrinting}
+                onClick={async () => {
                   const element = document.getElementById('print-invoice-area');
-                  if (element) {
-                    sharePdf(element, `Invoice-${invoice.invoiceNo}.pdf`, `Invoice ${invoice.invoiceNo}`);
+                  if (!element) return;
+                  setIsPrinting(true);
+                  try {
+                    await sharePdf(element, `Invoice-${invoice.invoiceNo}.pdf`, `Invoice ${invoice.invoiceNo}`);
+                  } finally {
+                    setIsPrinting(false);
                   }
                 }}
-                className="flex-1 py-3 md:py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm flex items-center justify-center gap-1.5 active:scale-95"
+                className="min-h-11 flex-1 py-3 md:py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50"
               >
-                <Share2 className="w-4 h-4" />
-                Share PDF
+                {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+                {isPrinting ? 'Generating…' : 'Share PDF'}
               </button>
             ) : (
               <button
-                onClick={() => {
-                  const element = document.getElementById('print-invoice-area');
-                  if (element) {
-                    downloadPdf(element, `Invoice-${invoice.invoiceNo}.pdf`);
-                    setTimeout(() => onClose(), 500);
+                disabled={isPrinting}
+                onClick={async () => {
+                  setIsPrinting(true);
+                  try {
+                    await downloadInvoicePdf(invoice, customer, companySettings, `Invoice-${invoice.invoiceNo}.pdf`);
+                    addToast('success', 'PDF downloaded successfully.');
+                    // Delay close so the browser finishes saving the blob URL
+                    setTimeout(() => onClose(), 1500);
+                  } catch {
+                    addToast('error', 'Download failed. Please try again.');
+                  } finally {
+                    setIsPrinting(false);
                   }
                 }}
-                className="flex-1 py-3 md:py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm flex items-center justify-center gap-1.5 active:scale-95"
+                className="min-h-11 flex-1 py-3 md:py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors text-sm flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50"
               >
-                <Download className="w-4 h-4" />
-                Download
+                {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                {isPrinting ? 'Generating…' : 'Download'}
               </button>
             )}
             <button
-              onClick={() => {
-                const win = window.open('', '_blank');
-                const printContent = document.getElementById('print-invoice-area')?.innerHTML;
-                if (printContent) {
-                  openPdfInNewTab(printContent, win);
-                  setTimeout(() => onClose(), 500);
-                } else if (win) {
-                  win.close();
+              disabled={isPrinting}
+              onClick={async () => {
+                const element = document.getElementById('print-invoice-area');
+                if (!element) return;
+                if (isNative()) {
+                  setIsPrinting(true);
+                  try {
+                    await sharePdf(element, `Invoice-${invoice.invoiceNo}.pdf`, `Invoice ${invoice.invoiceNo}`);
+                  } finally {
+                    setIsPrinting(false);
+                  }
+                } else {
+                  // Use iframe print in the current tab — opening a new tab
+                  // causes a freeze when the user cancels the print dialog.
+                  printHtml(element.outerHTML);
+                  onClose();
                 }
               }}
-              className="flex-1 py-3 md:py-2 bg-primary-600 hover:bg-primary-700 active:bg-primary-800 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-1.5 text-sm active:scale-95"
+              className="min-h-11 flex-1 py-3 md:py-2 bg-primary-600 hover:bg-primary-700 active:bg-primary-800 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-1.5 text-sm active:scale-95 disabled:opacity-50"
             >
-              <Printer className="w-4 h-4" />
-              Print
+              {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+              {isPrinting ? 'Generating…' : 'Print'}
             </button>
           </div>
         </div>

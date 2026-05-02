@@ -89,7 +89,7 @@ export function Customers() {
         phone: validation.data.phone ?? "",
         address: validation.data.address,
         gstin: validation.data.gstin,
-        openingBalance: Math.round(validation.data.openingBalance),
+        openingBalance: validation.data.openingBalance,
       });
     } else {
       addCustomer({
@@ -98,7 +98,7 @@ export function Customers() {
         phone: validation.data.phone ?? "",
         address: validation.data.address,
         gstin: validation.data.gstin,
-        openingBalance: Math.round(validation.data.openingBalance),
+        openingBalance: validation.data.openingBalance,
       });
     }
 
@@ -163,9 +163,10 @@ export function Customers() {
       });
     }
 
-    // Add Slips (Purchases/Charges)
+    // Add Slips (Purchases/Charges) — include Loaded so material that left the
+    // yard is reflected in the ledger before it is tallied or invoiced.
     slips
-      .filter((s) => s.customerId === selectedCustomer.id && (s.status === "Tallied" || s.status === "Pending"))
+      .filter((s) => s.customerId === selectedCustomer.id && (s.status === "Tallied" || s.status === "Pending" || s.status === "Loaded"))
       .forEach((s) => {
         historyItems.push({
           id: s.id,
@@ -217,54 +218,52 @@ export function Customers() {
         });
       });
 
-    // Sort by date ascending
+    // Sort ascending so we can compute the true point-in-time running balance.
     historyItems.sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
 
+    // Compute running balance in ascending order (oldest → newest).
+    // Each row's runningBalance is the balance AFTER that transaction —
+    // which is what the customer "stood at" after that event occurred.
     let runningBalance = 0;
-    const computedHistory = historyItems
-      .map((item) => {
-        if (item.affectsBalance !== false) {
-           runningBalance += item.isCharge ? item.amount : -item.amount;
-        }
-        return { ...item, runningBalance };
-      })
-      .reverse();
+    const computedHistory = historyItems.map((item) => {
+      if (item.affectsBalance !== false) {
+        runningBalance += item.isCharge ? item.amount : -item.amount;
+      }
+      return { ...item, runningBalance };
+    });
 
-let results = computedHistory.filter(item => {
-       if (item.id === "opening") return true; 
+    // Apply filters before reversing so date/type filters work correctly.
+    let results = computedHistory.filter((item) => {
+      // Opening balance entry always passes through.
+      if (item.id === "opening" || item.category === "Opening") return true;
 
-       if (ledgerTxType !== "All") {
-          if (ledgerTxType === "Charge" && !item.isCharge) return false;
-          if (ledgerTxType === "Payment" && item.isCharge) return false;
-       }
+      if (ledgerTxType !== "All") {
+        if (ledgerTxType === "Charge" && !item.isCharge) return false;
+        if (ledgerTxType === "Payment" && item.isCharge) return false;
+      }
 
-       // Skip date filtering for opening balance
-       if (item.id === "opening" || item.category === "Opening") return true;
+      if (ledgerTxCategory !== "All") {
+        if (item.category !== ledgerTxCategory) return false;
+      }
 
-       if (ledgerTxCategory !== "All") {
-          if (item.category !== ledgerTxCategory) return false;
-       }
+      const itemDate = new Date(item.date);
+      if (ledgerStartDate) {
+        const start = new Date(ledgerStartDate + 'T00:00:00');
+        if (itemDate < start) return false;
+      }
+      if (ledgerEndDate) {
+        const end = new Date(ledgerEndDate + 'T23:59:59.999');
+        if (itemDate > end) return false;
+      }
 
-       const itemDate = new Date(item.date);
-       if (ledgerStartDate) {
-          const start = new Date(ledgerStartDate);
-          start.setHours(0, 0, 0, 0);
-          if (itemDate < start) return false;
-       }
-       
-       if (ledgerEndDate) {
-          const end = new Date(ledgerEndDate);
-          end.setHours(23, 59, 59, 999);
-          if (itemDate > end) return false;
-       }
-       
-       return true;
-     });
+      return true;
+    });
 
-    if (ledgerSortDirection === "asc") {
-       results = results.reverse();
+    // Default display is newest-first; flip only for explicit asc request.
+    if (ledgerSortDirection !== "asc") {
+      results = results.reverse();
     }
 
     return results;
@@ -319,9 +318,11 @@ let results = computedHistory.filter(item => {
             return (
               <div key={c.id} className="flex flex-col transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
                 {/* Header (Always Visible) - Compact for mobile */}
-                <div 
+                <button
+                  type="button"
                   onClick={() => toggleExpand(c.id)}
-                  className="p-3 sm:p-4 cursor-pointer flex items-center justify-between"
+                  aria-expanded={isExpanded}
+                  className="w-full p-3 sm:p-4 cursor-pointer flex items-center justify-between text-left"
                 >
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 shrink-0">
@@ -329,44 +330,44 @@ let results = computedHistory.filter(item => {
                     </div>
                     <div className="min-w-0">
                       <div className="font-bold text-zinc-900 dark:text-white text-sm truncate">{c.name}</div>
-                      <div className="flex items-center text-[10px] sm:text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                      <div className="flex items-center text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
                         <Phone className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1 shrink-0" /> 
-                        <span className="truncate">{c.phone || 'No phone'}</span>
+                        <span className="break-all">{c.phone || 'No phone'}</span>
                       </div>
                     </div>
                   </div>
                   
                   <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                     <div className="text-right">
-                      <div className="text-[9px] sm:text-xs text-zinc-500 dark:text-zinc-400">Bal</div>
+                      <div className="text-xs text-zinc-500 dark:text-zinc-400">Bal</div>
                       <span className={`font-bold tracking-tight text-xs sm:text-base ${
                           bal > 0 ? "text-red-600 dark:text-red-400" : bal < 0 ? "text-primary-600 dark:text-primary-400" : "text-zinc-700 dark:text-zinc-200"
                       }`}>
                         ₹{Math.abs(bal).toLocaleString()} {bal > 0 ? "Dr" : bal < 0 ? "Cr" : ""}
                       </span>
                     </div>
-                    <span className={`px-1.5 py-0.5 sm:px-2 sm:py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold ${c.isActive !== false ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"}`}>
+                    <span className={`px-1.5 py-0.5 sm:px-2 sm:py-0.5 rounded-full text-xs font-semibold ${c.isActive !== false ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"}`}>
                       {c.isActive !== false ? "Active" : "Inactive"}
                     </span>
                     {isExpanded ? <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-400" /> : <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-400" />}
                   </div>
-                </div>
+                </button>
 
                 {/* Expanded Details - Compact for mobile */}
                 {isExpanded && (
                   <div className="px-3 pb-3 pt-2 sm:px-4 sm:pb-4 sm:pt-2 border-t border-zinc-100 dark:border-zinc-700/50 bg-zinc-50 dark:bg-zinc-900/20">
                     <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4 mb-3 sm:mb-4">
                        <div>
-                          <span className="text-[10px] sm:text-xs text-zinc-500 block">Opening</span>
+                          <span className="text-xs text-zinc-500 block">Opening</span>
                           <span className="text-xs sm:text-sm font-medium dark:text-zinc-200">₹{c.openingBalance.toLocaleString()} {c.openingBalance > 0 ? "Dr" : c.openingBalance < 0 ? "Cr" : ""}</span>
                        </div>
                        <div>
-                          <span className="text-[10px] sm:text-xs text-zinc-500 block">GSTIN</span>
-                          <span className="text-xs sm:text-sm font-medium dark:text-zinc-200 uppercase truncate">{c.gstin || 'N/A'}</span>
+                          <span className="text-xs text-zinc-500 block">GSTIN</span>
+                          <span className="block text-xs sm:text-sm font-medium dark:text-zinc-200 uppercase break-words">{c.gstin || 'N/A'}</span>
                        </div>
                        <div className="col-span-2 sm:col-span-2">
-                          <span className="text-[10px] sm:text-xs text-zinc-500 block">Address</span>
-                          <span className="text-xs sm:text-sm font-medium dark:text-zinc-200 truncate">{c.address || 'N/A'}</span>
+                          <span className="text-xs text-zinc-500 block">Address</span>
+                          <span className="block text-xs sm:text-sm font-medium dark:text-zinc-200 break-words">{c.address || 'N/A'}</span>
                        </div>
                     </div>
 
@@ -426,7 +427,6 @@ let results = computedHistory.filter(item => {
                     Phone / Contact
                   </label>
                   <input
-                    required
                     value={formData.phone}
                     onChange={(e) =>
                       setFormData({ ...formData, phone: e.target.value })

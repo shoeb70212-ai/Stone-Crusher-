@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Background: light grey -->
+  <rect width="1024" height="1024" fill="#EDEDED"/>
+  <!-- Rounded square border frame -->
+  <rect x="60" y="60" width="904" height="904" rx="130" ry="130" fill="white" stroke="#F5A623" stroke-width="36"/>
+
+  <!-- Ground/base line -->
+  <rect x="100" y="720" width="824" height="40" rx="8" fill="#1A1A1A"/>
+
+  <!-- Rock pile -->
+  <!-- Large base rocks -->
+  <polygon points="140,720 260,480 380,720" fill="#2A2A2A"/>
+  <polygon points="240,720 380,430 520,720" fill="#333333"/>
+  <polygon points="360,720 490,500 620,720" fill="#222222"/>
+  <polygon points="480,720 580,560 680,720" fill="#2D2D2D"/>
+  <polygon points="560,720 660,510 760,720" fill="#1E1E1E"/>
+  <polygon points="640,720 720,580 800,720" fill="#2A2A2A"/>
+  <!-- Rock highlights/gaps -->
+  <polygon points="160,720 200,620 240,720" fill="#111111"/>
+  <polygon points="300,720 350,600 400,720" fill="#111111"/>
+  <polygon points="440,720 480,640 520,720" fill="#111111"/>
+  <polygon points="580,720 620,650 660,720" fill="#111111"/>
+
+  <!-- Dump truck body - orange/amber -->
+  <!-- Truck bed / dump box (tilted) -->
+  <g transform="rotate(-28, 580, 450)">
+    <rect x="430" y="310" width="320" height="180" rx="10" fill="#F5A623"/>
+    <!-- Truck bed ribs -->
+    <rect x="480" y="310" width="12" height="180" fill="#D4881C"/>
+    <rect x="540" y="310" width="12" height="180" fill="#D4881C"/>
+    <rect x="600" y="310" width="12" height="180" fill="#D4881C"/>
+    <rect x="660" y="310" width="12" height="180" fill="#D4881C"/>
+  </g>
+
+  <!-- Truck cab -->
+  <rect x="580" y="520" width="200" height="160" rx="20" fill="#F5A623"/>
+  <!-- Cab top curve -->
+  <ellipse cx="680" cy="520" rx="100" ry="25" fill="#F5A623"/>
+  <!-- Cab windows -->
+  <rect x="600" y="535" width="80" height="55" rx="8" fill="white" opacity="0.9"/>
+  <rect x="695" y="540" width="50" height="45" rx="8" fill="white" opacity="0.9"/>
+  <!-- Cab detail lines -->
+  <rect x="580" y="660" width="200" height="20" rx="0" fill="#D4881C"/>
+
+  <!-- Truck chassis/frame -->
+  <rect x="440" y="660" width="380" height="30" rx="5" fill="#D4881C"/>
+
+  <!-- Wheels -->
+  <circle cx="510" cy="710" r="55" fill="#1A1A1A"/>
+  <circle cx="510" cy="710" r="35" fill="#333333"/>
+  <circle cx="510" cy="710" r="18" fill="#F5A623"/>
+  <circle cx="720" cy="710" r="55" fill="#1A1A1A"/>
+  <circle cx="720" cy="710" r="35" fill="#333333"/>
+  <circle cx="720" cy="710" r="18" fill="#F5A623"/>
+
+  <!-- Hydraulic arm -->
+  <rect x="570" y="440" width="18" height="120" rx="6" transform="rotate(-15, 570, 440)" fill="#D4881C"/>
+</svg>

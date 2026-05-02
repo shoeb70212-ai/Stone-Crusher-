@@ -4,11 +4,17 @@ const config: CapacitorConfig = {
   appId: 'com.crushtrack.erp',
   appName: 'CrushTrack',
   webDir: 'dist',
-  // Deep link URL scheme: crushtrack://view/<name>
-  // Android: registered in AndroidManifest.xml as an intent-filter (add after `npx cap sync`)
-  // iOS: registered in Info.plist CFBundleURLSchemes (add after `npx cap sync`)
   server: {
     androidScheme: 'https',
+    // The bundled APK calls the Vercel API for all data operations.
+    // VITE_API_URL is baked into the JS bundle at build time — this server
+    // block only controls the WebView origin scheme, not the API target.
+  },
+  plugins: {
+    // Keep Preferences storage group consistent across reinstalls
+    Preferences: {
+      group: 'com.crushtrack.erp.prefs',
+    },
   },
 };
 

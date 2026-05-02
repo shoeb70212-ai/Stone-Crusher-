@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   MoreHorizontal,
+  History,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useErp } from "../context/ErpContext";
@@ -32,6 +33,7 @@ const navItems = [
   { id: "vehicles", label: "Vehicles", icon: Truck },
   { id: "customers", label: "Customers", icon: Users },
   { id: "ledger", label: "Ledger", icon: BookOpen },
+  { id: "audit", label: "Audit Log", icon: History },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -72,6 +74,7 @@ export function Sidebar({
     )
       return false;
     if (userRole === "Partner" && item.id === "settings") return false;
+    if (userRole !== "Admin" && item.id === "audit") return false;
     return true;
   });
 
@@ -133,6 +136,7 @@ export function Sidebar({
                 key={item.id}
                 title={isCollapsed ? item.label : undefined}
                 onClick={() => handleNavigate(item.id)}
+                aria-current={isActive ? "page" : undefined}
                 className={cn(
                   "w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 group relative",
                   isActive
@@ -176,6 +180,7 @@ export function Sidebar({
           <button
             onClick={() => {
               localStorage.removeItem("erp_auth_token");
+              localStorage.removeItem("erp_user_role");
               window.location.reload();
             }}
             title={isCollapsed ? "Logout" : undefined}
@@ -212,7 +217,7 @@ export function Sidebar({
       {/* ═══════════════════════════════════════════════════════════
           Mobile Bottom Navigation Bar - Thumb Zone Optimized
           ═══════════════════════════════════════════════════════════ */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-t border-zinc-200 dark:border-zinc-800 z-40 flex items-stretch shadow-[0_-1px_0_0_rgba(0,0,0,0.06),0_-4px_16px_-4px_rgba(0,0,0,0.08)] pb-[env(safe-area-inset-bottom)] min-h-[64px]">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-t border-zinc-200 dark:border-zinc-800 z-40 flex items-stretch shadow-[0_-1px_0_0_rgba(0,0,0,0.06),0_-4px_16px_-4px_rgba(0,0,0,0.08)] pb-[env(safe-area-inset-bottom)] min-h-16">
         {bottomBarItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
@@ -220,8 +225,9 @@ export function Sidebar({
             <button
               key={item.id}
               onClick={() => handleNavigate(item.id)}
+              aria-current={isActive ? "page" : undefined}
               className={cn(
-                "flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] transition-all duration-150 active:scale-95 active:bg-primary-50/50 dark:active:bg-primary-500/10",
+                "flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-14 transition-all duration-150 active:scale-95 active:bg-primary-50/50 dark:active:bg-primary-500/10",
                 isActive
                   ? "text-primary-600 dark:text-primary-400"
                   : "text-zinc-500 dark:text-zinc-400",
@@ -251,7 +257,7 @@ export function Sidebar({
         <button
           onClick={() => setIsMoreOpen(true)}
           className={cn(
-            "flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] transition-all duration-150 active:scale-95 active:bg-zinc-100 dark:active:bg-zinc-800",
+            "flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-14 transition-all duration-150 active:scale-95 active:bg-zinc-100 dark:active:bg-zinc-800",
             isMoreOpen
               ? "text-primary-600 dark:text-primary-400"
               : "text-zinc-500 dark:text-zinc-400",
@@ -333,6 +339,7 @@ export function Sidebar({
               <button
                 onClick={() => {
                   localStorage.removeItem("erp_auth_token");
+                  localStorage.removeItem("erp_user_role");
                   window.location.reload();
                 }}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 rounded-xl hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors active:scale-95"

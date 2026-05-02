@@ -1,181 +1,250 @@
-# 🏗️ CrushTrack ERP - Stone Crusher Management System
+# CrushTrack ERP
 
-[![Vercel Deployment](https://img.shields.io/badge/Deployment-Vercel-black?logo=vercel)](https://stone-crusher-topaz.vercel.app/)
-[![React Version](https://img.shields.io/badge/React-19-blue?logo=react)](https://react.dev/)
-[![Vite](https://img.shields.io/badge/Build-Vite-646CFF?logo=vite)](https://vitejs.dev/)
-[![Tailwind CSS](https://img.shields.io/badge/Styling-Tailwind_4-38B2AC?logo=tailwind-css)](https://tailwindcss.com/)
-[![TypeScript](https://img.shields.io/badge/Language-TypeScript-3178C6?logo=typescript)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-19-blue?logo=react)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite)](https://vitejs.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-38B2AC?logo=tailwind-css)](https://tailwindcss.com/)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-**CrushTrack ERP** is a comprehensive, production-ready Enterprise Resource Planning system designed specifically for stone crusher, quarry, and material logistics businesses. It manages the complete dispatch workflow—from vehicle entry at the gate to final invoicing.
-
----
-
-## ✨ Features
-
-### 🚛 Dispatch Management
-- **Multi-Mode Measurement**: Support for both Weight (Tonnes) and Volume (Brass/CFT)
-- **Smart Dimension Input**: `5.6` format for 5ft 6in dimensions
-- **Status Workflow**: Pending → Loaded → Tallied
-- **Vehicle Auto-Fill**: Pre-populated owner/driver details
-
-### 🧾 Billing & Invoicing
-- **GST & Cash Modes**: 5% GST (CGST+SGST) or direct cash bills
-- **Multiple Print Formats**: A4, Thermal-80mm, Thermal-58mm
-- **Invoice Templates**: Classic, Modern, Minimal
-- **Auto Amount-to-Words**: Indian currency format conversion
-
-### 💰 Financial Tracking
-- **Customer Ledger**: Running balance with full statement history
-- **Daybook Transactions**: Income/Expense tracking with categories
-- **Dashboard Analytics**: Daily revenue, pending tallies, active vehicles
-- **Export Options**: CSV and PDF export for all reports
-
-### 👥 User Management
-- **Role-Based Access**: Admin, Partner, Manager roles
-- **User Activation/Deactivation**: Enable/disable user accounts
-- **Secure Password Storage**: SHA-256 hashed passwords
-
-### 📱 Mobile Experience
-- **Responsive Design**: Optimized layouts for mobile and tablet
-- **Touch-Friendly UI**: Large tap targets and bottom navigation
-- **Print Anywhere**: Client-side PDF generation
+**CrushTrack ERP** is an open-source, production-ready Enterprise Resource Planning system built for stone crusher, quarry, and material logistics businesses. It manages the complete dispatch workflow — from vehicle entry at the gate through to final invoicing and financial reporting.
 
 ---
 
-## 🏗️ Architecture
+## Features
+
+### Dispatch Management
+- Multi-mode measurement: Weight (Tonnes) and Volume (Brass/CFT)
+- Smart dimension input — workers enter `5.6` for 5 ft 6 in
+- Slip status workflow: Pending → Loaded → Tallied
+- Vehicle auto-fill with owner/driver details
+
+### Billing & Invoicing
+- GST and Cash billing modes (5% GST with CGST + SGST split)
+- Multiple print formats: A4, Thermal-80mm, Thermal-58mm
+- Invoice templates: Classic, Modern, Minimal
+- Amount-to-words in Indian currency format
+
+### Financial Tracking
+- Customer ledger with running balance and full statement history
+- Daybook for income/expense tracking with categories
+- Dashboard analytics: daily revenue, pending tallies, active vehicles
+- CSV and PDF export for all reports
+
+### User Management
+- Role-based access: Admin, Partner, Manager
+- Account activation/deactivation
+- SHA-256 password hashing with hash migration on login
+
+### Mobile (Capacitor)
+- Responsive layouts optimized for mobile and tablet
+- Touch-friendly UI with large tap targets and bottom navigation
+- Native Android build via Capacitor
+- Biometric authentication, secure token storage
+- Bluetooth ESC/POS thermal printing
+- NFC vehicle tag scanning, barcode/QR scanning
+- Haptic feedback, keep-awake for active slip forms
+- Native file export (PDF/CSV) and share sheet integration
+
+---
+
+## Architecture
 
 ### Tech Stack
+
 | Layer | Technology |
 |-------|------------|
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS 4 |
-| State | React Context + Optimistic Delta Sync |
-| Backend | Express.js (Dev) / Vercel Serverless (Prod) |
-| Database | PostgreSQL (Prod) / JSON File (Dev) |
-| PDF | html2pdf.js |
+| State | React Context + optimistic delta-sync engine |
+| Backend (dev) | Express.js with Vite middleware |
+| Backend (prod) | Vercel serverless functions |
+| Database (prod) | PostgreSQL via Supabase |
+| Database (dev) | Local flat-file JSON (`local-data.json`) |
+| Mobile | Capacitor 8 (Android/iOS) |
+| PDF | html2pdf.js + jsPDF |
 
 ### Data Flow
+
 ```
-User Action → React Context → Optimistic UI Update
-                                ↓
-                         Delta Sync Queue (1.5s debounce)
-                                ↓
-                         PATCH /api/data → Server
+User action → React Context → optimistic UI update
+                                    ↓
+                         Delta-sync queue (1.5 s debounce)
+                                    ↓
+                         PATCH /api/data → server/DB
 ```
 
+The sync engine queues mutations into `syncQueueRef`, batches them, and sends a `PATCH` payload with `{ updates, deletions }`. The server performs `INSERT … ON CONFLICT DO UPDATE` so concurrent users never overwrite each other's data.
+
 ### Key Modules
-- **ErpContext** - Central state management with CRUD operations
-- **Delta Sync Engine** - Collision-safe incremental updates
-- **Print Utils** - DOM-to-PDF bridge for all print formats
-- **Auth Module** - Role-based access control
+
+| Module | Purpose |
+|--------|---------|
+| `src/context/ErpContext.tsx` | Global state, CRUD ops, delta-sync engine |
+| `src/lib/print-utils.ts` | DOM-to-PDF bridge (A4 and Thermal) |
+| `src/lib/auth.ts` | Password hashing and hash migration |
+| `api/data.ts` | Vercel serverless API (PostgreSQL path) |
+| `server.ts` | Express dev server (JSON file path) |
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
-- Node.js v18+
-- npm v9+
+
+- Node.js 18+
+- npm 9+
+- (Optional) A [Supabase](https://supabase.com) project for production PostgreSQL
 
 ### Installation
-```bash
-# Clone the repository
-git clone https://github.com/shoeb70212-ai/Stone-crusher-29-04.git
-cd Stone-crusher-29-04
 
-# Install dependencies
+```bash
+git clone https://github.com/shoeb70212-ai/Stone-Crusher-.git
+cd Stone-Crusher-
 npm install
 ```
 
-### Development
+### Configure environment
+
+Copy the example file and fill in your values:
+
 ```bash
-# Start development server (Express + Vite on port 5173)
-npm run dev
+cp .env.example .env
+```
+
+See [`.env.example`](.env.example) for full documentation of each variable. For local development you can leave most fields empty — the app falls back to a local `local-data.json` file.
+
+### Development
+
+```bash
+npm run dev        # Express + Vite on http://localhost:5173
+```
+
+### Production build
+
+```bash
+npm run build      # Vite output → dist/
 ```
 
 ### Commands
+
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Start dev server (Express + Vite) |
+| `npm run dev` | Start dev server (Express + Vite, port 5173) |
 | `npm run build` | Production build |
-| `npm run lint` | TypeScript type checking |
+| `npm run lint` | TypeScript type check |
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
-Stone-Crusher/
+Stone-Crusher-/
 ├── api/
-│   └── data.ts              # API endpoints (dev + prod)
+│   └── data.ts              # Vercel serverless API (PostgreSQL)
 ├── src/
 │   ├── components/
-│   │   ├── forms/           # Form components (CreateSlip, PrintInvoice, etc.)
-│   │   ├── ui/              # UI components (Modal, Toast, etc.)
-│   │   ├── Layout.tsx       # Main layout wrapper
-│   │   ├── Sidebar.tsx      # Navigation sidebar
-│   │   └── Login.tsx        # Authentication
+│   │   ├── forms/           # Slip and invoice form/print modals
+│   │   ├── ui/              # Shared UI primitives
+│   │   ├── Layout.tsx       # App shell with lazy-loaded routes
+│   │   ├── Sidebar.tsx      # Navigation (desktop + mobile bottom nav)
+│   │   └── Login.tsx        # Authentication screen
 │   ├── context/
-│   │   └── ErpContext.tsx   # Global state & sync engine
+│   │   └── ErpContext.tsx   # Global state + delta-sync engine
 │   ├── lib/
-│   │   ├── utils.ts         # Utilities (parseFeetInches, cn)
-│   │   ├── print-utils.ts  # PDF generation
+│   │   ├── utils.ts         # cn(), parseFeetInches()
+│   │   ├── print-utils.ts   # PDF generation and share/download
 │   │   ├── auth.ts          # Password hashing
-│   │   └── validation.ts   # Form validation
+│   │   ├── barcode.ts       # Barcode/QR scanning (Capacitor)
+│   │   ├── biometrics.ts    # Biometric auth (Capacitor)
+│   │   ├── camera.ts        # Document capture (Capacitor)
+│   │   ├── escpos.ts        # Bluetooth ESC/POS thermal printing
+│   │   ├── nfc.ts           # NFC vehicle tag reading
+│   │   └── validation.ts    # Zod form validation
 │   ├── pages/
-│   │   ├── Dashboard.tsx    # Overview & stats
-│   │   ├── Dispatch.tsx    # Slip management
-│   │   ├── Invoices.tsx    # Invoice generation
-│   │   ├── Customers.tsx   # Customer management
-│   │   ├── Daybook.tsx     # Transactions
-│   │   ├── Ledger.tsx      # Financial ledger
-│   │   ├── Vehicles.tsx    # Vehicle registry
-│   │   └── Settings.tsx    # Configuration
-│   ├── types.ts            # TypeScript interfaces
-│   ├── App.tsx             # Root component
-│   └── main.tsx            # Entry point
-├── server.ts               # Express dev server
-├── vite.config.ts          # Vite configuration
-├── package.json            # Dependencies
-└── README.md               # This file
+│   │   ├── Dashboard.tsx
+│   │   ├── Dispatch.tsx
+│   │   ├── Invoices.tsx
+│   │   ├── Customers.tsx
+│   │   ├── Daybook.tsx
+│   │   ├── Ledger.tsx
+│   │   ├── Vehicles.tsx
+│   │   └── Settings.tsx
+│   ├── types.ts             # All TypeScript interfaces
+│   ├── App.tsx
+│   └── main.tsx
+├── android/                 # Capacitor Android project
+├── server.ts                # Express dev server
+├── capacitor.config.ts      # Capacitor configuration
+├── vite.config.ts
+└── .env.example             # Environment variable reference
 ```
 
 ---
 
-## 🔐 Default Credentials
-
-On first run (no users configured):
-- **Email**: `admin@admin.com`
-- **Password**: `admin123`
-
----
-
-## 📊 Business Logic
+## Business Logic
 
 ### Customer Balance
+
 ```
-balance = openingBalance + unbilledSlipTotal + invoiceTotal + expenseDebits - paymentCredits
+balance = openingBalance
+        + unbilledSlipTotal     (Pending / Tallied slips with no invoiceId)
+        + invoiceTotal
+        + expenseDebits
+        - paymentCredits
 ```
 
-### Brass Volume Calculation
+### Brass Volume
+
 ```
 Brass = (Length × Width × Height) / 100
 ```
 
+Workers enter dimensions as `5.6` to mean 5 ft 6 in. Always use `parseFeetInches(val)` from `src/lib/utils.ts` — never `parseFloat` directly.
+
 ### Soft Deletes
-Vehicles and Materials use `isActive: boolean` flag for soft deletion to preserve historical data.
+
+`Vehicle` and `Material` records are soft-deleted via `isActive: false`. Always filter UI lists with `isActive !== false`. Hard-deletes apply only to `customers`, `transactions`, and `tasks`.
 
 ---
 
-## 🧪 Testing
+## Mobile Build (Android)
 
-E2E tests using Playwright are included in the `tests/` directory.
+```bash
+npm run build
+npx cap sync android
+npx cap open android       # open in Android Studio
+```
+
+Set `VITE_API_URL` in your `.env` to your deployed Vercel URL before building the APK so the bundled app can reach the API from any network.
 
 ---
 
-## 📄 License
+## Default Credentials (First Run)
 
-Internal Use Only - Confidential
+When no users are configured the app shows a first-run setup screen where you create the initial admin account. There are no hard-coded default credentials in the production flow.
 
 ---
 
-*Built with ❤️ for the Stone Crusher Industry*
+## Deployment (Vercel)
+
+1. Push the repository to GitHub.
+2. Import it into [Vercel](https://vercel.com).
+3. Add the environment variables from `.env.example` in the Vercel dashboard.
+4. Deploy — Vercel uses `api/data.ts` as a serverless function automatically.
+
+---
+
+## Contributing
+
+Pull requests are welcome. For major changes please open an issue first to discuss what you would like to change.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feat/my-feature`)
+3. Commit your changes (`git commit -m 'feat: add my feature'`)
+4. Push to the branch (`git push origin feat/my-feature`)
+5. Open a Pull Request
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE) for details.

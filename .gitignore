@@ -4,7 +4,33 @@ dist/
 coverage/
 .DS_Store
 *.log
+
+# Environment / secrets — never commit real credentials
 .env*
 !.env.example
+
+# Runtime data — user-specific, not part of source
 local-data.json
 *.db
+
+# Session, handoff, and internal planning docs — confidential
+handoff.md
+session.md
+pending.md
+docs/
+
+# Claude Code internal files — not for public repo
+.claude/
+.code-review-graph/
+
+# Editor settings
+.vscode/
+
+# Code quality output
+playwright-report/
+test-results/
+dev-server-*.log
+dev-server-*.out.log
+
+# Memory files
+memory/

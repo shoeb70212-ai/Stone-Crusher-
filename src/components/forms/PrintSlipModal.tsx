@@ -1,9 +1,11 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Slip } from "../../types";
-import { X, Printer, Share2, Bluetooth, Loader2 } from "lucide-react";
+import { X, Printer, Share2, Bluetooth, Loader2, MessageCircle } from "lucide-react";
 import { useErp } from "../../context/ErpContext";
-import { openPdfInNewTab, downloadPdf, sharePdf } from "../../lib/print-utils";
+import { createSlipPdfBlob, printHtml, sharePdfBlob, PRIMARY_COLORS } from "../../lib/print-utils";
+import { buildSlipWhatsAppMessage, openWhatsAppMessage } from "../../lib/whatsapp-share";
 import { isNative } from "../../lib/capacitor";
+import { useBodyScrollLock } from "../../lib/use-body-scroll-lock";
 import {
   scanForPrinters,
   connectPrinter,
@@ -24,6 +26,10 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
   const [btConnecting, setBtConnecting] = useState<string | null>(null);
   const [btPrinting, setBtPrinting] = useState(false);
   const [showBtPanel, setShowBtPanel] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const scanCancelledRef = useRef(false);
+
+  useBodyScrollLock(true);
 
   const previewWrapRef = useRef<HTMLDivElement>(null);
   const [previewScale, setPreviewScale] = useState(1);
@@ -49,25 +55,53 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
     return () => observer.disconnect();
   }, [format]);
 
-  const primaryColorHex: Record<string, string> = {
-    emerald: "#10b981", blue: "#3b82f6", violet: "#8b5cf6",
-    rose: "#f43f5e", amber: "#f59e0b",
+  const borderColor = PRIMARY_COLORS[companySettings.primaryColor || "emerald"] ?? "#10b981";
+  const customerName = slip.customerId === 'CASH' || !slip.customerId
+    ? 'Counter Sale'
+    : (customers.find(c => c.id === slip.customerId)?.name ?? slip.customerId);
+
+  const handleWhatsAppShare = async () => {
+    const message = buildSlipWhatsAppMessage({ slip, customerName, companySettings });
+    const filename = `Slip-${slip.id.slice(0, 8).toUpperCase()}.pdf`;
+    setIsPrinting(true);
+    try {
+      const blob = await createSlipPdfBlob(slip, customerName, companySettings);
+      const result = await sharePdfBlob(blob, filename, 'Loading Slip', message);
+
+      if (result === 'downloaded') {
+        openWhatsAppMessage(message);
+        addToast("info", "Slip PDF downloaded. Attach it in WhatsApp.");
+      } else if (result === 'shared') {
+        addToast("success", "Slip PDF is ready to send. Choose WhatsApp from the share sheet.");
+      }
+    } catch {
+      addToast("error", "Could not prepare the slip PDF for WhatsApp.");
+    } finally {
+      setIsPrinting(false);
+    }
   };
-  const borderColor = primaryColorHex[companySettings.primaryColor || "emerald"] ?? "#10b981";
 
   const handleBluetoothScan = async () => {
+    scanCancelledRef.current = false;
     setBtScanning(true);
     setBtDevices([]);
     try {
       const found = await scanForPrinters();
-      setBtDevices(found);
-      if (found.length === 0) addToast('warning', 'No Bluetooth devices found. Ensure printer is on and in range.');
+      if (!scanCancelledRef.current) {
+        setBtDevices(found);
+        if (found.length === 0) addToast("warning", "No Bluetooth devices found. Ensure printer is on and in range.");
+      }
     } catch {
-      addToast('error', 'Bluetooth scan failed. Check permissions.');
+      if (!scanCancelledRef.current) addToast("error", "Bluetooth scan failed. Check permissions.");
     } finally {
-      setBtScanning(false);
+      if (!scanCancelledRef.current) setBtScanning(false);
     }
   };
+
+  const handleCancelScan = useCallback(() => {
+    scanCancelledRef.current = true;
+    setBtScanning(false);
+  }, []);
 
   const handleConnect = async (device: BluetoothDevice) => {
     setBtConnecting(device.deviceId);
@@ -88,10 +122,6 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
   const handleBtPrint = async () => {
     setBtPrinting(true);
     try {
-      const customerName = slip.customerId === 'CASH' || !slip.customerId
-        ? 'Counter Sale'
-        : (customers.find(c => c.id === slip.customerId)?.name ?? slip.customerId);
-
       const data: SlipPrintData = {
         token: slip.id.toUpperCase().slice(0, 6),
         date: new Date(slip.date).toLocaleDateString('en-IN'),
@@ -100,10 +130,6 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
         customerName,
         materialType: slip.materialType,
         quantity: `${slip.quantity.toFixed(1)} ${slip.measurementType === 'Volume (Brass)' ? 'Br' : 'T'}`,
-        ratePerUnit: slip.ratePerUnit,
-        totalAmount: slip.totalAmount,
-        amountPaid: slip.amountPaid,
-        operatorName: slip.operatorName,
         companyName: companySettings.name || 'CrushTrack',
         receiptFooter: companySettings.receiptFooter,
       };
@@ -195,29 +221,9 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
                   </td>
                 </tr>
               )}
-              {slip.operatorName && (
-                <tr>
-                  <td className="border border-black p-1 font-bold">Operator</td>
-                  <td className="border border-black p-1">{slip.operatorName}</td>
-                </tr>
-              )}
-              {slip.loaderName && (
-                <tr>
-                  <td className="border border-black p-1 font-bold">Loader</td>
-                  <td className="border border-black p-1">{slip.loaderName}</td>
-                </tr>
-              )}
               <tr>
                 <td className="border border-black p-1 font-bold">Customer</td>
-                <td className="border border-black p-1 font-bold">
-                  {
-                    (() => {
-                      if (slip.customerId === 'CASH' || !slip.customerId) return 'Counter Sale';
-                      const cust = customers.find(c => c.id === slip.customerId);
-                      return cust ? cust.name.slice(0, 12) : slip.customerId;
-                    })()
-                  }
-                </td>
+                <td className="border border-black p-1 font-bold">{customerName}</td>
               </tr>
               <tr>
                 <td className="border border-black p-1 font-bold">Material</td>
@@ -230,26 +236,6 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
                   {slip.measurementType === "Volume (Brass)" ? "Br" : "T"}
                 </td>
               </tr>
-              <tr>
-                <td className="border border-black p-1 font-bold">Rate</td>
-                <td className="border border-black p-1">₹{slip.ratePerUnit.toLocaleString('en-IN', { minimumFractionDigits: 0 })}</td>
-              </tr>
-              <tr>
-                <td className="border border-black p-1 font-bold">Total</td>
-                <td className="border border-black p-1 font-bold">₹{slip.totalAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
-              </tr>
-              {(slip.amountPaid ?? 0) > 0 && (
-                <>
-                  <tr>
-                    <td className="border border-black p-1 font-bold text-green-700">Paid</td>
-                    <td className="border border-black p-1 font-bold text-green-700">₹{slip.amountPaid!.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
-                  </tr>
-                  <tr>
-                    <td className="border border-black p-1 font-bold">Balance</td>
-                    <td className="border border-black p-1 font-bold">₹{Math.max(0, slip.totalAmount - slip.amountPaid!).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
-                  </tr>
-                </>
-              )}
             </tbody>
           </table>
 
@@ -277,15 +263,25 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
           {isNative() && showBtPanel && (
             <div className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg p-3 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Bluetooth Printers</span>
-                <button
-                  onClick={handleBluetoothScan}
-                  disabled={btScanning}
-                  className="text-[10px] text-primary-600 dark:text-primary-400 font-medium disabled:opacity-50 flex items-center gap-1"
-                >
-                  {btScanning && <Loader2 className="w-3 h-3 animate-spin" />}
-                  {btScanning ? 'Scanning…' : 'Scan'}
-                </button>
+                <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                  {btScanning && <Loader2 className="w-3 h-3 animate-spin text-primary-500" />}
+                  Bluetooth Printers
+                </span>
+                {btScanning ? (
+                  <button
+                    onClick={handleCancelScan}
+                    className="text-[10px] text-rose-600 dark:text-rose-400 font-medium px-2 py-0.5 rounded hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleBluetoothScan}
+                    className="text-[10px] text-primary-600 dark:text-primary-400 font-medium"
+                  >
+                    Scan
+                  </button>
+                )}
               </div>
               {btDevices.length === 0 && !btScanning && (
                 <p className="text-[10px] text-zinc-400">Tap Scan to find nearby printers</p>
@@ -321,58 +317,94 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
             </div>
           )}
 
-          <div className="flex gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex">
             {isNative() ? (
               <>
                 <button
                   onClick={() => setShowBtPanel((v) => !v)}
-                  className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-3 md:py-2 rounded-xl font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-center gap-1 active:scale-95"
+                  disabled={isPrinting}
+                  className="min-h-11 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-3 md:py-2 rounded-xl font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-center gap-1 active:scale-95 disabled:opacity-50"
                   title="Bluetooth thermal print"
                 >
                   <Bluetooth className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => {
-                    const el = document.getElementById('print-area');
-                    if (el) {
-                      sharePdf(el, `Slip-${slip.id.slice(0, 8).toUpperCase()}.pdf`, 'Share Loading Token');
+                  disabled={isPrinting}
+                  onClick={async () => {
+                    const filename = `Slip-${slip.id.slice(0, 8).toUpperCase()}.pdf`;
+                    setIsPrinting(true);
+                    try {
+                      const blob = await createSlipPdfBlob(slip, customerName, companySettings);
+                      await sharePdfBlob(blob, filename, 'Share Loading Token');
+                    } finally {
+                      setIsPrinting(false);
                     }
                   }}
-                  className="flex-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-3 md:py-2 rounded-xl font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-center gap-1.5 active:scale-95"
+                  className="min-h-11 flex-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-3 md:py-2 rounded-xl font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50"
                 >
-                  <Share2 className="w-4 h-4" />
-                  Share
+                  {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+                  {isPrinting ? 'Generating…' : 'Share'}
                 </button>
               </>
             ) : (
               <button
-                onClick={() => {
-                  const el = document.getElementById('print-area');
-                  if (el) {
-                    downloadPdf(el, `Slip-${slip.id}.pdf`);
-                    setTimeout(() => onClose(), 500);
+                disabled={isPrinting}
+                onClick={async () => {
+                  const filename = `Slip-${slip.id.slice(0, 8).toUpperCase()}.pdf`;
+                  setIsPrinting(true);
+                  try {
+                    const blob = await createSlipPdfBlob(slip, customerName, companySettings);
+                    await sharePdfBlob(blob, filename);
+                    addToast('success', 'PDF downloaded successfully.');
+                    setTimeout(() => onClose(), 1500);
+                  } catch (err) {
+                    console.error('Slip PDF download failed:', err);
+                    addToast('error', 'Download failed. Please try again.');
+                  } finally {
+                    setIsPrinting(false);
                   }
                 }}
-                className="flex-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-3 md:py-2 rounded-xl font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-center gap-1.5 active:scale-95"
+                className="min-h-11 flex-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 px-3 py-3 md:py-2 rounded-xl font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50"
               >
-                Download
+                {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                {isPrinting ? 'Generating…' : 'Download'}
               </button>
             )}
             <button
-              onClick={() => {
-                const win = window.open('', '_blank');
-                const printContent = document.getElementById('print-area')?.innerHTML;
-                if (printContent) {
-                  openPdfInNewTab(printContent, win);
-                  setTimeout(() => onClose(), 500);
-                } else if (win) {
-                  win.close();
+              type="button"
+              disabled={isPrinting}
+              onClick={handleWhatsAppShare}
+              aria-label="Send slip on WhatsApp"
+              className="min-h-11 flex-1 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-3 py-3 md:py-2 rounded-xl font-semibold text-sm flex items-center justify-center gap-1.5 transition-colors active:scale-95 disabled:opacity-50"
+            >
+              <MessageCircle className="w-4 h-4" />
+              WhatsApp
+            </button>
+            <button
+              disabled={isPrinting}
+              onClick={async () => {
+                const el = document.getElementById('print-area');
+                if (!el) return;
+                if (isNative()) {
+                  const filename = `Slip-${slip.id.slice(0, 8).toUpperCase()}.pdf`;
+                  setIsPrinting(true);
+                  try {
+                    const blob = await createSlipPdfBlob(slip, customerName, companySettings);
+                    await sharePdfBlob(blob, filename, 'Share Loading Token');
+                  } finally {
+                    setIsPrinting(false);
+                  }
+                } else {
+                  // Use iframe print in the current tab — opening a new tab
+                  // causes a freeze when the user cancels the print dialog.
+                  printHtml(el.innerHTML);
+                  onClose();
                 }
               }}
-              className="flex-1 bg-primary-600 hover:bg-primary-700 active:bg-primary-800 text-white px-3 py-3 md:py-2 rounded-xl font-semibold text-sm flex items-center justify-center gap-1.5 transition-colors active:scale-95"
+              className="min-h-11 flex-1 bg-primary-600 hover:bg-primary-700 active:bg-primary-800 text-white px-3 py-3 md:py-2 rounded-xl font-semibold text-sm flex items-center justify-center gap-1.5 transition-colors active:scale-95 disabled:opacity-50"
             >
-              <Printer className="w-4 h-4" />
-              Print
+              {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+              {isPrinting ? 'Generating…' : 'Print'}
             </button>
           </div>
         </div>

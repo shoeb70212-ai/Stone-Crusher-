@@ -10,18 +10,22 @@ import {
   Download,
   Calendar,
   FileText,
+  Loader2,
 } from "lucide-react";
 import { format, parseISO, startOfMonth } from "date-fns";
 import { downloadCSV, downloadLedgerStatementPdf } from "../lib/export-utils";
+import { useToast } from "../components/ui/Toast";
 
 export function Ledger() {
   const { transactions, customers, slips, invoices, companySettings, addTransaction, addCustomer, getCustomerBalance } =
     useErp();
+  const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState<"transactions" | "customers">(
     "transactions",
   );
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [isCustModalOpen, setIsCustModalOpen] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [viewCustomerLedger, setViewCustomerLedger] = useState<Customer | null>(
     null,
   );
@@ -59,11 +63,15 @@ export function Ledger() {
 
   const handleCreateTx = (e: React.FormEvent) => {
     e.preventDefault();
+    const amount = parseFloat(txFormData.amount) || 0;
+    if (amount <= 0) {
+      return; // silently ignore — form validation should prevent this
+    }
     const newTx: Transaction = {
-      id: crypto.randomUUID(),
+      id: "tx_" + crypto.randomUUID(),
       date: new Date().toISOString(),
       type: txFormData.type,
-      amount: Math.round(parseFloat(txFormData.amount) || 0),
+      amount: Math.round(amount),
       category: txFormData.category,
       description: txFormData.description,
       customerId: txFormData.customerId || undefined,
@@ -114,35 +122,39 @@ export function Ledger() {
     .reduce((sum, t) => sum + t.amount, 0);
 
   /** Export the filtered transactions as a CSV file */
-  const handleExportTransactions = () => {
-    downloadCSV(
-      filteredTransactions.map((tx) => {
-        const cust = customers.find((c) => c.id === tx.customerId);
-        return {
-          date: new Date(tx.date).toLocaleDateString(),
-          time: new Date(tx.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          type: tx.type,
-          category: tx.category,
-          description: tx.description,
-          customer: cust?.name || "-",
-          amount: tx.amount,
-        };
-      }),
-      {
-        date: "Date",
-        time: "Time",
-        type: "Type",
-        category: "Category",
-        description: "Description",
-        customer: "Customer",
-        amount: "Amount (₹)",
-      },
-      `Transactions_${txStartDate}_to_${txEndDate}`
-    );
+  const handleExportTransactions = async () => {
+    try {
+      await downloadCSV(
+        filteredTransactions.map((tx) => {
+          const cust = customers.find((c) => c.id === tx.customerId);
+          return {
+            date: new Date(tx.date).toLocaleDateString(),
+            time: new Date(tx.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            type: tx.type,
+            category: tx.category,
+            description: tx.description,
+            customer: cust?.name || "-",
+            amount: tx.amount,
+          };
+        }),
+        {
+          date: "Date",
+          time: "Time",
+          type: "Type",
+          category: "Category",
+          description: "Description",
+          customer: "Customer",
+          amount: "Amount (₹)",
+        },
+        `Transactions_${txStartDate}_to_${txEndDate}`,
+      );
+    } catch (err) {
+      addToast("error", err instanceof Error ? err.message : "Export failed.");
+    }
   };
 
   /** Export the customer ledger statement as a CSV file */
-  const handleExportCustomerCSV = (cust: Customer, entries: Array<{ date: Date; desc: string; debit: number; credit: number }>) => {
+  const handleExportCustomerCSV = async (cust: Customer, entries: Array<{ date: Date; desc: string; debit: number; credit: number }>) => {
     let running = cust.openingBalance;
     const rows = [
       { date: "-", particulars: "Opening Balance", debit: cust.openingBalance > 0 ? cust.openingBalance : "", credit: cust.openingBalance < 0 ? Math.abs(cust.openingBalance) : "", balance: `${Math.abs(cust.openingBalance)} ${cust.openingBalance < 0 ? "Cr" : "Dr"}` },
@@ -157,13 +169,24 @@ export function Ledger() {
         };
       }),
     ];
-    downloadCSV(rows, { date: "Date", particulars: "Particulars", debit: "Debit (₹)", credit: "Credit (₹)", balance: "Balance (₹)" }, `Ledger_${cust.name.replace(/\s+/g, "_")}`);
+    try {
+      await downloadCSV(rows, { date: "Date", particulars: "Particulars", debit: "Debit (₹)", credit: "Credit (₹)", balance: "Balance (₹)" }, `Ledger_${cust.name.replace(/\s+/g, "_")}`);
+    } catch (err) {
+      addToast("error", err instanceof Error ? err.message : "Export failed.");
+    }
   };
 
   /** Download the customer ledger statement as a PDF */
   const handleExportCustomerPDF = async (custName: string) => {
     if (!statementRef.current) return;
-    await downloadLedgerStatementPdf(custName, statementRef.current.innerHTML);
+    setIsExportingPdf(true);
+    try {
+      await downloadLedgerStatementPdf(custName, statementRef.current.innerHTML);
+    } catch {
+      addToast('error', 'PDF export failed. Please try again.');
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
   return (
@@ -746,10 +769,10 @@ export function Ledger() {
         // Collect all entries for this customer
         const allEntries: Array<{ date: Date; desc: string; debit: number; credit: number }> = [];
 
-        // Include both Tallied and Pending slips to match getCustomerBalance,
+        // Include Tallied, Pending, and Loaded slips to match getCustomerBalance,
         // so the running total at the bottom equals the Closing Balance footer.
         slips
-          .filter((s) => s.customerId === viewCustomerLedger.id && (s.status === "Tallied" || s.status === "Pending"))
+          .filter((s) => s.customerId === viewCustomerLedger.id && (s.status === "Tallied" || s.status === "Pending" || s.status === "Loaded"))
           .forEach((s) => {
             allEntries.push({
               date: new Date(s.date),
@@ -785,18 +808,33 @@ export function Ledger() {
 
         allEntries.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-        // Apply optional date filter for the statement
-        const filteredEntries = (stmtStartDate && stmtEndDate)
-          ? allEntries.filter((e) => {
-              const start = new Date(stmtStartDate); start.setHours(0, 0, 0, 0);
-              const end = new Date(stmtEndDate); end.setHours(23, 59, 59, 999);
-              return e.date >= start && e.date <= end;
-            })
-          : allEntries;
+        // Apply optional date filter for the statement.
+        // When a date range is active, the opening balance for the period is
+        // computed from all entries BEFORE the range start so that the running
+        // balance column shows the correct point-in-time value for each row.
+        let periodOpeningBalance = viewCustomerLedger.openingBalance;
+        let filteredEntries = allEntries;
+
+        if (stmtStartDate || stmtEndDate) {
+          const start = stmtStartDate ? new Date(stmtStartDate + 'T00:00:00') : null;
+          const end   = stmtEndDate   ? new Date(stmtEndDate   + 'T23:59:59.999') : null;
+
+          allEntries.forEach((e) => {
+            if (start && e.date < start) {
+              periodOpeningBalance += e.debit - e.credit;
+            }
+          });
+
+          filteredEntries = allEntries.filter((e) => {
+            if (start && e.date < start) return false;
+            if (end   && e.date > end)   return false;
+            return true;
+          });
+        }
 
         // Pre-compute running balance outside JSX so render is idempotent
         // (React may call render multiple times in Concurrent/Strict Mode).
-        let bal = viewCustomerLedger.openingBalance;
+        let bal = periodOpeningBalance;
         const entriesWithBalance = filteredEntries.map((e) => {
           bal = bal + e.debit - e.credit;
           return { ...e, runningBalance: bal };
@@ -850,9 +888,11 @@ export function Ledger() {
                 </button>
                 <button
                   onClick={() => handleExportCustomerPDF(viewCustomerLedger.name)}
-                  className="flex items-center gap-1 px-2.5 py-1 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs font-semibold rounded-lg hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors"
+                  disabled={isExportingPdf}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs font-semibold rounded-lg hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors disabled:opacity-50"
                 >
-                  <FileText className="w-3.5 h-3.5" /> PDF
+                  {isExportingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                  {isExportingPdf ? 'Generating…' : 'PDF'}
                 </button>
               </div>
             </div>
@@ -886,21 +926,21 @@ export function Ledger() {
                   <tr className="border-b border-zinc-50 dark:border-zinc-700/50 bg-zinc-50 dark:bg-zinc-900/50">
                     <td className="px-4 py-3 font-medium text-zinc-900 dark:text-white">-</td>
                     <td className="px-4 py-3 font-medium text-zinc-900 dark:text-white">
-                      Opening Balance
+                      {(stmtStartDate || stmtEndDate) ? "Opening Balance (Period)" : "Opening Balance"}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {viewCustomerLedger.openingBalance > 0
-                        ? viewCustomerLedger.openingBalance.toLocaleString()
+                      {periodOpeningBalance > 0
+                        ? periodOpeningBalance.toLocaleString()
                         : "-"}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {viewCustomerLedger.openingBalance < 0
-                        ? Math.abs(viewCustomerLedger.openingBalance).toLocaleString()
+                      {periodOpeningBalance < 0
+                        ? Math.abs(periodOpeningBalance).toLocaleString()
                         : "-"}
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-zinc-900 dark:text-white">
-                      {Math.abs(viewCustomerLedger.openingBalance).toLocaleString()}{" "}
-                      {viewCustomerLedger.openingBalance < 0 ? "Cr" : "Dr"}
+                      {Math.abs(periodOpeningBalance).toLocaleString()}{" "}
+                      {periodOpeningBalance < 0 ? "Cr" : "Dr"}
                     </td>
                   </tr>
 

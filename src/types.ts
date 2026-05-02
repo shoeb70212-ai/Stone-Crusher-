@@ -98,6 +98,37 @@ export interface UserAccount {
 }
 
 // ---------------------------------------------------------------------------
+// Audit Log
+// ---------------------------------------------------------------------------
+
+/** Entity groups tracked by the admin activity log. */
+export type AuditEntityType =
+  | "Slip"
+  | "Invoice"
+  | "Customer"
+  | "Vehicle"
+  | "Transaction"
+  | "Task"
+  | "Material"
+  | "Settings"
+  | "System";
+
+/** Immutable activity record for important operational changes. */
+export interface AuditLog {
+  id: string;
+  timestamp: string;
+  actorId?: string;
+  actorName: string;
+  actorRole: UserAccount["role"] | "System";
+  action: string;
+  entityType: AuditEntityType;
+  entityId?: string;
+  entityLabel?: string;
+  description: string;
+  metadata?: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
 // Company Settings (singleton)
 // ---------------------------------------------------------------------------
 

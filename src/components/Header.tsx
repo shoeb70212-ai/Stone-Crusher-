@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Bell, Shield, Loader2, AlertTriangle } from "lucide-react";
+import { Bell, Shield, Loader2, AlertTriangle, Sun, Moon, Monitor } from "lucide-react";
 import { format } from "date-fns";
 import { useErp } from "../context/ErpContext";
 
@@ -8,8 +8,15 @@ interface HeaderProps {
 }
 
 export function Header({ onMenuClick }: HeaderProps) {
-  const { userRole, syncStatus } = useErp();
+  const { userRole, syncStatus, companySettings, updateCompanySettings } = useErp();
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
+
+  const theme = companySettings.theme ?? "system";
+  const cycleTheme = () => {
+    const next = theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
+    updateCompanySettings({ ...companySettings, theme: next as "light" | "dark" | "system" });
+  };
+  const ThemeIcon = theme === "dark" ? Moon : theme === "light" ? Sun : Monitor;
 
   return (
     <header className="flex h-12 md:h-16 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-2 md:px-8 items-center justify-between shrink-0 transition-colors z-20 mobile-header">
@@ -25,6 +32,16 @@ export function Header({ onMenuClick }: HeaderProps) {
 
       {/* Right actions */}
       <div className="flex items-center gap-1 md:gap-3 shrink-0">
+
+        {/* Theme toggle — cycles light → dark → system */}
+        <button
+          onClick={cycleTheme}
+          title={`Theme: ${theme}. Click to cycle.`}
+          className="p-2 rounded-xl text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors active:scale-95"
+          aria-label={`Switch theme (current: ${theme})`}
+        >
+          <ThemeIcon className="w-5 h-5" />
+        </button>
 
         {/* Notifications */}
         <button className="relative p-2 rounded-xl text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors active:scale-95">

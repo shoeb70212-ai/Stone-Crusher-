@@ -1,9 +1,16 @@
-import React, { useEffect, useRef } from "react";
+import React, { useRef, useEffect } from "react";
 import { X } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { useBodyScrollLock } from "../../lib/use-body-scroll-lock";
 
-// Module-level counter so nested/concurrent modals don't fight over body scroll.
-let openModalCount = 0;
+const FOCUSABLE = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
 
 interface MobileModalProps {
   isOpen: boolean;
@@ -16,6 +23,10 @@ interface MobileModalProps {
   headerRight?: React.ReactNode;
   /** Max width on desktop – defaults to max-w-2xl */
   maxWidth?: string;
+  mobileMode?: "compactSheet" | "taskSheet" | "previewSheet";
+  footer?: React.ReactNode;
+  bodyClassName?: string;
+  panelClassName?: string;
 }
 
 /** Static map so Tailwind JIT can statically analyse all md:max-w-* classes. */
@@ -41,27 +52,21 @@ export function MobileModal({
   headerRight,
   children,
   maxWidth = "max-w-2xl",
+  mobileMode = "taskSheet",
+  footer,
+  bodyClassName,
+  panelClassName,
 }: MobileModalProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
   const mdMaxWidth = MD_MAX_WIDTH[maxWidth] ?? "md:max-w-2xl";
 
-  // Lock body scroll when open, using a counter so concurrent modals don't
-  // prematurely re-enable scroll when one of them closes.
+  useBodyScrollLock(isOpen);
+
   useEffect(() => {
-    if (isOpen) {
-      openModalCount++;
-      document.body.style.overflow = "hidden";
-    }
-    return () => {
-      if (isOpen) {
-        openModalCount--;
-        if (openModalCount <= 0) {
-          openModalCount = 0;
-          document.body.style.overflow = "";
-        }
-      }
-    };
-  }, [isOpen]);
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   // Reset scroll position when re-opened
   useEffect(() => {
@@ -70,7 +75,53 @@ export function MobileModal({
     }
   }, [isOpen]);
 
+  // Focus trap: save/restore focus and intercept Tab when open.
+  useEffect(() => {
+    if (!isOpen) return;
+    const previously = document.activeElement as HTMLElement | null;
+
+    const focusTimer = window.setTimeout(() => {
+      const firstBodyControl = scrollRef.current?.querySelector<HTMLElement>(FOCUSABLE);
+      const firstPanelControl = panelRef.current?.querySelector<HTMLElement>(FOCUSABLE);
+      (firstBodyControl ?? firstPanelControl)?.focus({ preventScroll: true });
+    }, 0);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onCloseRef.current();
+        return;
+      }
+      const panel = panelRef.current;
+      if (e.key !== 'Tab' || !panel) return;
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener('keydown', handleKeyDown);
+      if (previously && document.contains(previously)) {
+        previously.focus({ preventScroll: true });
+      }
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  const mobilePanelClass =
+    mobileMode === "compactSheet"
+      ? "w-full rounded-t-2xl max-h-[76dvh]"
+      : mobileMode === "previewSheet"
+        ? "w-full h-[100dvh] max-h-[100dvh] rounded-none"
+        : "w-full rounded-t-2xl max-h-[92dvh]";
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end md:justify-center md:items-center md:p-4 overflow-hidden">
@@ -82,12 +133,16 @@ export function MobileModal({
 
       {/* Sheet / Modal */}
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mobile-modal-title"
         className={cn(
           "relative flex flex-col bg-white dark:bg-zinc-900 shadow-2xl",
-          // Mobile: bottom sheet - use maxWidth but can be narrower
-          "rounded-t-2xl max-h-[92dvh] w-full max-w-[90vw]",
+          mobilePanelClass,
           // Desktop: centred modal
           `md:rounded-2xl md:max-h-[90vh] md:w-auto ${mdMaxWidth}`,
+          panelClassName,
         )}
       >
         {/* Drag handle – mobile only */}
@@ -98,7 +153,7 @@ export function MobileModal({
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 md:px-6 md:py-4 border-b border-zinc-100 dark:border-zinc-700/70 bg-zinc-50/80 dark:bg-zinc-900/80 shrink-0 md:rounded-t-2xl">
           <div className="flex-1 min-w-0 pr-3">
-            <h3 className="text-base md:text-lg font-bold text-zinc-900 dark:text-white truncate">
+            <h3 id="mobile-modal-title" className="text-base md:text-lg font-bold text-zinc-900 dark:text-white truncate">
               {title}
             </h3>
             {subtitle && (
@@ -122,10 +177,15 @@ export function MobileModal({
         {/* Scrollable body */}
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto overscroll-contain"
+          className={cn("flex-1 overflow-y-auto overscroll-contain", bodyClassName)}
         >
           {children}
         </div>
+        {footer && (
+          <div className="shrink-0 border-t border-zinc-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:p-4 md:pb-4">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );

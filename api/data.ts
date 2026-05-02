@@ -13,6 +13,37 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 const RATE_LIMIT = 100; // Conservative limit for serverless
 
+// Allowed origins — Vercel deployment + local dev
+const ALLOWED_ORIGINS = new Set([
+  'https://stone-crusher.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:8081',
+]);
+
+// Allowed table names — prevents SQL injection via dynamic table routing
+const TABLE_NAMES: Record<string, string> = {
+  customers: 'customers',
+  vehicles: 'vehicles',
+  slips: 'slips',
+  transactions: 'transactions',
+  invoices: 'invoices',
+  tasks: 'tasks',
+  auditLogs: 'audit_logs',
+};
+
+const ALLOWED_TABLES = new Set(Object.keys(TABLE_NAMES));
+
+function dbTableName(table: string): string | null {
+  return TABLE_NAMES[table] ?? null;
+}
+
+function getCorsOrigin(req: VercelRequest): string {
+  const origin = req.headers['origin'] as string | undefined;
+  // Capacitor apps have no Origin header — allow them through.
+  if (!origin) return '*';
+  return ALLOWED_ORIGINS.has(origin) ? origin : 'null';
+}
+
 function getRateLimitKey(req: VercelRequest): string {
   return `rate_${(req.headers['x-forwarded-for'] as string || req.headers['client-ip'] || 'unknown').split(',')[0].trim()}`;
 }
@@ -161,6 +192,20 @@ async function initDb() {
         "createdAt" TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id            TEXT PRIMARY KEY,
+        timestamp     TEXT,
+        "actorId"     TEXT,
+        "actorName"   TEXT,
+        "actorRole"   TEXT,
+        action        TEXT,
+        "entityType"  TEXT,
+        "entityId"    TEXT,
+        "entityLabel" TEXT,
+        description   TEXT,
+        metadata      JSONB
+      );
+
       CREATE TABLE IF NOT EXISTS settings (
         id    TEXT PRIMARY KEY,
         data  JSONB
@@ -180,6 +225,8 @@ async function initDb() {
       'ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN DEFAULT TRUE',
       // v3: invoices gained slipIds to link source dispatch slips
       'ALTER TABLE invoices ADD COLUMN IF NOT EXISTS "slipIds" JSONB',
+      // v4: slips gained attachmentUri for scanned document photos
+      'ALTER TABLE slips ADD COLUMN IF NOT EXISTS "attachmentUri" TEXT',
     ];
 
     for (const sql of migrations) {
@@ -242,6 +289,7 @@ function parseJsonField<T>(value: T | string): T {
  * Object/array values are auto-serialised to JSON for JSONB columns.
  */
 async function upsertRecord(client: PoolClient, table: string, item: Record<string, any>) {
+  // table is validated against ALLOWED_TABLES before this function is called
   const keys = Object.keys(item);
   const columns = keys.map((k) => `"${k}"`).join(", ");
   const placeholders = keys.map((_, i) => `$${i + 1}`).join(", ");
@@ -255,6 +303,7 @@ async function upsertRecord(client: PoolClient, table: string, item: Record<stri
       ? `ON CONFLICT (id) DO UPDATE SET ${updateCols.map((k) => `"${k}" = EXCLUDED."${k}"`).join(", ")}`
       : "ON CONFLICT (id) DO NOTHING";
 
+  // Safe: table name is allowlisted before reaching here
   await client.query(`INSERT INTO ${table} (${columns}) VALUES (${placeholders}) ${updateClause}`, values);
 }
 
@@ -263,13 +312,15 @@ async function upsertRecord(client: PoolClient, table: string, item: Record<stri
 // ---------------------------------------------------------------------------
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS headers — required for cross-origin fetch from the SPA
+  // CORS — locked to known origins; Capacitor native (no Origin) gets wildcard
+  const corsOrigin = getCorsOrigin(req);
   res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,PATCH,DELETE,POST,PUT");
+  res.setHeader("Access-Control-Allow-Origin", corsOrigin);
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,PATCH,POST");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version",
+    "Accept, Content-Type, Content-Length, X-Requested-With",
   );
 
   if (req.method === "OPTIONS") {
@@ -298,7 +349,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // -----------------------------------------------------------------------
   if (req.method === "GET") {
     try {
-      const [customersRes, vehiclesRes, slipsRes, transactionsRes, invoicesRes, tasksRes, settingsRes] =
+      const [customersRes, vehiclesRes, slipsRes, transactionsRes, invoicesRes, tasksRes, auditLogsRes, settingsRes] =
         await Promise.all([
           pool.query("SELECT * FROM customers"),
           pool.query("SELECT * FROM vehicles"),
@@ -306,6 +357,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           pool.query("SELECT * FROM transactions"),
           pool.query("SELECT * FROM invoices"),
           pool.query("SELECT * FROM tasks"),
+          pool.query("SELECT * FROM audit_logs ORDER BY timestamp DESC"),
           pool.query("SELECT data FROM settings WHERE id = $1", ["global"]),
         ]);
 
@@ -332,6 +384,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         tasks: tasksRes.rows.map((t) => ({
           ...t,
           completed: !!t.completed,
+        })),
+        auditLogs: auditLogsRes.rows.map((log) => ({
+          ...log,
+          metadata: log.metadata ? parseJsonField(log.metadata) : undefined,
         })),
         companySettings: settingsRes.rows[0]?.data
           ? parseJsonField(settingsRes.rows[0].data)
@@ -369,8 +425,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             continue;
           }
 
+          // Reject unknown table names — prevents prototype pollution + SQL injection
+          if (!ALLOWED_TABLES.has(table)) continue;
+          const dbTable = dbTableName(table);
+          if (!dbTable) continue;
+
           for (const item of items as any[]) {
-            await upsertRecord(client, table, item);
+            await upsertRecord(client, dbTable, item);
           }
         }
       }
@@ -378,10 +439,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Hard deletes
       if (deletions) {
         for (const [table, ids] of Object.entries(deletions)) {
+          // Allowlist check — table name is used directly in SQL string
+          if (!ALLOWED_TABLES.has(table)) continue;
+          const dbTable = dbTableName(table);
+          if (!dbTable) continue;
           const idList = ids as string[];
           if (!idList || idList.length === 0) continue;
           const placeholders = idList.map((_, i) => `$${i + 1}`).join(", ");
-          await client.query(`DELETE FROM ${table} WHERE id IN (${placeholders})`, idList);
+          await client.query(`DELETE FROM ${dbTable} WHERE id IN (${placeholders})`, idList);
         }
       }
 
@@ -400,7 +465,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // POST — Full overwrite (used by the Backup-Restore feature)
   // -----------------------------------------------------------------------
   if (req.method === "POST") {
-    const { customers, slips, transactions, vehicles, invoices, tasks, companySettings } = req.body;
+    const { customers, slips, transactions, vehicles, invoices, tasks, auditLogs, companySettings } = req.body;
     const client = await pool.connect();
 
     try {
@@ -455,6 +520,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           'INSERT INTO tasks (id, title, completed, "createdAt") VALUES ($1, $2, $3, $4)',
           [t.id, t.title, !!t.completed, t.createdAt],
         );
+      }
+
+      await client.query("DELETE FROM audit_logs");
+      for (const log of auditLogs || []) {
+        await upsertRecord(client, "audit_logs", log);
       }
 
       if (companySettings) {

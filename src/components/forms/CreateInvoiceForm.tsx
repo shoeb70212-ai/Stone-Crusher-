@@ -5,59 +5,33 @@ import { Combobox } from "../ui/Combobox";
 import { Plus, Trash2 } from "lucide-react";
 
 export function CreateInvoiceForm({ onSuccess }: { onSuccess: (invoice?: Invoice) => void }) {
-  const { invoices, customers, addInvoice, addCustomer, slips, updateSlip } = useErp();
+  const { invoices, customers, addInvoice, addCustomer, slips, updateSlip, companySettings } = useErp();
   const [billedSlips, setBilledSlips] = useState<string[]>([]);
 
-  const materials = [
-    {
-      id: 1,
-      name: "10mm",
-      defaultPrice: 450,
-      unit: "Ton",
-      hsnCode: "25171010",
-      gstRate: 5,
-    },
-    {
-      id: 2,
-      name: "20mm",
-      defaultPrice: 480,
-      unit: "Ton",
-      hsnCode: "25171010",
-      gstRate: 5,
-    },
-    {
-      id: 3,
-      name: "40mm",
-      defaultPrice: 400,
-      unit: "Ton",
-      hsnCode: "25171010",
-      gstRate: 5,
-    },
-    {
-      id: 4,
-      name: "Dust",
-      defaultPrice: 350,
-      unit: "Ton",
-      hsnCode: "25171010",
-      gstRate: 5,
-    },
-    {
-      id: 5,
-      name: "GSB",
-      defaultPrice: 300,
-      unit: "Ton",
-      hsnCode: "25171020",
-      gstRate: 5,
-    },
-    {
-      id: 6,
-      name: "Boulders",
-      defaultPrice: 250,
-      unit: "Ton",
-      hsnCode: "25169090",
-      gstRate: 5,
-    },
+  const FALLBACK_MATERIALS = [
+    { id: 1, name: "10mm", defaultPrice: 450, unit: "Ton", hsnCode: "25171010", gstRate: 5 },
+    { id: 2, name: "20mm", defaultPrice: 480, unit: "Ton", hsnCode: "25171010", gstRate: 5 },
+    { id: 3, name: "40mm", defaultPrice: 400, unit: "Ton", hsnCode: "25171010", gstRate: 5 },
+    { id: 4, name: "Dust", defaultPrice: 350, unit: "Ton", hsnCode: "25171010", gstRate: 5 },
+    { id: 5, name: "GSB", defaultPrice: 300, unit: "Ton", hsnCode: "25171020", gstRate: 5 },
+    { id: 6, name: "Boulders", defaultPrice: 250, unit: "Ton", hsnCode: "25169090", gstRate: 5 },
   ];
+
+  const materials = React.useMemo(() => {
+    if (companySettings.materials && companySettings.materials.length > 0) {
+      return companySettings.materials
+        .filter((m) => m.isActive !== false)
+        .map((m, idx) => ({
+          id: (m.id as unknown as number) || idx + 1,
+          name: m.name,
+          defaultPrice: m.defaultPrice || 0,
+          unit: m.unit || "Ton",
+          hsnCode: m.hsnCode || "25171010",
+          gstRate: m.gstRate || 5,
+        }));
+    }
+    return FALLBACK_MATERIALS;
+  }, [companySettings.materials]);
 
   const getNextNo = (type: "GST" | "Cash") => {
     const today = new Date();
@@ -250,7 +224,10 @@ export function CreateInvoiceForm({ onSuccess }: { onSuccess: (invoice?: Invoice
       }
     });
 
-    const total = subTotal + cgst + sgst;
+    // Round tax components to 2dp so printed CGST + SGST always sums to total - subTotal.
+    cgst = Math.round(cgst * 100) / 100;
+    sgst = Math.round(sgst * 100) / 100;
+    const total = Math.round(subTotal + cgst + sgst);
 
     const invoice: Invoice = {
       id: "inv_" + crypto.randomUUID(),

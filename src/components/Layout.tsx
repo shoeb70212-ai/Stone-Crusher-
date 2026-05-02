@@ -1,29 +1,44 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
-import { Dashboard } from "../pages/Dashboard";
-import { Dispatch } from "../pages/Dispatch";
-import { Ledger } from "../pages/Ledger";
-import { Vehicles } from "../pages/Vehicles";
-import { Customers } from "../pages/Customers";
-import { Daybook } from "../pages/Daybook";
-import { Settings } from "../pages/Settings";
-import { Invoices } from "../pages/Invoices";
+import { PageSkeleton } from "./ui/Skeleton";
+
+const Dashboard = lazy(() => import("../pages/Dashboard").then(m => ({ default: m.Dashboard })));
+const Dispatch = lazy(() => import("../pages/Dispatch").then(m => ({ default: m.Dispatch })));
+const Ledger = lazy(() => import("../pages/Ledger").then(m => ({ default: m.Ledger })));
+const Vehicles = lazy(() => import("../pages/Vehicles").then(m => ({ default: m.Vehicles })));
+const Customers = lazy(() => import("../pages/Customers").then(m => ({ default: m.Customers })));
+const Daybook = lazy(() => import("../pages/Daybook").then(m => ({ default: m.Daybook })));
+const Settings = lazy(() => import("../pages/Settings").then(m => ({ default: m.Settings })));
+const Invoices = lazy(() => import("../pages/Invoices").then(m => ({ default: m.Invoices })));
+const AuditLog = lazy(() => import("../pages/AuditLog").then(m => ({ default: m.AuditLog })));
 import { Menu, ShieldAlert } from "lucide-react";
 import { useErp } from "../context/ErpContext";
-import { PageSkeleton } from "./ui/Skeleton";
 import { isNative } from "../lib/capacitor";
 
 /** Valid view names used by deep links and app shortcuts. */
 const VALID_VIEWS = new Set([
   'dashboard', 'dispatch', 'invoices', 'customers',
-  'daybook', 'ledger', 'vehicles', 'settings',
+  'daybook', 'ledger', 'vehicles', 'settings', 'audit',
 ]);
+
+/** Pages dispatch this event to trigger navigation without prop-drilling. */
+export const NAVIGATE_EVENT = "crushtrack:navigate";
 
 export function Layout() {
   const [currentView, setCurrentView] = useState("dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { userRole, companySettings, isLoading } = useErp();
+
+  // Listen for navigation events from child pages (e.g. Dashboard stat cards)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const view = (e as CustomEvent<string>).detail;
+      if (VALID_VIEWS.has(view)) setCurrentView(view);
+    };
+    window.addEventListener(NAVIGATE_EVENT, handler);
+    return () => window.removeEventListener(NAVIGATE_EVENT, handler);
+  }, []);
 
   // Register home screen shortcuts (long-press app icon on Android / iOS)
   useEffect(() => {
@@ -67,6 +82,26 @@ export function Layout() {
       }).catch(() => {});
     });
   }, []);
+
+  // Android hardware back button — navigate to dashboard instead of exiting app
+  useEffect(() => {
+    if (!isNative()) return;
+    let removeListener: (() => void) | undefined;
+
+    import('@capacitor/app').then(({ App }) => {
+      App.addListener('backButton', () => {
+        if (currentView !== 'dashboard') {
+          setCurrentView('dashboard');
+        } else {
+          App.exitApp();
+        }
+      }).then((handle) => {
+        removeListener = () => handle.remove();
+      });
+    });
+
+    return () => removeListener?.();
+  }, [currentView]);
 
   // Deep link handler — listens for crushtrack://view/<name> URLs
   useEffect(() => {
@@ -137,6 +172,9 @@ export function Layout() {
     if (userRole === "Partner" && currentView === "settings") {
       setCurrentView("dashboard");
     }
+    if (userRole !== "Admin" && currentView === "audit") {
+      setCurrentView("dashboard");
+    }
   }, [userRole, currentView]);
 
   let content = null;
@@ -185,6 +223,19 @@ export function Layout() {
         content = <Settings />;
       }
       break;
+    case "audit":
+      if (userRole !== "Admin") {
+        content = (
+          <div className="flex flex-col items-center justify-center h-full text-zinc-500">
+            <ShieldAlert className="w-12 h-12 mb-4 text-rose-400" />
+            <h2 className="text-xl font-bold text-zinc-900">Access Denied</h2>
+            <p>Only Admins can view audit logs.</p>
+          </div>
+        );
+      } else {
+        content = <AuditLog />;
+      }
+      break;
     default:
       content = <Dashboard />;
   }
@@ -200,7 +251,9 @@ export function Layout() {
       <div className="flex-1 flex flex-col min-h-0 w-full relative min-w-0">
         <Header onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
         <main className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-4 lg:p-6 md:pb-6 app-content smooth-scroll has-bottom-nav">
-          {isLoading ? <PageSkeleton /> : content}
+          <Suspense fallback={<PageSkeleton />}>
+            {isLoading ? <PageSkeleton /> : content}
+          </Suspense>
         </main>
       </div>
     </div>
