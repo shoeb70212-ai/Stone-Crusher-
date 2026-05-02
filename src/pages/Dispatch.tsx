@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useErp } from "../context/ErpContext";
+import { CREATE_EVENT } from "../components/Layout";
 import { Slip } from "../types";
 import { format, parseISO } from "date-fns";
 import {
@@ -83,6 +84,13 @@ export function Dispatch() {
 
   // Reset to first page whenever filters change
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [filteredSlips.length]);
+
+  // Bottom-nav FAB fires this event to open the create modal
+  useEffect(() => {
+    const handler = () => setIsCreateOpen(true);
+    window.addEventListener(CREATE_EVENT, handler);
+    return () => window.removeEventListener(CREATE_EVENT, handler);
+  }, []);
 
   // Infinite scroll sentinel — loads next page when bottom of list comes into view
   useEffect(() => {
@@ -694,7 +702,7 @@ export function Dispatch() {
                     >
                       <td className="px-4 py-4 whitespace-nowrap">
                         <p className="font-semibold text-zinc-900 dark:text-white">
-                          #{slip.id}
+                          #{slip.id.slice(0, 8)}
                         </p>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">
                           {new Date(slip.date).toLocaleTimeString([], {
@@ -810,15 +818,6 @@ export function Dispatch() {
         </div>
       </div>
 
-      {/* ── Mobile FAB ── Optimized for thumb zone with safe area */}
-      <button
-        onClick={() => { tap(); setIsCreateOpen(true); }}
-        className="md:hidden fixed right-4 bottom-[calc(84px+env(safe-area-inset-bottom))] w-14 h-14 bg-primary-600 text-white hover:bg-primary-700 active:scale-90 shadow-lg shadow-primary-500/30 flex items-center justify-center rounded-full z-40"
-        aria-label="Create Slip"
-      >
-        <Plus className="w-7 h-7" />
-      </button>
-
       {/* ── Filter bottom sheet (mobile) ── */}
       <MobileFilterSheet
         isOpen={isFilterOpen}
@@ -847,7 +846,7 @@ export function Dispatch() {
         onClose={() => setEditingSlip(null)}
         title="Edit Dispatch Slip"
         mobileMode="taskSheet"
-        subtitle={editingSlip ? `#${editingSlip.id} · ${editingSlip.vehicleNo}` : undefined}
+        subtitle={editingSlip ? `#${editingSlip.id.slice(0, 8)} · ${editingSlip.vehicleNo}` : undefined}
       >
         {editingSlip && (
           <EditSlipForm

@@ -22,6 +22,8 @@ export interface Vehicle {
   driverPhone?: string;
   /** Determines which measurement panel the slip form opens by default. */
   defaultMeasurementType: MeasurementType;
+  /** Preferred delivery mode for this vehicle, pre-fills the slip form. */
+  defaultDeliveryMode?: DeliveryMode;
   /** Saved dimensions used to pre-fill the slip form for this vehicle. */
   measurement: VehicleMeasurement;
   isActive?: boolean;
@@ -40,6 +42,26 @@ export interface Customer {
    * Negative = advance paid / credit balance.
    */
   openingBalance: number;
+  isActive?: boolean;
+}
+
+/** An employee account that tracks salary, advances, deductions, and payables. */
+export interface Employee {
+  id: string;
+  name: string;
+  phone?: string;
+  role?: string;
+  address?: string;
+  joiningDate?: string;
+  salaryType: "Weekly" | "Monthly";
+  salaryAmount: number;
+  /**
+   * Carried-forward employee balance from prior period.
+   * Positive = salary/payable owed to employee.
+   * Negative = advance/recoverable balance owed back to company.
+   */
+  openingBalance: number;
+  notes?: string;
   isActive?: boolean;
 }
 
@@ -70,6 +92,33 @@ export type MeasurementType = "Volume (Brass)" | "Weight (Tonnes)";
 
 /** Direction of a financial transaction in the Daybook / Ledger. */
 export type TransactionType = "Income" | "Expense";
+
+/** Employee ledger entry types. */
+export type EmployeeTransactionType =
+  | "Salary Earned"
+  | "Salary Paid"
+  | "Advance Given"
+  | "Advance Returned"
+  | "Deduction"
+  | "Bonus / Allowance"
+  | "Reimbursement"
+  | "Adjustment Credit"
+  | "Adjustment Debit";
+
+/** Salary/advance/deduction event linked to one employee. */
+export interface EmployeeTransaction {
+  id: string;
+  employeeId: string;
+  date: string;
+  type: EmployeeTransactionType;
+  amount: number;
+  description: string;
+  /** Optional yyyy-MM pay period for salary and deduction entries. */
+  period?: string;
+  paymentMode?: "Cash" | "Bank" | "UPI" | "Cheque" | "Adjustment";
+  /** Daybook transaction created for cash movements such as salary paid or advance given. */
+  linkedTransactionId?: string;
+}
 
 // ---------------------------------------------------------------------------
 // Material & User (sub-records of CompanySettings)
@@ -106,6 +155,8 @@ export type AuditEntityType =
   | "Slip"
   | "Invoice"
   | "Customer"
+  | "Employee"
+  | "EmployeeTransaction"
   | "Vehicle"
   | "Transaction"
   | "Task"

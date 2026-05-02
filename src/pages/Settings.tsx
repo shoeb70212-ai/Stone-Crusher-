@@ -152,6 +152,8 @@ export function Settings() {
     if (!content) return;
     try {
       const data = JSON.parse(content);
+      data.employees = Array.isArray(data.employees) ? data.employees : [];
+      data.employeeTransactions = Array.isArray(data.employeeTransactions) ? data.employeeTransactions : [];
       const API_URL = import.meta.env.VITE_API_URL || "";
       const apiKey = import.meta.env.VITE_API_KEY as string | undefined;
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -171,7 +173,7 @@ export function Settings() {
 
   const handleInviteUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (inviteFormData.password.length < 6) { addToast("error", "Password must be at least 6 characters."); return; }
+    if (inviteFormData.password.length < 8) { addToast("error", "Password must be at least 8 characters."); return; }
     const name = inviteFormData.name.trim();
     const email = inviteFormData.email.trim().toLowerCase();
     if (!name) { addToast("error", "Full name is required."); return; }
@@ -196,7 +198,7 @@ export function Settings() {
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (changePasswordData.next.length < 6) { addToast("error", "New password must be at least 6 characters."); return; }
+    if (changePasswordData.next.length < 8) { addToast("error", "New password must be at least 8 characters."); return; }
     if (changePasswordData.next !== changePasswordData.confirm) { addToast("error", "New passwords do not match."); return; }
     setChangePasswordSubmitting(true);
     try {
@@ -223,7 +225,7 @@ export function Settings() {
   const handleAdminResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!resetTargetId) return;
-    if (resetPasswordValue.length < 6) { addToast("error", "Password must be at least 6 characters."); return; }
+    if (resetPasswordValue.length < 8) { addToast("error", "Password must be at least 8 characters."); return; }
     setResetPasswordSubmitting(true);
     try {
       const newHash = await hashPassword(resetPasswordValue);
@@ -251,20 +253,20 @@ export function Settings() {
         </div>
 
         {/* Tab bar */}
-        <div className="flex space-x-1 border-b border-zinc-200 dark:border-zinc-700 overflow-x-auto hide-scrollbar">
+        <div className="grid grid-cols-3 md:flex md:space-x-1 border-b border-zinc-200 dark:border-zinc-700">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
               aria-current={activeTab === id ? "page" : undefined}
-              className={`flex items-center px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+              className={`flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-0 px-2 md:px-4 py-2.5 md:py-3 text-xs md:text-sm font-medium border-b-2 transition-colors text-center md:whitespace-nowrap ${
                 activeTab === id
                   ? "border-primary-500 text-primary-600 dark:text-primary-400"
                   : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:border-zinc-300"
               }`}
             >
-              <Icon className="w-4 h-4 mr-2" />
-              {label}
+              <Icon className="w-4 h-4 md:mr-2 shrink-0" />
+              <span>{label}</span>
             </button>
           ))}
         </div>

@@ -8,8 +8,20 @@ import {
   useMemo,
   ReactNode,
 } from "react";
-import { Customer, Slip, Transaction, Vehicle, Invoice, CompanySettings, Task, AuditLog } from "../types";
+import {
+  Customer,
+  Employee,
+  EmployeeTransaction,
+  Slip,
+  Transaction,
+  Vehicle,
+  Invoice,
+  CompanySettings,
+  Task,
+  AuditLog,
+} from "../types";
 import { isNative } from "../lib/capacitor";
+import { getEmployeeTransactionImpact } from "../lib/employee-ledger";
 
 // ---------------------------------------------------------------------------
 // API helpers
@@ -40,6 +52,8 @@ type AuditLogInput = Omit<AuditLog, "id" | "timestamp" | "actorId" | "actorName"
 interface ErpState {
   // Data collections
   customers: Customer[];
+  employees: Employee[];
+  employeeTransactions: EmployeeTransaction[];
   slips: Slip[];
   transactions: Transaction[];
   vehicles: Vehicle[];
@@ -64,6 +78,14 @@ interface ErpState {
   updateCustomer: (customer: Customer) => void;
   /** Soft-deletes: sets `isActive: false` to preserve ledger history. */
   deleteCustomer: (id: string) => void;
+
+  // Employee CRUD
+  addEmployee: (employee: Employee) => void;
+  updateEmployee: (employee: Employee) => void;
+  /** Soft-deletes: sets `isActive: false` to preserve salary/advance history. */
+  deleteEmployee: (id: string) => void;
+  addEmployeeTransaction: (transaction: EmployeeTransaction) => void;
+  deleteEmployeeTransaction: (id: string) => void;
 
   // Vehicle CRUD
   addVehicle: (vehicle: Vehicle) => void;
@@ -92,6 +114,7 @@ interface ErpState {
 
   // Derived / utilities
   getCustomerBalance: (customerId: string) => number;
+  getEmployeeBalance: (employeeId: string) => number;
   /** Hard-deletes soft-deleted customers & vehicles that have no financial history.
    *  Returns counts of purged and skipped (orphan-protected) records. */
   purgeInactiveRecords: () => { purged: number; skipped: number };
@@ -150,6 +173,8 @@ const isManagerOrAbove = (role: UserRole) => role === "Admin" || role === "Manag
 export function ErpProvider({ children }: { children: ReactNode }) {
   // ---- Core state (initialised empty; hydrated from server on mount) ------
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employeeTransactions, setEmployeeTransactions] = useState<EmployeeTransaction[]>([]);
   const [slips, setSlips] = useState<Slip[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -185,6 +210,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         if (!res.ok) throw new Error(`Failed to load API data: HTTP ${res.status}`);
         const data = await res.json();
         if (data.customers) setCustomers(data.customers);
+        if (data.employees) setEmployees(data.employees);
+        if (data.employeeTransactions) setEmployeeTransactions(data.employeeTransactions);
         if (data.slips) setSlips(data.slips);
         if (data.transactions) setTransactions(data.transactions);
         if (data.vehicles) setVehicles(data.vehicles);
@@ -200,6 +227,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
           try {
             const data = JSON.parse(saved);
             if (data.customers) setCustomers(data.customers);
+            if (data.employees) setEmployees(data.employees);
+            if (data.employeeTransactions) setEmployeeTransactions(data.employeeTransactions);
             if (data.slips) setSlips(data.slips);
             if (data.transactions) setTransactions(data.transactions);
             if (data.vehicles) setVehicles(data.vehicles);
@@ -222,7 +251,17 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   // Delta-Sync Queue — batches mutations and PATCHes them to the server
   // -----------------------------------------------------------------------
 
-  type QueueItem = Customer | Slip | Transaction | Vehicle | Invoice | Task | AuditLog | CompanySettings;
+  type QueueItem =
+    | Customer
+    | Employee
+    | EmployeeTransaction
+    | Slip
+    | Transaction
+    | Vehicle
+    | Invoice
+    | Task
+    | AuditLog
+    | CompanySettings;
 
   const syncQueueRef = useRef<{
     updates: Record<string, unknown[]> & { companySettings?: CompanySettings };
@@ -357,10 +396,33 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     backupTimeoutRef.current = setTimeout(() => {
       localStorage.setItem(
         LOCAL_BACKUP_KEY,
-        JSON.stringify({ customers, slips, transactions, vehicles, invoices, tasks, auditLogs, companySettings }),
+        JSON.stringify({
+          customers,
+          employees,
+          employeeTransactions,
+          slips,
+          transactions,
+          vehicles,
+          invoices,
+          tasks,
+          auditLogs,
+          companySettings,
+        }),
       );
     }, 5000);
-  }, [customers, slips, transactions, vehicles, invoices, tasks, auditLogs, companySettings, isLoading]);
+  }, [
+    customers,
+    employees,
+    employeeTransactions,
+    slips,
+    transactions,
+    vehicles,
+    invoices,
+    tasks,
+    auditLogs,
+    companySettings,
+    isLoading,
+  ]);
 
   // -----------------------------------------------------------------------
   // Network reconnect — flush queued mutations as soon as connectivity returns
@@ -581,9 +643,12 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   // Company Settings & Materials
   // -----------------------------------------------------------------------
 
-  /** Persists the full settings object, ensuring every material has `isActive`. */
+  /** Persists the full settings object, ensuring every material has `isActive`.
+   *  Bypasses the Admin role guard when called during first-run setup (no users
+   *  exist yet), so the initial admin account can always be saved. */
   const updateCompanySettings = useCallback(async (settings: CompanySettings): Promise<boolean> => {
-    if (!isAdmin(userRole)) return false;
+    const isFirstRunSetup = !companySettings.users || companySettings.users.length === 0;
+    if (!isAdmin(userRole) && !isFirstRunSetup) return false;
     const normalised = {
       ...settings,
       materials: (settings.materials || []).map((m) => ({
@@ -679,6 +744,114 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       description: `Deactivated customer ${customer.name}.`,
     });
   }, [userRole, customers, queueUpdate, recordAudit]);
+
+  // -----------------------------------------------------------------------
+  // Employee CRUD
+  // -----------------------------------------------------------------------
+
+  /** Appends a new employee to the salary/advance ledger. */
+  const addEmployee = useCallback((employee: Employee) => {
+    if (!isAdmin(userRole)) return;
+    const normalised = { ...employee, isActive: employee.isActive ?? true };
+    setEmployees((prev) => [...prev, normalised]);
+    queueUpdate("employees", normalised);
+    recordAudit({
+      action: "Created employee",
+      entityType: "Employee",
+      entityId: normalised.id,
+      entityLabel: normalised.name,
+      description: `Created employee ${normalised.name}.`,
+      metadata: {
+        role: normalised.role || undefined,
+        salaryType: normalised.salaryType,
+        salaryAmount: normalised.salaryAmount,
+        openingBalance: normalised.openingBalance,
+      },
+    });
+  }, [userRole, queueUpdate, recordAudit]);
+
+  /** Replaces an employee master record in-place by ID. */
+  const updateEmployee = useCallback((employee: Employee) => {
+    if (!isAdmin(userRole)) return;
+    const normalised = { ...employee, isActive: employee.isActive ?? true };
+    setEmployees((prev) => prev.map((e) => (e.id === normalised.id ? normalised : e)));
+    queueUpdate("employees", normalised);
+    recordAudit({
+      action: "Updated employee",
+      entityType: "Employee",
+      entityId: normalised.id,
+      entityLabel: normalised.name,
+      description: `Updated employee ${normalised.name}.`,
+      metadata: {
+        role: normalised.role || undefined,
+        salaryType: normalised.salaryType,
+        salaryAmount: normalised.salaryAmount,
+        isActive: normalised.isActive !== false,
+      },
+    });
+  }, [userRole, queueUpdate, recordAudit]);
+
+  /** Soft-deletes an employee so salary, advance, and deduction history stays intact. */
+  const deleteEmployee = useCallback((id: string) => {
+    if (!isAdmin(userRole)) return;
+    const employee = employees.find((e) => e.id === id);
+    if (!employee) return;
+    const deactivated = { ...employee, isActive: false };
+    setEmployees((prev) => prev.map((e) => (e.id === id ? deactivated : e)));
+    queueUpdate("employees", deactivated);
+    recordAudit({
+      action: "Deactivated employee",
+      entityType: "Employee",
+      entityId: id,
+      entityLabel: employee.name,
+      description: `Deactivated employee ${employee.name}.`,
+    });
+  }, [userRole, employees, queueUpdate, recordAudit]);
+
+  /** Adds a salary, advance, deduction, or adjustment entry for an employee. */
+  const addEmployeeTransaction = useCallback((transaction: EmployeeTransaction) => {
+    if (!isAdmin(userRole)) return;
+    setEmployeeTransactions((prev) => [...prev, transaction]);
+    queueUpdate("employeeTransactions", transaction);
+    const employee = employees.find((e) => e.id === transaction.employeeId);
+    recordAudit({
+      action: "Created employee ledger entry",
+      entityType: "EmployeeTransaction",
+      entityId: transaction.id,
+      entityLabel: employee?.name || transaction.type,
+      description: `Created ${transaction.type.toLowerCase()} entry for ${employee?.name || "employee"}.`,
+      metadata: {
+        employeeId: transaction.employeeId,
+        type: transaction.type,
+        amount: transaction.amount,
+        linkedTransactionId: transaction.linkedTransactionId,
+      },
+    });
+  }, [userRole, employees, queueUpdate, recordAudit]);
+
+  /** Hard-deletes an employee ledger entry. */
+  const deleteEmployeeTransaction = useCallback((id: string) => {
+    if (!isAdmin(userRole)) return;
+    const transaction = employeeTransactions.find((t) => t.id === id);
+    setEmployeeTransactions((prev) => prev.filter((t) => t.id !== id));
+    queueDelete("employeeTransactions", id);
+    if (transaction) {
+      const employee = employees.find((e) => e.id === transaction.employeeId);
+      recordAudit({
+        action: "Deleted employee ledger entry",
+        entityType: "EmployeeTransaction",
+        entityId: id,
+        entityLabel: employee?.name || transaction.type,
+        description: `Deleted ${transaction.type.toLowerCase()} entry for ${employee?.name || "employee"}.`,
+        metadata: {
+          employeeId: transaction.employeeId,
+          type: transaction.type,
+          amount: transaction.amount,
+          linkedTransactionId: transaction.linkedTransactionId,
+        },
+      });
+    }
+  }, [userRole, employeeTransactions, employees, queueDelete, recordAudit]);
 
   // -----------------------------------------------------------------------
   // Slip CRUD
@@ -932,12 +1105,30 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   }, [customers, slips, invoices, transactions]);
 
   // -----------------------------------------------------------------------
+  // Derived: Employee Balance
+  // -----------------------------------------------------------------------
+
+  const employeeBalanceById = useMemo(() => {
+    const balances = new Map<string, number>();
+    employees.forEach((employee) => balances.set(employee.id, employee.openingBalance));
+    employeeTransactions.forEach((tx) => {
+      if (!balances.has(tx.employeeId)) return;
+      balances.set(tx.employeeId, (balances.get(tx.employeeId) || 0) + getEmployeeTransactionImpact(tx));
+    });
+    return balances;
+  }, [employees, employeeTransactions]);
+
+  const getEmployeeBalance = useCallback((employeeId: string): number => {
+    return employeeBalanceById.get(employeeId) || 0;
+  }, [employeeBalanceById]);
+
+  // -----------------------------------------------------------------------
   // Admin Utility: Purge
   // -----------------------------------------------------------------------
 
   /**
-   * Permanently removes all soft-deleted (isActive === false) customers and
-   * vehicles from both local state and the server database.
+   * Permanently removes all soft-deleted (isActive === false) customers,
+   * employees, and vehicles from both local state and the server database.
    *
    * Customers that still have slips, invoices, or transactions referencing them
    * are skipped to prevent orphaning financial records. Returns the count of
@@ -947,6 +1138,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     if (!isAdmin(userRole)) return { purged: 0, skipped: 0 };
 
     const inactiveCustomers = customers.filter((c) => c.isActive === false);
+    const inactiveEmployees = employees.filter((e) => e.isActive === false);
     const inactiveVehicleIds = vehicles.filter((v) => v.isActive === false).map((v) => v.id);
 
     let purged = 0;
@@ -965,6 +1157,17 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       purged++;
     });
 
+    inactiveEmployees.forEach((e) => {
+      const hasLedger = employeeTransactions.some((tx) => tx.employeeId === e.id);
+      if (hasLedger) {
+        skipped++;
+        return;
+      }
+      setEmployees((prev) => prev.filter((emp) => emp.id !== e.id));
+      queueDelete("employees", e.id);
+      purged++;
+    });
+
     setVehicles((prev) => prev.filter((v) => v.isActive !== false));
     inactiveVehicleIds.forEach((id) => queueDelete("vehicles", id));
     purged += inactiveVehicleIds.length;
@@ -977,7 +1180,18 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     });
 
     return { purged, skipped };
-  }, [userRole, customers, vehicles, slips, invoices, transactions, queueDelete, recordAudit]);
+  }, [
+    userRole,
+    customers,
+    employees,
+    employeeTransactions,
+    vehicles,
+    slips,
+    invoices,
+    transactions,
+    queueDelete,
+    recordAudit,
+  ]);
 
   // -----------------------------------------------------------------------
   // Provider — value is memoised so reference-equality holds across re-renders,
@@ -986,6 +1200,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
 
   const contextValue = useMemo<ErpState>(() => ({
     customers,
+    employees,
+    employeeTransactions,
     slips,
     transactions,
     vehicles,
@@ -1003,6 +1219,11 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     addCustomer,
     updateCustomer,
     deleteCustomer,
+    addEmployee,
+    updateEmployee,
+    deleteEmployee,
+    addEmployeeTransaction,
+    deleteEmployeeTransaction,
     addVehicle,
     updateVehicle,
     deleteVehicle,
@@ -1018,20 +1239,23 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     toggleTask,
     deleteTask,
     getCustomerBalance,
+    getEmployeeBalance,
     purgeInactiveRecords,
     flushSync: flushSyncQueue,
   }), [
-    customers, slips, transactions, vehicles, invoices, tasks, auditLogs,
+    customers, employees, employeeTransactions, slips, transactions, vehicles, invoices, tasks, auditLogs,
     companySettings, isLoading, syncStatus, userRole,
     recordAudit,
     updateCompanySettings, toggleMaterialActive,
     addCustomer, updateCustomer, deleteCustomer,
+    addEmployee, updateEmployee, deleteEmployee,
+    addEmployeeTransaction, deleteEmployeeTransaction,
     addVehicle, updateVehicle, deleteVehicle,
     addSlip, updateSlipStatus, updateSlip,
     addInvoice, updateInvoice,
     addTransaction, updateTransaction, deleteTransaction,
     addTask, toggleTask, deleteTask,
-    getCustomerBalance, purgeInactiveRecords, flushSyncQueue,
+    getCustomerBalance, getEmployeeBalance, purgeInactiveRecords, flushSyncQueue,
   ]);
 
   return (

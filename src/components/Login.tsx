@@ -68,7 +68,7 @@ export function Login({ onLogin }: LoginProps) {
     setIsSubmitting(true);
 
     if (isLoading) {
-      setError('Loading accounts from Supabase. Please try again in a moment.');
+      setError('Still loading accounts. Please wait a moment and try again.');
       setIsSubmitting(false);
       return;
     }
@@ -90,40 +90,40 @@ export function Login({ onLogin }: LoginProps) {
     }
 
     try {
-      const hasUsers = companySettings.users && companySettings.users.length > 0;
+      const users = companySettings.users ?? [];
+      const hasUsers = users.length > 0;
 
       if (!hasUsers) {
-        // No users configured yet — redirect to first-run setup instead of
-        // accepting a hard-coded default credential.
+        // No users configured yet — redirect to first-run setup.
         setSetupMode(true);
         setIsSubmitting(false);
         return;
-      } else {
-        // Match against configured user accounts (by email or name).
-        const user = companySettings.users?.find(
-          (u) =>
-            (normaliseIdentity(u.email) === loginIdentity || normaliseIdentity(u.name) === loginIdentity) &&
-            u.status === 'Active',
-        );
+      }
 
-        if (user) {
-          if (!user.passwordHash) {
-            setError('This account has no password configured. Ask an Admin to reset it.');
-            return;
+      // Match against configured user accounts (by email or name).
+      const user = users.find(
+        (u) =>
+          (normaliseIdentity(u.email) === loginIdentity || normaliseIdentity(u.name) === loginIdentity) &&
+          u.status === 'Active',
+      );
+
+      if (user) {
+        if (!user.passwordHash) {
+          setError('This account has no password set. Ask an Admin to reset it.');
+          return;
+        }
+        const valid = await verifyPassword(password, user.passwordHash);
+        if (valid) {
+          // Silently migrate legacy SHA-256 hashes to PBKDF2 on successful login.
+          if (isLegacyHash(user.passwordHash)) {
+            const newHash = await hashPassword(password);
+            const updatedUsers = users.map((u) =>
+              u.id === user.id ? { ...u, passwordHash: newHash } : u,
+            );
+            void updateCompanySettings({ ...companySettings, users: updatedUsers });
           }
-          const valid = await verifyPassword(password, user.passwordHash);
-          if (valid) {
-            // Silently migrate legacy SHA-256 hashes to PBKDF2 on successful login
-            if (isLegacyHash(user.passwordHash)) {
-              const newHash = await hashPassword(password);
-              const updatedUsers = (companySettings.users || []).map((u) =>
-                u.id === user.id ? { ...u, passwordHash: newHash } : u,
-              );
-              void updateCompanySettings({ ...companySettings, users: updatedUsers });
-            }
-            await completeLogin(user.role, `session_${user.id}`);
-            return;
-          }
+          await completeLogin(user.role, `session_${user.id}`);
+          return;
         }
       }
 

@@ -23,6 +23,8 @@ const ALLOWED_ORIGINS = new Set([
 // Allowed table names — prevents SQL injection via dynamic table routing
 const TABLE_NAMES: Record<string, string> = {
   customers: 'customers',
+  employees: 'employees',
+  employeeTransactions: 'employee_transactions',
   vehicles: 'vehicles',
   slips: 'slips',
   transactions: 'transactions',
@@ -45,7 +47,9 @@ function getCorsOrigin(req: VercelRequest): string {
 }
 
 function getRateLimitKey(req: VercelRequest): string {
-  return `rate_${(req.headers['x-forwarded-for'] as string || req.headers['client-ip'] || 'unknown').split(',')[0].trim()}`;
+  const fwd = req.headers['x-forwarded-for'];
+  const ip = (Array.isArray(fwd) ? fwd[0] : fwd) || (req.headers['client-ip'] as string) || 'unknown';
+  return `rate_${ip.split(',')[0].trim()}`;
 }
 
 // In-memory store (note: resets on cold starts in serverless)
@@ -122,6 +126,32 @@ async function initDb() {
         gstin             TEXT,
         "openingBalance"  DOUBLE PRECISION DEFAULT 0,
         "isActive"        BOOLEAN DEFAULT TRUE
+      );
+
+      CREATE TABLE IF NOT EXISTS employees (
+        id                TEXT PRIMARY KEY,
+        name              TEXT,
+        phone             TEXT,
+        role              TEXT,
+        address           TEXT,
+        "joiningDate"     TEXT,
+        "salaryType"      TEXT,
+        "salaryAmount"    DOUBLE PRECISION DEFAULT 0,
+        "openingBalance"  DOUBLE PRECISION DEFAULT 0,
+        notes             TEXT,
+        "isActive"        BOOLEAN DEFAULT TRUE
+      );
+
+      CREATE TABLE IF NOT EXISTS employee_transactions (
+        id                    TEXT PRIMARY KEY,
+        "employeeId"          TEXT,
+        date                  TEXT,
+        type                  TEXT,
+        amount                DOUBLE PRECISION,
+        description           TEXT,
+        period                TEXT,
+        "paymentMode"         TEXT,
+        "linkedTransactionId" TEXT
       );
 
       CREATE TABLE IF NOT EXISTS vehicles (
@@ -221,6 +251,18 @@ async function initDb() {
       'ALTER TABLE customers ADD COLUMN IF NOT EXISTS address TEXT',
       'ALTER TABLE customers ADD COLUMN IF NOT EXISTS gstin TEXT',
       'ALTER TABLE customers ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN DEFAULT TRUE',
+      // v5: employee salary/advance ledger
+      'ALTER TABLE employees ADD COLUMN IF NOT EXISTS phone TEXT',
+      'ALTER TABLE employees ADD COLUMN IF NOT EXISTS role TEXT',
+      'ALTER TABLE employees ADD COLUMN IF NOT EXISTS address TEXT',
+      'ALTER TABLE employees ADD COLUMN IF NOT EXISTS "joiningDate" TEXT',
+      'ALTER TABLE employees ADD COLUMN IF NOT EXISTS "salaryType" TEXT',
+      'ALTER TABLE employees ADD COLUMN IF NOT EXISTS "salaryAmount" DOUBLE PRECISION DEFAULT 0',
+      'ALTER TABLE employees ADD COLUMN IF NOT EXISTS "openingBalance" DOUBLE PRECISION DEFAULT 0',
+      'ALTER TABLE employees ADD COLUMN IF NOT EXISTS notes TEXT',
+      'ALTER TABLE employees ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN DEFAULT TRUE',
+      'ALTER TABLE employee_transactions ADD COLUMN IF NOT EXISTS "paymentMode" TEXT',
+      'ALTER TABLE employee_transactions ADD COLUMN IF NOT EXISTS "linkedTransactionId" TEXT',
       // v2: vehicles gained isActive for soft-delete
       'ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN DEFAULT TRUE',
       // v3: invoices gained slipIds to link source dispatch slips
@@ -262,6 +304,7 @@ async function initDb() {
             { id: "5", name: "GSB", defaultPrice: 300, unit: "Ton", hsnCode: "25171020", gstRate: 5, isActive: true },
             { id: "6", name: "Boulders", defaultPrice: 250, unit: "Ton", hsnCode: "25169090", gstRate: 5, isActive: true },
           ],
+          users: [],
         }),
       ]);
     }
@@ -349,9 +392,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // -----------------------------------------------------------------------
   if (req.method === "GET") {
     try {
-      const [customersRes, vehiclesRes, slipsRes, transactionsRes, invoicesRes, tasksRes, auditLogsRes, settingsRes] =
+      const [
+        customersRes,
+        employeesRes,
+        employeeTransactionsRes,
+        vehiclesRes,
+        slipsRes,
+        transactionsRes,
+        invoicesRes,
+        tasksRes,
+        auditLogsRes,
+        settingsRes,
+      ] =
         await Promise.all([
           pool.query("SELECT * FROM customers"),
+          pool.query("SELECT * FROM employees"),
+          pool.query("SELECT * FROM employee_transactions"),
           pool.query("SELECT * FROM vehicles"),
           pool.query("SELECT * FROM slips"),
           pool.query("SELECT * FROM transactions"),
@@ -365,6 +421,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         customers: customersRes.rows.map((c) => ({
           ...c,
           isActive: c.isActive !== false,
+        })),
+        employees: employeesRes.rows.map((e) => ({
+          ...e,
+          isActive: e.isActive !== false,
+          salaryAmount: Number(e.salaryAmount || 0),
+          openingBalance: Number(e.openingBalance || 0),
+        })),
+        employeeTransactions: employeeTransactionsRes.rows.map((tx) => ({
+          ...tx,
+          amount: Number(tx.amount || 0),
         })),
         vehicles: vehiclesRes.rows.map((v) => ({
           ...v,
@@ -465,7 +531,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // POST — Full overwrite (used by the Backup-Restore feature)
   // -----------------------------------------------------------------------
   if (req.method === "POST") {
-    const { customers, slips, transactions, vehicles, invoices, tasks, auditLogs, companySettings } = req.body;
+    const {
+      customers,
+      employees,
+      employeeTransactions,
+      slips,
+      transactions,
+      vehicles,
+      invoices,
+      tasks,
+      auditLogs,
+      companySettings,
+    } = req.body;
     const client = await pool.connect();
 
     try {
@@ -479,6 +556,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await client.query(
           'INSERT INTO customers (id, name, phone, address, gstin, "openingBalance", "isActive") VALUES ($1, $2, $3, $4, $5, $6, $7)',
           [c.id, c.name, c.phone, c.address || null, c.gstin || null, c.openingBalance, c.isActive !== false],
+        );
+      }
+
+      await client.query("DELETE FROM employees");
+      for (const e of employees || []) {
+        await client.query(
+          'INSERT INTO employees (id, name, phone, role, address, "joiningDate", "salaryType", "salaryAmount", "openingBalance", notes, "isActive") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
+          [
+            e.id,
+            e.name,
+            e.phone || null,
+            e.role || null,
+            e.address || null,
+            e.joiningDate || null,
+            e.salaryType || "Monthly",
+            e.salaryAmount || 0,
+            e.openingBalance || 0,
+            e.notes || null,
+            e.isActive !== false,
+          ],
+        );
+      }
+
+      await client.query("DELETE FROM employee_transactions");
+      for (const tx of employeeTransactions || []) {
+        await client.query(
+          'INSERT INTO employee_transactions (id, "employeeId", date, type, amount, description, period, "paymentMode", "linkedTransactionId") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+          [
+            tx.id,
+            tx.employeeId,
+            tx.date,
+            tx.type,
+            tx.amount || 0,
+            tx.description || "",
+            tx.period || null,
+            tx.paymentMode || null,
+            tx.linkedTransactionId || null,
+          ],
         );
       }
 

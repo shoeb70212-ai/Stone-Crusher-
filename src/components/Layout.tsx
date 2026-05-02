@@ -2,12 +2,14 @@ import React, { useState, useEffect, lazy, Suspense } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { PageSkeleton } from "./ui/Skeleton";
+import { Plus } from "lucide-react";
 
 const Dashboard = lazy(() => import("../pages/Dashboard").then(m => ({ default: m.Dashboard })));
 const Dispatch = lazy(() => import("../pages/Dispatch").then(m => ({ default: m.Dispatch })));
 const Ledger = lazy(() => import("../pages/Ledger").then(m => ({ default: m.Ledger })));
 const Vehicles = lazy(() => import("../pages/Vehicles").then(m => ({ default: m.Vehicles })));
 const Customers = lazy(() => import("../pages/Customers").then(m => ({ default: m.Customers })));
+const Employees = lazy(() => import("../pages/Employees").then(m => ({ default: m.Employees })));
 const Daybook = lazy(() => import("../pages/Daybook").then(m => ({ default: m.Daybook })));
 const Settings = lazy(() => import("../pages/Settings").then(m => ({ default: m.Settings })));
 const Invoices = lazy(() => import("../pages/Invoices").then(m => ({ default: m.Invoices })));
@@ -19,11 +21,14 @@ import { isNative } from "../lib/capacitor";
 /** Valid view names used by deep links and app shortcuts. */
 const VALID_VIEWS = new Set([
   'dashboard', 'dispatch', 'invoices', 'customers',
-  'daybook', 'ledger', 'vehicles', 'settings', 'audit',
+  'employees', 'daybook', 'ledger', 'vehicles', 'settings', 'audit',
 ]);
 
 /** Pages dispatch this event to trigger navigation without prop-drilling. */
 export const NAVIGATE_EVENT = "crushtrack:navigate";
+
+/** Bottom-nav FAB dispatches this to open the create modal on the active page. */
+export const CREATE_EVENT = "crushtrack:create";
 
 export function Layout() {
   const [currentView, setCurrentView] = useState("dashboard");
@@ -175,6 +180,9 @@ export function Layout() {
     if (userRole !== "Admin" && currentView === "audit") {
       setCurrentView("dashboard");
     }
+    if (userRole !== "Admin" && currentView === "employees") {
+      setCurrentView("dashboard");
+    }
   }, [userRole, currentView]);
 
   let content = null;
@@ -196,6 +204,19 @@ export function Layout() {
       break;
     case "customers":
       content = <Customers />;
+      break;
+    case "employees":
+      if (userRole !== "Admin") {
+        content = (
+          <div className="flex flex-col items-center justify-center h-full text-zinc-500">
+            <ShieldAlert className="w-12 h-12 mb-4 text-rose-400" />
+            <h2 className="text-xl font-bold text-zinc-900">Access Denied</h2>
+            <p>Only Admins can view employees.</p>
+          </div>
+        );
+      } else {
+        content = <Employees />;
+      }
       break;
     case "ledger":
       if (userRole === "Manager") {
@@ -240,22 +261,50 @@ export function Layout() {
       content = <Dashboard />;
   }
 
+  const showFab = currentView === "dispatch" || currentView === "invoices";
+
   return (
-    <div className="flex h-screen bg-zinc-50 dark:bg-zinc-900 transition-colors duration-200 font-sans overflow-hidden">
-      <Sidebar
-        currentView={currentView}
-        onChangeView={setCurrentView}
-        isOpen={isSidebarOpen}
-        setIsOpen={setIsSidebarOpen}
-      />
-      <div className="flex-1 flex flex-col min-h-0 w-full relative min-w-0">
-        <Header onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-4 lg:p-6 md:pb-6 app-content smooth-scroll has-bottom-nav">
-          <Suspense fallback={<PageSkeleton />}>
-            {isLoading ? <PageSkeleton /> : content}
-          </Suspense>
-        </main>
+    <>
+      <div className="flex h-screen bg-zinc-50 dark:bg-zinc-900 transition-colors duration-200 font-sans overflow-hidden">
+        <Sidebar
+          currentView={currentView}
+          onChangeView={setCurrentView}
+          isOpen={isSidebarOpen}
+          setIsOpen={setIsSidebarOpen}
+        />
+        <div className="flex-1 flex flex-col min-h-0 w-full relative min-w-0">
+          <Header onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
+          <main className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-4 lg:p-6 md:pb-6 app-content smooth-scroll has-bottom-nav">
+            <Suspense fallback={<PageSkeleton />}>
+              {isLoading ? (
+                <PageSkeleton />
+              ) : (
+                <div key={currentView} className="animate-page-in h-full">
+                  {content}
+                </div>
+              )}
+            </Suspense>
+          </main>
+        </div>
       </div>
-    </div>
+
+      {/* FAB — outside overflow-hidden root so fixed positioning works */}
+      {showFab && (
+        <button
+          key={`fab-${currentView}`}
+          onClick={() => window.dispatchEvent(new CustomEvent(CREATE_EVENT))}
+          style={{
+            position: "fixed",
+            bottom: "calc(64px + env(safe-area-inset-bottom) + 12px)",
+            right: "16px",
+            left: "auto",
+          }}
+          className="md:hidden w-14 h-14 bg-primary-600 text-white hover:bg-primary-700 active:scale-90 shadow-xl shadow-primary-500/40 flex items-center justify-center rounded-full z-50 transition-transform animate-fab-pop"
+          aria-label="Create new"
+        >
+          <Plus className="w-7 h-7" />
+        </button>
+      )}
+    </>
   );
 }

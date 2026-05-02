@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EMPLOYEE_TRANSACTION_TYPES } from "./employee-ledger";
 
 export const customerSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
@@ -57,6 +58,32 @@ export const invoiceSchema = z.object({
   ).min(1, "At least one item is required"),
 });
 
+export const employeeSchema = z.object({
+  name: z.string().min(1, "Employee name is required").max(100),
+  phone: z
+    .string()
+    .regex(/^[0-9+\-\s]{10,15}$/, "Invalid phone number")
+    .optional()
+    .or(z.literal("")),
+  role: z.string().max(100).optional(),
+  address: z.string().max(500).optional(),
+  joiningDate: z.string().optional(),
+  salaryType: z.enum(["Weekly", "Monthly"]),
+  salaryAmount: z.coerce.number().min(0, "Salary amount cannot be negative"),
+  openingBalance: z.coerce.number().default(0),
+  notes: z.string().max(500).optional(),
+});
+
+export const employeeTransactionSchema = z.object({
+  employeeId: z.string().min(1, "Employee is required"),
+  date: z.string().min(1, "Date is required"),
+  type: z.enum(EMPLOYEE_TRANSACTION_TYPES),
+  amount: z.coerce.number().min(1, "Amount must be at least 1"),
+  period: z.string().optional(),
+  paymentMode: z.enum(["Cash", "Bank", "UPI", "Cheque", "Adjustment"]).optional().or(z.literal("")),
+  description: z.string().min(1, "Remarks are required").max(500),
+});
+
 export const loginSchema = z.object({
   // Accepts either a plain username or an email address
   email: z.string().min(1, "Username or email is required"),
@@ -67,4 +94,6 @@ export type CustomerInput = z.infer<typeof customerSchema>;
 export type SlipInput = z.infer<typeof slipSchema>;
 export type TransactionInput = z.infer<typeof transactionSchema>;
 export type InvoiceInput = z.infer<typeof invoiceSchema>;
+export type EmployeeInput = z.infer<typeof employeeSchema>;
+export type EmployeeTransactionInput = z.infer<typeof employeeTransactionSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;

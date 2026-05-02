@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useErp } from "../context/ErpContext";
 import { Invoice } from "../types";
 import { Plus, Download, FileText, Upload, Printer, Filter, ChevronDown } from "lucide-react";
@@ -8,6 +8,7 @@ import { MobileActionSheet, MobileChip, MobileFilterSheet } from "../components/
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { useInvoiceGenerator } from "./invoices/useInvoiceGenerator";
 import { InvoiceCreateModal } from "./invoices/InvoiceCreateModal";
+import { CREATE_EVENT } from "../components/Layout";
 
 function InvoicesContent() {
   const { invoices, customers, transactions, updateInvoice, updateSlip, deleteTransaction, companySettings } = useErp();
@@ -22,6 +23,12 @@ function InvoicesContent() {
   const [endDate, setEndDate] = useState("");
 
   const generator = useInvoiceGenerator();
+  // Bottom-nav FAB fires this event to open the create modal
+  useEffect(() => {
+    const handler = () => generator.openCreateModal();
+    window.addEventListener(CREATE_EVENT, handler);
+    return () => window.removeEventListener(CREATE_EVENT, handler);
+  }, [generator]);
 
   const handleStatusChange = (invId: string, newStatus: string) => {
     if (newStatus === "Cancelled") {
@@ -77,7 +84,7 @@ function InvoicesContent() {
           </button>
           <button
             onClick={generator.openCreateModal}
-            className="flex items-center gap-2 px-3 py-2 md:px-4 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors shadow-sm font-medium text-sm active:scale-95"
+            className="hidden md:flex items-center gap-2 px-3 py-2 md:px-4 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors shadow-sm font-medium text-sm active:scale-95"
           >
             <Plus className="w-4 h-4 shrink-0" />
             <span className="whitespace-nowrap">New Invoice</span>
@@ -479,6 +486,7 @@ function InvoicesContent() {
           onClose={() => setPrintInvoice(null)}
         />
       )}
+
     </div>
   );
 }

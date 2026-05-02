@@ -235,6 +235,49 @@ body {
   }
 }
 
+/* Page transition: subtle upward fade — fast enough to feel instant */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* FAB pop-in with spring overshoot */
+@keyframes fab-pop {
+  0%   { transform: scale(0.5); opacity: 0; }
+  70%  { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Bottom sheet slide-up */
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+/* Backdrop fade */
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Active nav indicator stretch */
+@keyframes indicator-grow {
+  from { transform: scaleY(0) translateY(-50%); }
+  to   { transform: scaleY(1) translateY(-50%); }
+}
+
+/* Stat card count-up pulse */
+@keyframes stat-pulse {
+  0%   { opacity: 0.6; transform: scale(0.97); }
+  100% { opacity: 1;   transform: scale(1); }
+}
+
 .animate-slide-in {
   animation: slide-in 0.3s ease-out;
 }
@@ -247,6 +290,37 @@ body {
   animation: scale-in 0.2s ease-out;
 }
 
+/* Page content entrance — applied via React key changes */
+.animate-page-in {
+  animation: page-enter 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+/* FAB entrance */
+.animate-fab-pop {
+  animation: fab-pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Bottom sheet entrance */
+.animate-sheet-up {
+  animation: sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/* Backdrop entrance */
+.animate-backdrop-in {
+  animation: backdrop-in 0.2s ease-out both;
+}
+
+/* Sidebar active indicator entrance */
+.animate-indicator {
+  animation: indicator-grow 0.18s ease-out both;
+  transform-origin: top center;
+}
+
+/* Stat value entrance */
+.animate-stat {
+  animation: stat-pulse 0.25s ease-out both;
+}
+
 /* Staggered animation for lists */
 .stagger-animation > *:nth-child(1) { animation-delay: 0ms; }
 .stagger-animation > *:nth-child(2) { animation-delay: 50ms; }
@@ -256,6 +330,17 @@ body {
 .stagger-animation > *:nth-child(6) { animation-delay: 250ms; }
 .stagger-animation > *:nth-child(7) { animation-delay: 300ms; }
 .stagger-animation > *:nth-child(8) { animation-delay: 350ms; }
+
+/* Card hover lift — desktop only (hover media query prevents mobile jank) */
+@media (hover: hover) {
+  .card-hover {
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.12);
+  }
+}
 
 /* Reduced motion for accessibility */
 @media (prefers-reduced-motion: reduce) {
@@ -282,6 +367,7 @@ body {
   /* FAB positioned above bottom nav with safe area */
   .mobile-fab {
     bottom: calc(64px + env(safe-area-inset-bottom));
+    right: 1rem;
   }
 
   /* Main content padding for bottom nav */

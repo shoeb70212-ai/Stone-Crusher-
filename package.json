@@ -54,7 +54,9 @@
     "zod": "^4.3.6"
   },
   "overrides": {
-    "ajv": "^8.17.1",
+    "@vercel/static-config": {
+      "ajv": "^8.17.1"
+    },
     "undici": "^6.23.0",
     "path-to-regexp": "^8.0.0",
     "minimatch": "^10.0.0",

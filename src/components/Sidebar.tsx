@@ -7,6 +7,7 @@ import {
   LogOut,
   Mountain,
   Users,
+  Briefcase,
   CalendarDays,
   X,
   Receipt,
@@ -33,6 +34,7 @@ const navItems = [
   { id: "invoices", label: "Invoicing", icon: Receipt },
   { id: "vehicles", label: "Vehicles", icon: Truck },
   { id: "customers", label: "Customers", icon: Users },
+  { id: "employees", label: "Employees", icon: Briefcase },
   { id: "ledger", label: "Ledger", icon: BookOpen },
   { id: "audit", label: "Audit Log", icon: History },
   { id: "settings", label: "Settings", icon: Settings },
@@ -71,9 +73,10 @@ export function Sidebar({
   const filteredNavItems = navItems.filter((item) => {
     if (
       userRole === "Manager" &&
-      (item.id === "ledger" || item.id === "settings")
+      (item.id === "ledger" || item.id === "settings" || item.id === "employees")
     )
       return false;
+    if (userRole !== "Admin" && item.id === "employees") return false;
     if (userRole === "Partner" && item.id === "settings") return false;
     if (userRole !== "Admin" && item.id === "audit") return false;
     return true;
@@ -147,7 +150,7 @@ export function Sidebar({
                 )}
               >
                 {isActive && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary-500 rounded-r-full" />
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary-500 rounded-r-full animate-indicator" />
                 )}
                 <Icon
                   className={cn(
@@ -235,18 +238,10 @@ export function Sidebar({
               aria-label={item.label}
             >
               {isActive && (
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-10 h-0.5 bg-primary-500 rounded-b-full" />
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-10 h-0.5 bg-primary-500 rounded-b-full animate-fade-in" />
               )}
-              <Icon
-                className="w-5 h-5"
-                strokeWidth={isActive ? 2.5 : 2}
-              />
-              <span
-                className={cn(
-                  "text-[10px] font-medium leading-none",
-                  isActive ? "font-semibold" : "",
-                )}
-              >
+              <Icon className="w-5 h-5" strokeWidth={isActive ? 2.5 : 2} />
+              <span className={cn("text-[10px] font-medium leading-none", isActive ? "font-semibold" : "")}>
                 {item.label}
               </span>
             </button>
@@ -269,6 +264,8 @@ export function Sidebar({
         </button>
       </nav>
 
+
+
       {/* ═══════════════════════════════════════════════════════════
           Mobile "More" Drawer (slide-up sheet)
           ═══════════════════════════════════════════════════════════ */}
@@ -276,11 +273,11 @@ export function Sidebar({
         <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
           {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-backdrop-in"
             onClick={() => setIsMoreOpen(false)}
           />
           {/* Sheet */}
-          <div className="relative bg-white dark:bg-zinc-900 rounded-t-2xl shadow-2xl pb-[env(safe-area-inset-bottom)]">
+          <div className="relative bg-white dark:bg-zinc-900 rounded-t-2xl shadow-2xl pb-[env(safe-area-inset-bottom)] animate-sheet-up">
             {/* Handle */}
             <div className="flex justify-center pt-3 pb-2">
               <div className="w-10 h-1 bg-zinc-300 dark:bg-zinc-600 rounded-full" />
