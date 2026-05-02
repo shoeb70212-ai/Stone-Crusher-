@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Bell, Shield, Loader2, AlertTriangle, Sun, Moon, Monitor } from "lucide-react";
 import { format } from "date-fns";
 import { useErp } from "../context/ErpContext";
+import { clearAuthSession } from "../lib/session";
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -14,7 +15,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   const theme = companySettings.theme ?? "system";
   const cycleTheme = () => {
     const next = theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
-    updateCompanySettings({ ...companySettings, theme: next as "light" | "dark" | "system" });
+    void updateCompanySettings({ ...companySettings, theme: next as "light" | "dark" | "system" });
   };
   const ThemeIcon = theme === "dark" ? Moon : theme === "light" ? Sun : Monitor;
 
@@ -93,8 +94,8 @@ export function Header({ onMenuClick }: HeaderProps) {
                   Signed in as {userRole}
                 </div>
                 <button
-                  onClick={() => {
-                    localStorage.removeItem("erp_auth_token");
+                  onClick={async () => {
+                    await clearAuthSession();
                     window.location.reload();
                   }}
                   className="w-full text-left px-4 py-2.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"

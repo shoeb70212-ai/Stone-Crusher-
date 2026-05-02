@@ -71,9 +71,14 @@ export function Settings() {
     }
   }, [activeTab, deviceInfo]);
 
-  const handleSave = () => {
-    updateCompanySettings(localSettings);
+  const handleSave = async () => {
+    const saved = await updateCompanySettings(localSettings);
+    if (!saved) {
+      addToast("error", "Could not save settings to Supabase. Check your connection and try again.");
+      return;
+    }
     setIsSaved(true);
+    addToast("success", "Settings saved to Supabase.");
     setTimeout(() => setIsSaved(false), 2000);
   };
 
@@ -167,14 +172,26 @@ export function Settings() {
   const handleInviteUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (inviteFormData.password.length < 6) { addToast("error", "Password must be at least 6 characters."); return; }
+    const name = inviteFormData.name.trim();
+    const email = inviteFormData.email.trim().toLowerCase();
+    if (!name) { addToast("error", "Full name is required."); return; }
+    if (!email) { addToast("error", "Email address is required."); return; }
+    const duplicate = (localSettings.users || []).some((user) => (user.email || "").trim().toLowerCase() === email);
+    if (duplicate) { addToast("error", "A user with this email already exists."); return; }
+
     const passwordHash = await hashPassword(inviteFormData.password);
     const newUsers = [...(localSettings.users || [])];
-    newUsers.push({ id: crypto.randomUUID(), name: inviteFormData.name, email: inviteFormData.email, passwordHash, role: inviteFormData.role as any, status: "Active" });
+    newUsers.push({ id: crypto.randomUUID(), name, email, passwordHash, role: inviteFormData.role as any, status: "Active" });
     const updated = { ...localSettings, users: newUsers };
     setLocalSettings(updated);
-    updateCompanySettings(updated);
+    const saved = await updateCompanySettings(updated);
+    if (!saved) {
+      addToast("error", "User was not saved to Supabase. Check your connection and try again.");
+      return;
+    }
     setIsInviteModalOpen(false);
     setInviteFormData({ name: "", email: "", role: "Partner", password: "" });
+    addToast("success", "User saved to Supabase. They can sign in with this email and password.");
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -193,7 +210,8 @@ export function Settings() {
       const updatedUsers = (localSettings.users || []).map((u) => u.id === currentUser.id ? { ...u, passwordHash: newHash } : u);
       const updated = { ...localSettings, users: updatedUsers };
       setLocalSettings(updated);
-      updateCompanySettings(updated);
+      const saved = await updateCompanySettings(updated);
+      if (!saved) { addToast("error", "Password was not saved to Supabase. Try again."); return; }
       setIsChangePasswordOpen(false);
       setChangePasswordData({ current: "", next: "", confirm: "" });
       addToast("success", "Password changed successfully.");
@@ -212,7 +230,8 @@ export function Settings() {
       const updatedUsers = (localSettings.users || []).map((u) => u.id === resetTargetId ? { ...u, passwordHash: newHash } : u);
       const updated = { ...localSettings, users: updatedUsers };
       setLocalSettings(updated);
-      updateCompanySettings(updated);
+      const saved = await updateCompanySettings(updated);
+      if (!saved) { addToast("error", "Password reset was not saved to Supabase. Try again."); return; }
       setResetTargetId(null);
       setResetPasswordValue("");
       addToast("success", "Password reset successfully.");

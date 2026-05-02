@@ -320,7 +320,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,PATCH,POST");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Accept, Content-Type, Content-Length, X-Requested-With",
+    "Accept, Content-Type, Content-Length, X-Requested-With, X-API-Key",
   );
 
   if (req.method === "OPTIONS") {

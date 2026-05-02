@@ -5,7 +5,7 @@ import { hapticsWarning } from '../../lib/haptics';
 
 interface OfflineIndicatorProps {
   /** Called when the device comes back online so callers can flush their sync queue. */
-  onReconnect?: () => void;
+  onReconnect?: () => void | Promise<unknown>;
 }
 
 export function OfflineIndicator({ onReconnect }: OfflineIndicatorProps = {}) {

@@ -56,7 +56,7 @@ interface ErpState {
   recordAuditEvent: (entry: AuditLogInput) => void;
 
   // Settings
-  updateCompanySettings: (settings: CompanySettings) => void;
+  updateCompanySettings: (settings: CompanySettings) => Promise<boolean>;
   toggleMaterialActive: (id: string) => void;
 
   // Customer CRUD
@@ -97,7 +97,7 @@ interface ErpState {
   purgeInactiveRecords: () => { purged: number; skipped: number };
   /** Immediately flushes any pending mutations in the sync queue to the server.
    *  Called by OfflineIndicator when the device comes back online. */
-  flushSync: () => void;
+  flushSync: () => Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -182,17 +182,16 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         const res = await fetch(`${API_URL}/api/data`, {
           headers: key ? { 'x-api-key': key } : undefined,
         });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.customers) setCustomers(data.customers);
-          if (data.slips) setSlips(data.slips);
-          if (data.transactions) setTransactions(data.transactions);
-          if (data.vehicles) setVehicles(data.vehicles);
-          if (data.invoices) setInvoices(data.invoices);
-          if (data.tasks) setTasks(data.tasks);
-          if (data.auditLogs) setAuditLogs(data.auditLogs);
-          if (data.companySettings) setCompanySettings(data.companySettings);
-        }
+        if (!res.ok) throw new Error(`Failed to load API data: HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.customers) setCustomers(data.customers);
+        if (data.slips) setSlips(data.slips);
+        if (data.transactions) setTransactions(data.transactions);
+        if (data.vehicles) setVehicles(data.vehicles);
+        if (data.invoices) setInvoices(data.invoices);
+        if (data.tasks) setTasks(data.tasks);
+        if (data.auditLogs) setAuditLogs(data.auditLogs);
+        if (data.companySettings) setCompanySettings(data.companySettings);
       } catch {
         // Server unreachable — fall back to localStorage mirror so the app
         // remains usable offline.
@@ -234,67 +233,92 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   const retryCountRef = useRef(0);
   const MAX_RETRIES = 5;
 
+  const requeueFailedPayload = useCallback((payload: {
+    updates: Record<string, unknown[]> & { companySettings?: CompanySettings };
+    deletions: Record<string, string[]>;
+  }) => {
+    for (const [table, items] of Object.entries(payload.updates)) {
+      if (table === "companySettings") {
+        syncQueueRef.current.updates.companySettings =
+          syncQueueRef.current.updates.companySettings ?? (items as CompanySettings);
+      } else {
+        const existing = (syncQueueRef.current.updates[table] || []) as QueueItem[];
+        const retry = items as QueueItem[];
+        const existingIds = new Set(existing.map((item) => (item as { id?: string }).id).filter(Boolean));
+        const merged = [
+          ...retry.filter((item) => {
+            const id = (item as { id?: string }).id;
+            return !id || !existingIds.has(id);
+          }),
+          ...existing,
+        ];
+        syncQueueRef.current.updates[table] = merged;
+      }
+    }
+    for (const [table, ids] of Object.entries(payload.deletions)) {
+      const existing = syncQueueRef.current.deletions[table] || [];
+      const merged = Array.from(new Set([...existing, ...ids]));
+      syncQueueRef.current.deletions[table] = merged;
+    }
+  }, []);
+
+  const flushSyncQueue = useCallback(async (): Promise<boolean> => {
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+      syncTimeoutRef.current = undefined;
+    }
+
+    const payload = {
+      updates: { ...syncQueueRef.current.updates },
+      deletions: { ...syncQueueRef.current.deletions },
+    };
+
+    const hasUpdates = Object.keys(payload.updates).length > 0;
+    const hasDeletions = Object.keys(payload.deletions).length > 0;
+    if (!hasUpdates && !hasDeletions) return true;
+
+    // Reset queue before the async call so concurrent mutations that arrive
+    // while this request is in-flight go into the next batch.
+    syncQueueRef.current = { updates: {}, deletions: {} };
+
+    setSyncStatus('syncing');
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || "";
+      const res = await fetch(`${API_URL}/api/data`, {
+        method: "PATCH",
+        headers: apiHeaders(),
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || body.details || `Sync failed with HTTP ${res.status}`);
+      }
+
+      retryCountRef.current = 0;
+      setSyncStatus('idle');
+      return true;
+    } catch {
+      setSyncStatus('error');
+      requeueFailedPayload(payload);
+      return false;
+    }
+  }, [requeueFailedPayload]);
+
   /** Flushes the accumulated delta queue to the server after a 400ms debounce.
    *  Reduced from 1500ms to improve responsiveness during rapid data entry. */
   const triggerSync = useCallback(() => {
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(async () => {
-      const payload = { ...syncQueueRef.current };
-
-      const hasUpdates = Object.keys(payload.updates).length > 0;
-      const hasDeletions = Object.keys(payload.deletions).length > 0;
-      if (!hasUpdates && !hasDeletions) return;
-
-      // Reset queue before the async call so concurrent mutations that arrive
-      // while this request is in-flight go into the *next* batch.
-      syncQueueRef.current = { updates: {}, deletions: {} };
-
-      setSyncStatus('syncing');
-      try {
-        const API_URL = import.meta.env.VITE_API_URL || "";
-        await fetch(`${API_URL}/api/data`, {
-          method: "PATCH",
-          headers: apiHeaders(),
-          body: JSON.stringify(payload),
-        });
-        retryCountRef.current = 0;
-        setSyncStatus('idle');
-      } catch {
-        setSyncStatus('error');
-        // Merge the failed payload back into the queue so the next triggerSync
-        // retries it rather than silently discarding the mutations.
-        for (const [table, items] of Object.entries(payload.updates)) {
-          if (table === "companySettings") {
-            syncQueueRef.current.updates.companySettings =
-              syncQueueRef.current.updates.companySettings ?? (items as CompanySettings);
-          } else {
-            const existing = (syncQueueRef.current.updates[table] || []) as QueueItem[];
-            const retry = items as QueueItem[];
-            // Keep the re-queued version only if a newer update hasn't already
-            // replaced it (identified by id).
-            const merged = [...retry];
-            for (const cur of existing) {
-              if (!merged.find((m) => (m as { id: string }).id === (cur as { id: string }).id)) merged.push(cur);
-            }
-            syncQueueRef.current.updates[table] = merged;
-          }
-        }
-        for (const [table, ids] of Object.entries(payload.deletions)) {
-          const existing = syncQueueRef.current.deletions[table] || [];
-          const toRetry = ids as string[];
-          const merged = Array.from(new Set([...existing, ...toRetry]));
-          syncQueueRef.current.deletions[table] = merged;
-        }
-        // Retry with cap to prevent infinite loops.
-        if (retryCountRef.current < MAX_RETRIES) {
-          retryCountRef.current++;
-          triggerSync();
-        }
-        // When MAX_RETRIES is exhausted, syncStatus remains 'error' so the
-        // OfflineIndicator can surface the failure to the user.
+      const ok = await flushSyncQueue();
+      if (!ok && retryCountRef.current < MAX_RETRIES) {
+        retryCountRef.current++;
+        triggerSync();
       }
+      // When MAX_RETRIES is exhausted, syncStatus remains 'error' so the
+      // OfflineIndicator can surface the failure to the user.
     }, 400);
-  }, []);
+  }, [flushSyncQueue]);
 
   /**
    * Enqueues an upsert for a single record.
@@ -558,8 +582,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   // -----------------------------------------------------------------------
 
   /** Persists the full settings object, ensuring every material has `isActive`. */
-  const updateCompanySettings = useCallback((settings: CompanySettings) => {
-    if (!isAdmin(userRole)) return;
+  const updateCompanySettings = useCallback(async (settings: CompanySettings): Promise<boolean> => {
+    if (!isAdmin(userRole)) return false;
     const normalised = {
       ...settings,
       materials: (settings.materials || []).map((m) => ({
@@ -581,7 +605,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         invoiceTemplate: normalised.invoiceTemplate,
       },
     });
-  }, [userRole, queueUpdate, recordAudit]);
+    return flushSyncQueue();
+  }, [userRole, queueUpdate, recordAudit, flushSyncQueue]);
 
   /** Toggles a material's active/inactive state by ID. */
   const toggleMaterialActive = useCallback((id: string) => {
@@ -994,7 +1019,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     deleteTask,
     getCustomerBalance,
     purgeInactiveRecords,
-    flushSync: triggerSync,
+    flushSync: flushSyncQueue,
   }), [
     customers, slips, transactions, vehicles, invoices, tasks, auditLogs,
     companySettings, isLoading, syncStatus, userRole,
@@ -1006,7 +1031,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     addInvoice, updateInvoice,
     addTransaction, updateTransaction, deleteTransaction,
     addTask, toggleTask, deleteTask,
-    getCustomerBalance, purgeInactiveRecords, triggerSync,
+    getCustomerBalance, purgeInactiveRecords, flushSyncQueue,
   ]);
 
   return (

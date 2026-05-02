@@ -16,6 +16,8 @@ interface LoginProps {
   onLogin: () => void;
 }
 
+const normaliseIdentity = (value: string) => (value || "").trim().toLowerCase();
+
 export function Login({ onLogin }: LoginProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -34,7 +36,7 @@ export function Login({ onLogin }: LoginProps) {
   const [setupConfirm, setSetupConfirm] = useState('');
   const [setupError, setSetupError] = useState('');
 
-  const { companySettings, setUserRole, updateCompanySettings, recordAuditEvent } = useErp();
+  const { companySettings, isLoading, setUserRole, updateCompanySettings, recordAuditEvent } = useErp();
 
   useEffect(() => {
     isBiometricAvailable().then(setCanUseBiometric);
@@ -65,7 +67,15 @@ export function Login({ onLogin }: LoginProps) {
     setFieldErrors({});
     setIsSubmitting(true);
 
-    const validation: LoginInput = { email: username, password };
+    if (isLoading) {
+      setError('Loading accounts from Supabase. Please try again in a moment.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    const cleanedUsername = username.trim();
+    const loginIdentity = normaliseIdentity(cleanedUsername);
+    const validation: LoginInput = { email: cleanedUsername, password };
     const result = loginSchema.safeParse(validation);
 
     if (!result.success) {
@@ -91,7 +101,9 @@ export function Login({ onLogin }: LoginProps) {
       } else {
         // Match against configured user accounts (by email or name).
         const user = companySettings.users?.find(
-          (u) => (u.email === username || u.name === username) && u.status === 'Active',
+          (u) =>
+            (normaliseIdentity(u.email) === loginIdentity || normaliseIdentity(u.name) === loginIdentity) &&
+            u.status === 'Active',
         );
 
         if (user) {
@@ -107,7 +119,7 @@ export function Login({ onLogin }: LoginProps) {
               const updatedUsers = (companySettings.users || []).map((u) =>
                 u.id === user.id ? { ...u, passwordHash: newHash } : u,
               );
-              updateCompanySettings({ ...companySettings, users: updatedUsers });
+              void updateCompanySettings({ ...companySettings, users: updatedUsers });
             }
             await completeLogin(user.role, `session_${user.id}`);
             return;
@@ -137,12 +149,16 @@ export function Login({ onLogin }: LoginProps) {
     const adminUser = {
       id: crypto.randomUUID(),
       name: setupName.trim() || 'Admin',
-      email: setupEmail.trim() || 'admin@admin.com',
+      email: normaliseIdentity(setupEmail) || 'admin@admin.com',
       role: 'Admin' as const,
       status: 'Active' as const,
       passwordHash,
     };
-    updateCompanySettings({ ...companySettings, users: [adminUser] });
+    const saved = await updateCompanySettings({ ...companySettings, users: [adminUser] });
+    if (!saved) {
+      setSetupError('Could not save the admin account to Supabase. Check your connection and try again.');
+      return;
+    }
     await completeLogin('Admin', `session_${adminUser.id}`);
   };
 
@@ -362,10 +378,10 @@ export function Login({ onLogin }: LoginProps) {
 
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isLoading}
             className="w-full h-12 bg-primary-600 hover:bg-primary-700 active:scale-[0.98] disabled:opacity-60 text-white text-base font-semibold rounded-2xl transition-all shadow-sm mt-2"
           >
-            {isSubmitting ? 'Signing in…' : 'Sign In'}
+            {isLoading ? 'Loading accounts...' : isSubmitting ? 'Signing in...' : 'Sign In'}
           </button>
 
           {canUseBiometric && isBiometricEnabled() && (

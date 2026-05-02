@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useErp } from "../context/ErpContext";
+import { clearAuthSession } from "../lib/session";
 
 interface SidebarProps {
   currentView: string;
@@ -178,9 +179,8 @@ export function Sidebar({
           </div>
 
           <button
-            onClick={() => {
-              localStorage.removeItem("erp_auth_token");
-              localStorage.removeItem("erp_user_role");
+            onClick={async () => {
+              await clearAuthSession();
               window.location.reload();
             }}
             title={isCollapsed ? "Logout" : undefined}
@@ -337,9 +337,8 @@ export function Sidebar({
                 Role: {userRole}
               </span>
               <button
-                onClick={() => {
-                  localStorage.removeItem("erp_auth_token");
-                  localStorage.removeItem("erp_user_role");
+                onClick={async () => {
+                  await clearAuthSession();
                   window.location.reload();
                 }}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 rounded-xl hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors active:scale-95"
