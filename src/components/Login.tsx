@@ -24,15 +24,6 @@ export function Login({ onLogin }: LoginProps) {
   const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
   const [canUseBiometric, setCanUseBiometric] = useState(false);
 
-  // First-run setup state — shown when no users exist yet.
-  const [setupMode, setSetupMode] = useState(false);
-  const [setupName, setSetupName] = useState('Admin');
-  const [setupEmail, setSetupEmail] = useState('');
-  const [setupPassword, setSetupPassword] = useState('');
-  const [setupConfirm, setSetupConfirm] = useState('');
-  const [setupError, setSetupError] = useState('');
-  const [setupSubmitting, setSetupSubmitting] = useState(false);
-
   const { companySettings, isLoading, recordAuditEvent, session, userRole } = useErp();
 
   useEffect(() => {
@@ -60,13 +51,6 @@ export function Login({ onLogin }: LoginProps) {
       return;
     }
 
-    const users = companySettings.users ?? [];
-    if (users.length === 0) {
-      setSetupMode(true);
-      setIsSubmitting(false);
-      return;
-    }
-
     const cleanedUsername = username.trim();
     const validation: LoginInput = { email: cleanedUsername, password };
     const result = loginSchema.safeParse(validation);
@@ -83,6 +67,7 @@ export function Login({ onLogin }: LoginProps) {
     }
 
     try {
+      const users = companySettings.users ?? [];
       // Resolve the email — the user may have typed their name instead.
       const loginIdentity = cleanedUsername.toLowerCase();
       const matchedUser = users.find(
@@ -121,58 +106,6 @@ export function Login({ onLogin }: LoginProps) {
       }
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  /** Creates the very first admin account via the bootstrap endpoint. */
-  const handleSetup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSetupError('');
-
-    if (setupPassword.length < 8) {
-      setSetupError('Password must be at least 8 characters.');
-      return;
-    }
-    if (setupPassword !== setupConfirm) {
-      setSetupError('Passwords do not match.');
-      return;
-    }
-
-    setSetupSubmitting(true);
-    try {
-      const API_URL = import.meta.env.VITE_API_URL as string || '';
-      const res = await fetch(`${API_URL}/api/admin-users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bootstrap: true,
-          name: setupName.trim() || 'Admin',
-          email: setupEmail.trim().toLowerCase(),
-          password: setupPassword,
-          role: 'Admin',
-        }),
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setSetupError(body.error || 'Could not create admin account. Check your connection and try again.');
-        return;
-      }
-
-      // Sign in immediately with the credentials just created.
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: setupEmail.trim().toLowerCase(),
-        password: setupPassword,
-      });
-
-      if (signInError) {
-        setSetupError('Account created but sign-in failed. Please reload and try logging in.');
-        return;
-      }
-
-      pendingLoginRef.current = true;
-    } finally {
-      setSetupSubmitting(false);
     }
   };
 
@@ -219,67 +152,6 @@ export function Login({ onLogin }: LoginProps) {
   };
 
   const appName = companySettings.name?.trim() || 'CrushTrack';
-
-  // First-run setup screen — no users configured yet
-  if (setupMode) {
-    return (
-      <div className="h-screen bg-zinc-50 dark:bg-zinc-900 flex items-center justify-center p-6">
-        <div className="w-full max-w-sm">
-          <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-1">Create Admin Account</h2>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6">
-            No users are set up yet. Create the first admin account to get started.
-          </p>
-          <form onSubmit={handleSetup} className="flex flex-col gap-4">
-            {setupError && (
-              <div className="bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 p-3 rounded-xl text-sm flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                {setupError}
-              </div>
-            )}
-            <input
-              required
-              type="text"
-              placeholder="Full name"
-              value={setupName}
-              onChange={(e) => setSetupName(e.target.value)}
-              className="w-full px-4 py-3 text-sm bg-zinc-100 dark:bg-zinc-800 rounded-2xl outline-none focus:ring-2 focus:ring-primary-500 text-zinc-900 dark:text-white placeholder:text-zinc-400"
-            />
-            <input
-              required
-              type="email"
-              placeholder="Email address"
-              value={setupEmail}
-              onChange={(e) => setSetupEmail(e.target.value)}
-              className="w-full px-4 py-3 text-sm bg-zinc-100 dark:bg-zinc-800 rounded-2xl outline-none focus:ring-2 focus:ring-primary-500 text-zinc-900 dark:text-white placeholder:text-zinc-400"
-            />
-            <input
-              required
-              type="password"
-              placeholder="Password (min 8 characters)"
-              value={setupPassword}
-              onChange={(e) => setSetupPassword(e.target.value)}
-              className="w-full px-4 py-3 text-sm bg-zinc-100 dark:bg-zinc-800 rounded-2xl outline-none focus:ring-2 focus:ring-primary-500 text-zinc-900 dark:text-white placeholder:text-zinc-400"
-            />
-            <input
-              required
-              type="password"
-              placeholder="Confirm password"
-              value={setupConfirm}
-              onChange={(e) => setSetupConfirm(e.target.value)}
-              className="w-full px-4 py-3 text-sm bg-zinc-100 dark:bg-zinc-800 rounded-2xl outline-none focus:ring-2 focus:ring-primary-500 text-zinc-900 dark:text-white placeholder:text-zinc-400"
-            />
-            <button
-              type="submit"
-              disabled={setupSubmitting}
-              className="w-full h-12 bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white font-semibold rounded-2xl transition-colors"
-            >
-              {setupSubmitting ? 'Creating account…' : 'Create Account & Sign In'}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
 
   // Biometric enrollment prompt shown after a successful password login
   if (showBiometricPrompt) {

@@ -8,21 +8,36 @@
  * The file starts with `_` so Vercel does not expose it as a public route.
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { VercelRequest } from '@vercel/node';
 
-const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+/** Lazily-created admin client so a missing env var doesn't crash the server at startup. */
+let _adminClient: SupabaseClient | null = null;
 
-if (!supabaseUrl || !serviceRoleKey) {
-  throw new Error(
-    'Missing server-side Supabase env vars: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.',
-  );
+function getAdminClient(): SupabaseClient {
+  if (_adminClient) return _adminClient;
+
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error(
+      'Missing server-side Supabase env vars: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.',
+    );
+  }
+
+  _adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  return _adminClient;
 }
 
 /** Admin client — full access, bypasses RLS. Server use only. */
-export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-  auth: { persistSession: false, autoRefreshToken: false },
+export const supabaseAdmin = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    return (getAdminClient() as unknown as Record<string | symbol, unknown>)[prop];
+  },
 });
 
 /**

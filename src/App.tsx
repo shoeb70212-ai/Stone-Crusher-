@@ -4,6 +4,8 @@ import { ToastProvider } from "./components/ui/Toast";
 import { OfflineIndicator } from "./components/ui/OfflineIndicator";
 import { Layout } from "./components/Layout";
 import { Login } from "./components/Login";
+import { SetupAdminScreen } from "./components/SetupAdminScreen";
+import { WelcomeScreen } from "./components/WelcomeScreen";
 import { supabase } from "./lib/supabase";
 import { recordDeviceAccess } from "./lib/device-info";
 
@@ -12,13 +14,37 @@ import { recordDeviceAccess } from "./lib/device-info";
  * to ErpContext's `flushSync`. Must be rendered inside ErpProvider.
  */
 function AppShell({ isAuthenticated, onLogin }: { isAuthenticated: boolean; onLogin: () => void }) {
-  const { flushSync } = useErp();
+  const { flushSync, companySettings, isLoading } = useErp();
+
+  // Show the welcome wizard once after the very first account creation.
+  const [showWelcome, setShowWelcome] = useState(
+    () => isAuthenticated && localStorage.getItem('crushtrack_welcome_seen') === 'pending',
+  );
+
+  const handleWelcomeDone = () => {
+    setShowWelcome(false);
+  };
+
+  // No users configured yet — show the first-run admin setup screen.
+  const isFirstRun = !isLoading && (companySettings.users ?? []).length === 0;
 
   return (
     <>
       <OfflineIndicator onReconnect={flushSync} />
       {isAuthenticated ? (
-        <Layout />
+        showWelcome ? (
+          <WelcomeScreen onDone={handleWelcomeDone} />
+        ) : (
+          <Layout />
+        )
+      ) : isFirstRun ? (
+        <SetupAdminScreen
+          onSetupComplete={() => {
+            localStorage.setItem('crushtrack_welcome_seen', 'pending');
+            setShowWelcome(true);
+            onLogin();
+          }}
+        />
       ) : (
         <Login onLogin={onLogin} />
       )}
