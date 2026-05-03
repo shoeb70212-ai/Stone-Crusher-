@@ -198,7 +198,6 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
       },
       quantity: Math.round(calculatedQty * 100) / 100,
       ratePerUnit: parseFloat(formData.ratePerUnit) || 0,
-      freightAmount: 0,
       totalAmount: finalAmount,
       amountPaid: finalAmountPaid,
       customerId: finalCustomerId,
@@ -321,7 +320,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
       </div>
 
       {/* ── Row 3: Driver Phone (left) | L W H / Tare+Gross (right) ──── */}
-      <div className="grid grid-cols-2 gap-x-3 items-end">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 items-end">
         <div>
           <label className={lbl}>Driver Phone</label>
           <input type="tel" value={formData.driverPhone}
@@ -502,7 +501,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
           )}
         </div>
 
-        <div className="flex items-end">
+        <div className="hidden md:flex items-end">
           <button type="submit"
             className="w-full h-8 bg-primary-600 text-white text-xs font-bold rounded-lg hover:bg-primary-700 active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-sm">
             <Plus className="w-3.5 h-3.5" />Create Slip

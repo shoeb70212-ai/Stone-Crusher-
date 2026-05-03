@@ -25,7 +25,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
 ];
 
 export function Settings() {
-  const { userRole, companySettings, updateCompanySettings, purgeInactiveRecords } = useErp();
+  const { userRole, companySettings, updateCompanySettings, purgeInactiveRecords, session } = useErp();
   const { addToast } = useToast();
 
   const [activeTab, setActiveTab] = useState<Tab>("general");
@@ -57,6 +57,14 @@ export function Settings() {
     primaryColor: companySettings.primaryColor ?? "emerald",
   });
 
+  const getAuthHeaders = (includeJson = false): Record<string, string> => {
+    const headers: Record<string, string> = includeJson ? { "Content-Type": "application/json" } : {};
+    const apiKey = import.meta.env.VITE_API_KEY as string | undefined;
+    if (apiKey) headers["x-api-key"] = apiKey;
+    if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+    return headers;
+  };
+
   useEffect(() => {
     setLocalSettings({
       ...companySettings,
@@ -71,7 +79,82 @@ export function Settings() {
     }
   }, [activeTab, deviceInfo]);
 
+  const syncUserAdminChanges = async (): Promise<boolean> => {
+    if (userRole !== "Admin") return true;
+    const before = companySettings.users || [];
+    const after = localSettings.users || [];
+    const hasChanges =
+      before.length !== after.length ||
+      before.some((oldUser) => {
+        const nextUser = after.find((u) => u.id === oldUser.id);
+        return (
+          !nextUser ||
+          nextUser.name !== oldUser.name ||
+          nextUser.email !== oldUser.email ||
+          nextUser.role !== oldUser.role ||
+          nextUser.status !== oldUser.status
+        );
+      });
+
+    if (!hasChanges) return true;
+    if (!session?.access_token) {
+      addToast("error", "You must be signed in to update users.");
+      return false;
+    }
+
+    const API_URL = import.meta.env.VITE_API_URL as string || "";
+
+    for (const oldUser of before) {
+      if (!after.some((u) => u.id === oldUser.id)) {
+        const res = await fetch(`${API_URL}/api/admin-users?id=${encodeURIComponent(oldUser.id)}`, {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          addToast("error", body.error || `Could not remove ${oldUser.name}.`);
+          return false;
+        }
+      }
+    }
+
+    for (const nextUser of after) {
+      const oldUser = before.find((u) => u.id === nextUser.id);
+      if (!oldUser) continue;
+      if (
+        nextUser.name === oldUser.name &&
+        nextUser.email === oldUser.email &&
+        nextUser.role === oldUser.role &&
+        nextUser.status === oldUser.status
+      ) {
+        continue;
+      }
+
+      const res = await fetch(`${API_URL}/api/admin-users`, {
+        method: "PATCH",
+        headers: getAuthHeaders(true),
+        body: JSON.stringify({
+          id: nextUser.id,
+          name: nextUser.name,
+          email: nextUser.email,
+          role: nextUser.role,
+          status: nextUser.status,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        addToast("error", body.error || `Could not update ${nextUser.name}.`);
+        return false;
+      }
+    }
+
+    return true;
+  };
+
   const handleSave = async () => {
+    const usersSynced = await syncUserAdminChanges();
+    if (!usersSynced) return;
+
     const saved = await updateCompanySettings(localSettings);
     if (!saved) {
       addToast("error", "Could not save settings to Supabase. Check your connection and try again.");
@@ -85,7 +168,7 @@ export function Settings() {
   const handleDownloadBackup = async () => {
     try {
       const API_URL = import.meta.env.VITE_API_URL || "";
-      const res = await fetch(`${API_URL}/api/data`);
+      const res = await fetch(`${API_URL}/api/data`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error("Failed to fetch");
       const data = await res.json();
       const jsonStr = JSON.stringify(data, null, 2);
@@ -155,9 +238,7 @@ export function Settings() {
       data.employees = Array.isArray(data.employees) ? data.employees : [];
       data.employeeTransactions = Array.isArray(data.employeeTransactions) ? data.employeeTransactions : [];
       const API_URL = import.meta.env.VITE_API_URL || "";
-      const apiKey = import.meta.env.VITE_API_KEY as string | undefined;
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (apiKey) headers['x-api-key'] = apiKey;
+      const headers = getAuthHeaders(true);
       const res = await fetch(`${API_URL}/api/data`, { method: "POST", headers, body: JSON.stringify(data) });
       if (res.ok) {
         addToast("success", "Backup restored successfully! Reloading…");
@@ -334,14 +415,14 @@ export function Settings() {
             <form onSubmit={handleChangePassword} className="p-6 space-y-4">
               {[
                 { label: "Current Password", key: "current" as const },
-                { label: "New Password",     key: "next"    as const, placeholder: "Min. 6 characters" },
+                { label: "New Password",     key: "next"    as const, placeholder: "Min. 8 characters" },
                 { label: "Confirm New Password", key: "confirm" as const },
               ].map(({ label, key, placeholder }) => (
                 <div key={key}>
                   <label htmlFor={`cp-${key}`} className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">{label}</label>
                   <input
                     id={`cp-${key}`}
-                    required type="password" minLength={key !== "current" ? 6 : undefined}
+                    required type="password" minLength={key !== "current" ? 8 : undefined}
                     value={changePasswordData[key]}
                     onChange={(e) => setChangePasswordData({ ...changePasswordData, [key]: e.target.value })}
                     placeholder={placeholder}
@@ -374,7 +455,7 @@ export function Settings() {
               </p>
               <div>
                 <label htmlFor="rp-new" className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">New Password</label>
-                <input id="rp-new" required type="password" minLength={6} value={resetPasswordValue} onChange={(e) => setResetPasswordValue(e.target.value)} placeholder="Min. 6 characters"
+                <input id="rp-new" required type="password" minLength={8} value={resetPasswordValue} onChange={(e) => setResetPasswordValue(e.target.value)} placeholder="Min. 8 characters"
                   className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none bg-transparent dark:text-white"
                 />
               </div>
@@ -401,11 +482,11 @@ export function Settings() {
               {[
                 { label: "Full Name",      key: "name"     as const, type: "text",     placeholder: "e.g. Jane Doe"         },
                 { label: "Email Address",  key: "email"    as const, type: "email",    placeholder: "jane@example.com"      },
-                { label: "Password",       key: "password" as const, type: "password", placeholder: "Min. 6 characters"     },
+                { label: "Password",       key: "password" as const, type: "password", placeholder: "Min. 8 characters"     },
               ].map(({ label, key, type, placeholder }) => (
                 <div key={key}>
                   <label htmlFor={`inv-${key}`} className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">{label}</label>
-                  <input id={`inv-${key}`} required type={type} minLength={key === "password" ? 6 : undefined}
+                  <input id={`inv-${key}`} required type={type} minLength={key === "password" ? 8 : undefined}
                     value={inviteFormData[key]} onChange={(e) => setInviteFormData({ ...inviteFormData, [key]: e.target.value })}
                     placeholder={placeholder}
                     className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none dark:text-white"

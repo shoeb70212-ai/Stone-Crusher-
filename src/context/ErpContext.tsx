@@ -24,17 +24,18 @@ import {
 import { supabase } from "../lib/supabase";
 import { isNative } from "../lib/capacitor";
 import { getEmployeeTransactionImpact } from "../lib/employee-ledger";
+import { clearBiometricCredentials } from "../lib/biometrics";
 
 // ---------------------------------------------------------------------------
 // API helpers
 // ---------------------------------------------------------------------------
 
-/** Returns headers for every /api/data request.
- *  Includes x-api-key when VITE_API_KEY is set in the environment. */
-function apiHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+/** Returns headers for every /api/data request. */
+function apiHeaders(session?: Session | null, includeContentType = true): Record<string, string> {
+  const headers: Record<string, string> = includeContentType ? { 'Content-Type': 'application/json' } : {};
   const key = import.meta.env.VITE_API_KEY as string | undefined;
   if (key) headers['x-api-key'] = key;
+  if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
   return headers;
 }
 
@@ -63,6 +64,7 @@ interface ErpState {
   tasks: Task[];
   auditLogs: AuditLog[];
   companySettings: CompanySettings;
+  bootstrapRequired: boolean | null;
   isLoading: boolean;
   syncStatus: 'idle' | 'syncing' | 'error';
 
@@ -185,19 +187,14 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings>(DEFAULT_COMPANY_SETTINGS);
+  const [bootstrapRequired, setBootstrapRequired] = useState<boolean | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [userRole, _setUserRole] = useState<UserRole>("Admin");
+  const [userRole, _setUserRole] = useState<UserRole>(() => {
+    const saved = localStorage.getItem('erp_user_role');
+    return saved === 'Admin' || saved === 'Manager' || saved === 'Partner' ? saved : 'Admin';
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
-
-  // Restore persisted role on cold boot so the correct role is visible before
-  // companySettings loads from the server.
-  useEffect(() => {
-    const saved = localStorage.getItem('erp_user_role');
-    if (saved === 'Admin' || saved === 'Manager' || saved === 'Partner') {
-      _setUserRole(saved);
-    }
-  }, []);
 
   // Subscribe to Supabase Auth state changes.  When the session transitions
   // the role is re-derived below (in the settings-load effect).
@@ -222,12 +219,12 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     async function loadData() {
       try {
         const API_URL = import.meta.env.VITE_API_URL || "";
-        const key = import.meta.env.VITE_API_KEY as string | undefined;
         const res = await fetch(`${API_URL}/api/data`, {
-          headers: key ? { 'x-api-key': key } : undefined,
+          headers: apiHeaders(session, false),
         });
         if (!res.ok) throw new Error(`Failed to load API data: HTTP ${res.status}`);
         const data = await res.json();
+        if (typeof data.bootstrapRequired === 'boolean') setBootstrapRequired(data.bootstrapRequired);
         if (data.customers) setCustomers(data.customers);
         if (data.employees) setEmployees(data.employees);
         if (data.employeeTransactions) setEmployeeTransactions(data.employeeTransactions);
@@ -264,7 +261,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       }
     }
     loadData();
-  }, []);
+  }, [session?.access_token]);
 
   // -----------------------------------------------------------------------
   // Delta-Sync Queue — batches mutations and PATCHes them to the server
@@ -344,7 +341,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       const API_URL = import.meta.env.VITE_API_URL || "";
       const res = await fetch(`${API_URL}/api/data`, {
         method: "PATCH",
-        headers: apiHeaders(),
+        headers: apiHeaders(session),
         body: JSON.stringify(payload),
       });
 
@@ -361,17 +358,18 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       requeueFailedPayload(payload);
       return false;
     }
-  }, [requeueFailedPayload]);
+  }, [session, requeueFailedPayload]);
 
   /** Flushes the accumulated delta queue to the server after a 400ms debounce.
    *  Reduced from 1500ms to improve responsiveness during rapid data entry. */
   const triggerSync = useCallback(() => {
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(async () => {
-      const ok = await flushSyncQueue();
-      if (!ok && retryCountRef.current < MAX_RETRIES) {
+      let ok = await flushSyncQueue();
+      while (!ok && retryCountRef.current < MAX_RETRIES) {
         retryCountRef.current++;
-        triggerSync();
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        ok = await flushSyncQueue();
       }
       // When MAX_RETRIES is exhausted, syncStatus remains 'error' so the
       // OfflineIndicator can surface the failure to the user.
@@ -440,6 +438,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     tasks,
     auditLogs,
     companySettings,
+    bootstrapRequired,
     isLoading,
   ]);
 
@@ -493,18 +492,26 @@ export function ErpProvider({ children }: { children: ReactNode }) {
 
     let resolvedRole: UserRole | null = null;
 
+    const users = companySettings.users ?? [];
+    const match = users.find(
+      (u) =>
+        u.id === session.user.id ||
+        u.email.toLowerCase() === (session.user.email ?? '').toLowerCase(),
+    );
+
+    if (match?.status === 'Inactive') {
+      supabase.auth.signOut();
+      localStorage.removeItem('erp_auth_token');
+      localStorage.removeItem('erp_user_role');
+      clearBiometricCredentials();
+      return;
+    }
+
     const appRole = session.user.app_metadata?.role as string | undefined;
     if (appRole === 'Admin' || appRole === 'Manager' || appRole === 'Partner') {
       resolvedRole = appRole;
-    } else {
-      const users = companySettings.users ?? [];
-      const match = users.find(
-        (u) =>
-          (u.id === session.user.id ||
-            u.email.toLowerCase() === (session.user.email ?? '').toLowerCase()) &&
-          u.status === 'Active',
-      );
-      if (match) resolvedRole = match.role as UserRole;
+    } else if (match?.status === 'Active') {
+      resolvedRole = match.role as UserRole;
     }
 
     if (resolvedRole) {
@@ -545,6 +552,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     localStorage.removeItem('erp_auth_token');
     localStorage.removeItem('erp_user_role');
+    await clearBiometricCredentials();
   }, []);
 
   const recordAudit = useCallback((entry: AuditLogInput) => {
@@ -1068,61 +1076,40 @@ export function ErpProvider({ children }: { children: ReactNode }) {
    * editing a slip's totalAmount (which replaces the slips array) always
    * produces a fresh balance, unlike the old array-length-keyed cache.
    */
-  const balanceCacheRef = useRef<Map<string, number>>(new Map());
+  const customerBalanceById = useMemo(() => {
+    const balances = new Map<string, number>();
 
-  // Invalidate the entire per-customer cache when source data changes.
-  // This is intentionally placed before getCustomerBalance so the ref reset
-  // fires during render, before any subscriber calls getCustomerBalance.
-  const prevSlipsRef = useRef(slips);
-  const prevInvoicesRef = useRef(invoices);
-  const prevTxsRef = useRef(transactions);
-  const prevCustomersRef = useRef(customers);
-  if (
-    prevSlipsRef.current !== slips ||
-    prevInvoicesRef.current !== invoices ||
-    prevTxsRef.current !== transactions ||
-    prevCustomersRef.current !== customers
-  ) {
-    balanceCacheRef.current = new Map();
-    prevSlipsRef.current = slips;
-    prevInvoicesRef.current = invoices;
-    prevTxsRef.current = transactions;
-    prevCustomersRef.current = customers;
-  }
+    customers.forEach((customer) => {
+      const unbilledSlipTotal = slips
+        .filter(
+          (s) =>
+            s.customerId === customer.id &&
+            (s.status === "Tallied" || s.status === "Pending" || s.status === "Loaded") &&
+            !s.invoiceId,
+        )
+        .reduce((sum, s) => sum + s.totalAmount, 0);
+
+      const invoiceTotal = invoices
+        .filter((inv) => inv.customerId === customer.id && inv.status !== "Cancelled")
+        .reduce((sum, inv) => sum + inv.total, 0);
+
+      const custTxs = transactions.filter((t) => t.customerId === customer.id);
+      const incomeTotal = custTxs.filter((t) => t.type === "Income").reduce((sum, t) => sum + t.amount, 0);
+      const expenseTotal = custTxs.filter((t) => t.type === "Expense").reduce((sum, t) => sum + t.amount, 0);
+
+      balances.set(
+        customer.id,
+        customer.openingBalance + unbilledSlipTotal + invoiceTotal + expenseTotal - incomeTotal,
+      );
+    });
+
+    return balances;
+  }, [customers, slips, invoices, transactions]);
 
   const getCustomerBalance = useCallback((customerId: string): number => {
     if (customerId === "CASH") return 0;
-
-    if (balanceCacheRef.current.has(customerId)) {
-      return balanceCacheRef.current.get(customerId)!;
-    }
-
-    const cust = customers.find((c) => c.id === customerId);
-    if (!cust) return 0;
-
-    // Include Pending, Loaded, and Tallied slips that have not been invoiced
-    // so material that left the yard is always reflected in the balance.
-    const unbilledSlipTotal = slips
-      .filter(
-        (s) =>
-          s.customerId === customerId &&
-          (s.status === "Tallied" || s.status === "Pending" || s.status === "Loaded") &&
-          !s.invoiceId,
-      )
-      .reduce((sum, s) => sum + s.totalAmount, 0);
-
-    const invoiceTotal = invoices
-      .filter((inv) => inv.customerId === customerId && inv.status !== "Cancelled")
-      .reduce((sum, inv) => sum + inv.total, 0);
-
-    const custTxs = transactions.filter((t) => t.customerId === customerId);
-    const incomeTotal = custTxs.filter((t) => t.type === "Income").reduce((sum, t) => sum + t.amount, 0);
-    const expenseTotal = custTxs.filter((t) => t.type === "Expense").reduce((sum, t) => sum + t.amount, 0);
-
-    const balance = cust.openingBalance + unbilledSlipTotal + invoiceTotal + expenseTotal - incomeTotal;
-    balanceCacheRef.current.set(customerId, balance);
-    return balance;
-  }, [customers, slips, invoices, transactions]);
+    return customerBalanceById.get(customerId) || 0;
+  }, [customerBalanceById]);
 
   // -----------------------------------------------------------------------
   // Derived: Employee Balance
@@ -1229,6 +1216,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     tasks,
     auditLogs,
     companySettings,
+    bootstrapRequired,
     isLoading,
     syncStatus,
     userRole,
@@ -1265,7 +1253,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     flushSync: flushSyncQueue,
   }), [
     customers, employees, employeeTransactions, slips, transactions, vehicles, invoices, tasks, auditLogs,
-    companySettings, isLoading, syncStatus, userRole, session, signOut,
+    companySettings, bootstrapRequired, isLoading, syncStatus, userRole, session, signOut,
     recordAudit,
     updateCompanySettings, toggleMaterialActive,
     addCustomer, updateCustomer, deleteCustomer,

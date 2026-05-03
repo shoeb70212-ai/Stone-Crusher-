@@ -26,29 +26,33 @@ export function PrintInvoiceModal({
   useBodyScrollLock(true);
 
   const previewWrapRef = useRef<HTMLDivElement>(null);
+  const previewContentRef = useRef<HTMLDivElement>(null);
   const [previewScale, setPreviewScale] = useState(1);
+  const [previewHeight, setPreviewHeight] = useState(940);
 
-  // Scale the fixed-width A4 preview so it fits the mobile viewport without
-  // changing the actual print/PDF markup.
+  // Scale the fixed-width A4 preview while preserving the full rendered height.
   useEffect(() => {
     if (format !== 'A4') {
       setPreviewScale(1);
+      setPreviewHeight(940);
       return;
     }
     const el = previewWrapRef.current;
+    const content = previewContentRef.current;
     if (!el) return;
-    const containerWidth = Math.max(220, el.clientWidth - 16); // subtract mobile p-2 padding
     const contentWidth = 700;
-    const scale = Math.min(1, containerWidth / contentWidth);
-    setPreviewScale(scale);
+    const updatePreviewMetrics = () => {
+      const containerWidth = Math.max(220, el.clientWidth - 16);
+      setPreviewScale(Math.min(1, containerWidth / contentWidth));
+      setPreviewHeight(Math.max(940, content?.scrollHeight || 940));
+    };
 
-    const observer = new ResizeObserver(() => {
-      const w = Math.max(220, el.clientWidth - 16);
-      setPreviewScale(Math.min(1, w / contentWidth));
-    });
+    updatePreviewMetrics();
+    const observer = new ResizeObserver(updatePreviewMetrics);
     observer.observe(el);
+    if (content) observer.observe(content);
     return () => observer.disconnect();
-  }, [format]);
+  }, [format, invoice, customer, companySettings]);
 
   const primaryColorHex = PRIMARY_COLORS[companySettings.primaryColor || "emerald"];
 
@@ -74,7 +78,7 @@ export function PrintInvoiceModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-zinc-900/80 flex items-stretch justify-center md:items-center md:p-4 z-50 overflow-hidden">
+    <div className="fixed inset-0 bg-zinc-900/80 flex items-stretch justify-center md:items-center md:p-4 z-[70] overflow-hidden">
       <div className={`bg-white dark:bg-zinc-800 md:rounded-2xl w-full h-dvh md:h-auto shadow-xl flex flex-col md:max-h-[90vh] ${format === 'A4' ? 'md:max-w-4xl' : 'md:max-w-sm'}`}>
         <div className="p-4 border-b flex justify-between items-center print:hidden shrink-0">
           <h3 className="font-bold text-zinc-900 dark:text-white">Print Invoice</h3>
@@ -91,12 +95,13 @@ export function PrintInvoiceModal({
           <div
             style={format === 'A4' ? {
               width: 700 * previewScale,
-              height: 940 * previewScale,
+              height: previewHeight * previewScale,
               margin: '0 auto',
               overflow: 'visible',
             } : { margin: '0 auto' }}
           >
           <div
+            ref={previewContentRef}
             id="print-invoice-area"
             className="text-black bg-white relative p-4 md:p-6"
             style={{

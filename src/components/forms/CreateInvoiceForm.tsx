@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useErp } from "../../context/ErpContext";
-import { Invoice, InvoiceItem } from "../../types";
+import { Invoice, InvoiceItem, Slip } from "../../types";
 import { Combobox } from "../ui/Combobox";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -150,29 +150,17 @@ export function CreateInvoiceForm({ onSuccess }: { onSuccess: (invoice?: Invoice
     uninvoicedSlips.forEach(s => {
        const mat = materials.find((m) => m.name === s.materialType);
        
-       let totalForSlip = s.quantity * s.ratePerUnit;
+       const totalForSlip = s.totalAmount;
+       const effectiveRate = s.quantity > 0 ? Number((s.totalAmount / s.quantity).toFixed(2)) : s.ratePerUnit;
        // Add the main material item
        newItems.push({
           materialType: `${s.materialType} (Slip: ${s.id.slice(0, 5).toUpperCase()})`,
           quantity: s.quantity,
-          rate: s.ratePerUnit,
+          rate: effectiveRate,
           amount: totalForSlip,
           hsnCode: mat?.hsnCode || "25171010",
           gstRate: mat?.gstRate || 5,
        });
-
-       // If there is freight, add it as a separate line item since freight has different HSN (996511)
-       if (s.freightAmount && s.freightAmount > 0) {
-          newItems.push({
-             materialType: `Freight Charges (Slip: ${s.id.slice(0, 5).toUpperCase()})`,
-             quantity: 1,
-             rate: s.freightAmount,
-             amount: s.freightAmount,
-             hsnCode: "996511", // Transport services
-             gstRate: newInvoice.type === "GST" ? 18 : 0,
-          });
-       }
-
        justBilledIds.push(s.id);
     });
 
@@ -224,6 +212,31 @@ export function CreateInvoiceForm({ onSuccess }: { onSuccess: (invoice?: Invoice
       }
     });
 
+    if (billedSlips.length > 0) {
+      const selectedSlips = billedSlips
+        .map((id) => slips.find((s) => s.id === id))
+        .filter((slip): slip is Slip => Boolean(slip));
+      if (selectedSlips.length !== billedSlips.length) {
+        alert("One or more selected slips could not be found. Refresh and try again.");
+        return;
+      }
+      const invalidSlip = selectedSlips.find(
+        (slip) =>
+          slip.customerId !== finalCustomerId ||
+          slip.status !== "Tallied" ||
+          Boolean(slip.invoiceId),
+      );
+      if (invalidSlip) {
+        alert("Selected slips no longer match this customer or are already billed.");
+        return;
+      }
+      const selectedSlipTotal = Math.round(selectedSlips.reduce((sum, slip) => sum + slip.totalAmount, 0));
+      if (Math.abs(Math.round(subTotal) - selectedSlipTotal) > 1) {
+        alert("Invoice item total must match the selected slip total before slips can be linked.");
+        return;
+      }
+    }
+
     // Round tax components to 2dp so printed CGST + SGST always sums to total - subTotal.
     cgst = Math.round(cgst * 100) / 100;
     sgst = Math.round(sgst * 100) / 100;
@@ -241,6 +254,7 @@ export function CreateInvoiceForm({ onSuccess }: { onSuccess: (invoice?: Invoice
       sgst,
       total,
       status: "Pending",
+      slipIds: billedSlips,
     };
 
     // Link slips

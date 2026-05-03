@@ -25,7 +25,6 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
     tareWeight: slip.measurement?.tareWeight?.toString() || "",
     customerId: slip.customerId || "CASH",
     ratePerUnit: slip.ratePerUnit?.toString() || "",
-    freightAmount: slip.freightAmount?.toString() || "",
     amountPaid: slip.amountPaid?.toString() || "",
     notes: slip.notes || "",
     operatorName: slip.operatorName || "",
@@ -46,17 +45,12 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
   };
 
   const calculatedQty = calculateQuantity();
-  const freightVisible = formData.deliveryMode === "Third-Party Vehicle" && formData.customerId !== "CASH";
-  const appliedFreight = freightVisible ? (parseFloat(formData.freightAmount) || 0) : 0;
-  
-  const calculatedTotalAmount = Math.round(
-    calculatedQty * (parseFloat(formData.ratePerUnit) || 0) + appliedFreight
-  );
+  const calculatedTotalAmount = Math.round(calculatedQty * (parseFloat(formData.ratePerUnit) || 0));
 
   const [manualTotalAmount, setManualTotalAmount] = useState<string>(Math.round(slip.totalAmount).toString());
 
   // Sync the editable total whenever the calculated value changes due to
-  // dimension / rate / freight changes. useEffect avoids setState-during-render.
+  // dimension or rate changes. useEffect avoids setState-during-render.
   useEffect(() => {
     setManualTotalAmount(calculatedTotalAmount.toString());
   }, [calculatedTotalAmount]);
@@ -95,12 +89,6 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
 
     if (parseFloat(formData.ratePerUnit) < 0) {
       addToast('error', 'Rate per unit cannot be negative.');
-      return;
-    }
-
-    const freightAmt = parseFloat(formData.freightAmount) || 0;
-    if (freightVisible && freightAmt < 0) {
-      addToast('error', 'Freight amount cannot be negative.');
       return;
     }
 
@@ -156,7 +144,6 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
       },
       quantity: calculatedQty,
       ratePerUnit: parseFloat(formData.ratePerUnit) || 0,
-      freightAmount: appliedFreight,
       totalAmount: finalAmount,
       amountPaid: finalAmountPaid,
       customerId: formData.customerId,
@@ -400,21 +387,6 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip, onSucc
         </div>
       </div>
       
-      {/* Freight Section */}
-      {freightVisible && (
-        <div className="space-y-1">
-          <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Freight ₹</label>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={formData.freightAmount}
-            onChange={(e) => setFormData({ ...formData, freightAmount: e.target.value })}
-            className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-          />
-        </div>
-      )}
-
       {/* Payment Section */}
       <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
         <div className="space-y-1">

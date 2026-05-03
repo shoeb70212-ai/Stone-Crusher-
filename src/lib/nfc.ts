@@ -38,7 +38,7 @@ export async function scanNfcVehicleTag(timeoutMs = 15_000): Promise<string | un
 
     return new Promise<string | undefined>((resolve) => {
       let handle: { remove: () => void } | undefined;
-      let timer: ReturnType<typeof setTimeout>;
+      const timer = setTimeout(() => finish(undefined), timeoutMs);
 
       const finish = (value: string | undefined) => {
         clearTimeout(timer);
@@ -48,7 +48,6 @@ export async function scanNfcVehicleTag(timeoutMs = 15_000): Promise<string | un
       };
 
       // Time-box the scan so the form doesn't hang indefinitely
-      timer = setTimeout(() => finish(undefined), timeoutMs);
 
       CapacitorNfc.addListener('ndefDiscovered', (event) => {
         const record = event.tag.ndefMessage?.[0];

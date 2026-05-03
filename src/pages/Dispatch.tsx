@@ -7,33 +7,42 @@ import {
   Plus,
   Truck,
   Printer,
+  Download,
   Edit2,
   Ban,
   Filter,
   X,
+  MessageCircle,
 } from "lucide-react";
 import { CreateSlipForm } from "../components/forms/CreateSlipForm";
 import { EditSlipForm } from "../components/forms/EditSlipForm";
-import { PrintSlipModal } from "../components/forms/PrintSlipModal";
 import { MobileModal } from "../components/ui/MobileModal";
 import { MobileChip, MobileFilterSheet } from "../components/ui/MobilePrimitives";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
+import { DocumentActionButton, type DocumentAction } from "../components/ui/DocumentActionButton";
 import { cn } from "../lib/utils";
 import { useHapticFeedback } from "../lib/use-haptic-feedback";
 import { getStatusColor } from "../lib/status-styles";
 import { useDebounce } from "../lib/use-debounce";
+import { createSlipPdfBlob, downloadPdfBlob, printPdfBlob, sharePdfBlob } from "../lib/print-utils";
+import { buildSlipWhatsAppMessage, openWhatsAppMessage } from "../lib/whatsapp-share";
+import { isNative } from "../lib/capacitor";
+import { useToast } from "../components/ui/Toast";
+
+type SlipDocumentAction = DocumentAction;
 
 export function Dispatch() {
   const { slips, customers, vehicles, updateSlipStatus, companySettings } =
     useErp();
   const { tap, success } = useHapticFeedback();
+  const { addToast } = useToast();
   const PAGE_SIZE = 50;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingSlip, setEditingSlip] = useState<Slip | null>(null);
-  const [printSlip, setPrintSlip] = useState<Slip | null>(null);
   const [slipToCancel, setSlipToCancel] = useState<string | null>(null);
+  const [activeSlipAction, setActiveSlipAction] = useState<{ id: string; action: SlipDocumentAction } | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "pending">("all");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [activeQuickFilter, setActiveQuickFilter] = useState<"today" | "week" | "month" | null>(null);
@@ -143,6 +152,52 @@ export function Dispatch() {
     setFilterDeliveryMode("All");
     setFilterVehicle("");
     setActiveQuickFilter(null);
+  };
+
+  const getSlipCustomerName = (slip: Slip) => {
+    if (slip.customerId === "CASH" || !slip.customerId) return "Counter Sale";
+    return customers.find((c) => c.id === slip.customerId)?.name ?? slip.customerId;
+  };
+
+  const handleSlipDocumentAction = async (slip: Slip, action: SlipDocumentAction) => {
+    const customerName = getSlipCustomerName(slip);
+    const filename = `Slip-${slip.id.slice(0, 8).toUpperCase()}.pdf`;
+    setActiveSlipAction({ id: slip.id, action });
+
+    try {
+      const blob = await createSlipPdfBlob(slip, customerName, companySettings);
+
+      if (action === "download") {
+        downloadPdfBlob(blob, filename);
+        addToast("success", "Slip PDF downloaded successfully.");
+        return;
+      }
+
+      if (action === "whatsapp") {
+        const message = buildSlipWhatsAppMessage({ slip, customerName, companySettings });
+        const result = await sharePdfBlob(blob, filename, "Loading Slip", message);
+
+        if (result === "downloaded") {
+          openWhatsAppMessage(message);
+          addToast("info", "Slip PDF downloaded. Attach it in WhatsApp.");
+        } else if (result === "shared") {
+          addToast("success", "Slip PDF is ready to send. Choose WhatsApp from the share sheet.");
+        }
+        return;
+      }
+
+      if (isNative()) {
+        await sharePdfBlob(blob, filename, "Share Loading Token");
+      } else {
+        await printPdfBlob(blob, `Slip ${slip.id.slice(0, 8).toUpperCase()}`);
+      }
+      addToast("success", "Slip sent to print.");
+    } catch (error) {
+      console.error("Slip document action failed:", error);
+      addToast("error", "Could not prepare the slip PDF. Please try again.");
+    } finally {
+      setActiveSlipAction(null);
+    }
   };
 
   const getActiveFilterCount = () => {
@@ -556,7 +611,7 @@ export function Dispatch() {
                 </button>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2 pb-[calc(8.5rem+env(safe-area-inset-bottom))] md:pb-0">
                 {filteredSlips.slice(0, visibleCount).map((slip) => {
                   const cust = customers.find((c) => c.id === slip.customerId);
                   return (
@@ -603,51 +658,50 @@ export function Dispatch() {
                       </div>
 
                       {/* Compact actions - horizontal */}
-                      <div className="flex items-center gap-1.5 px-2 py-2 border-t border-zinc-100 dark:border-zinc-700/50 bg-zinc-50 dark:bg-zinc-800/50">
-                        {slip.status === "Pending" && (
-                          <>
+                      <div className="px-2 py-2 border-t border-zinc-100 dark:border-zinc-700/50 bg-zinc-50 dark:bg-zinc-800/50">
+                        <div className="flex items-center gap-1.5">
+                          {slip.status === "Pending" && (
+                            <>
+                              <button
+                                onClick={() => { success(); updateSlipStatus(slip.id, "Loaded"); }}
+                                className="flex-1 py-2.5 text-[12px] font-semibold bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 rounded-lg hover:bg-blue-100 active:scale-[0.98] transition-all"
+                                aria-label={`Mark slip ${slip.id} as loaded`}
+                              >
+                                Load
+                              </button>
+                              <button
+                                onClick={() => { tap(); setSlipToCancel(slip.id); }}
+                                className="p-2.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 active:scale-95 transition-all"
+                                title="Cancel"
+                                aria-label={`Cancel slip ${slip.id}`}
+                              >
+                                <Ban className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
+                          {slip.status === "Loaded" && (
                             <button
-                              onClick={() => { success(); updateSlipStatus(slip.id, "Loaded"); }}
-                              className="flex-1 py-2.5 text-[12px] font-semibold bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 rounded-lg hover:bg-blue-100 active:scale-[0.98] transition-all"
-                              aria-label={`Mark slip ${slip.id} as loaded`}
+                              onClick={() => { success(); updateSlipStatus(slip.id, "Tallied"); }}
+                              className="flex-1 py-2.5 text-[12px] font-semibold bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400 rounded-lg hover:bg-primary-100 active:scale-[0.98] transition-all"
+                              aria-label={`Mark slip ${slip.id} as tallied`}
                             >
-                              Load
+                              Tally
                             </button>
-                            <button
-                              onClick={() => { tap(); setSlipToCancel(slip.id); }}
-                              className="p-2.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 active:scale-95 transition-all"
-                              title="Cancel"
-                              aria-label={`Cancel slip ${slip.id}`}
-                            >
-                              <Ban className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
-                        {slip.status === "Loaded" && (
+                          )}
                           <button
-                            onClick={() => { success(); updateSlipStatus(slip.id, "Tallied"); }}
-                            className="flex-1 py-2.5 text-[12px] font-semibold bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400 rounded-lg hover:bg-primary-100 active:scale-[0.98] transition-all"
-                            aria-label={`Mark slip ${slip.id} as tallied`}
+                            onClick={() => setEditingSlip(slip)}
+                            className="p-2.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
+                            title="Edit"
+                            aria-label={`Edit slip ${slip.id}`}
                           >
-                            Tally
+                            <Edit2 className="w-4 h-4" />
                           </button>
-                        )}
-                        <button
-                          onClick={() => setEditingSlip(slip)}
-                          className="p-2.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
-                          title="Edit"
-                          aria-label={`Edit slip ${slip.id}`}
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setPrintSlip(slip)}
-                          className="p-2.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
-                          title="Print"
-                          aria-label={`Print slip ${slip.id}`}
-                        >
-                          <Printer className="w-4 h-4" />
-                        </button>
+                        </div>
+                        <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+                          <DocumentActionButton entityId={slip.id} entityLabel={`slip ${slip.id}`} action="download" label="Download" icon={<Download className="h-3.5 w-3.5" />} className="bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-50 dark:bg-zinc-800 dark:text-zinc-200 dark:border-zinc-700 dark:hover:bg-zinc-700" activeAction={activeSlipAction} onClick={(a) => void handleSlipDocumentAction(slip, a)} />
+                          <DocumentActionButton entityId={slip.id} entityLabel={`slip ${slip.id}`} action="whatsapp" label="WhatsApp" icon={<MessageCircle className="h-3.5 w-3.5" />} className="bg-emerald-600 text-white hover:bg-emerald-700" activeAction={activeSlipAction} onClick={(a) => void handleSlipDocumentAction(slip, a)} />
+                          <DocumentActionButton entityId={slip.id} entityLabel={`slip ${slip.id}`} action="print" label="Print" icon={<Printer className="h-3.5 w-3.5" />} className="bg-primary-600 text-white hover:bg-primary-700" activeAction={activeSlipAction} onClick={(a) => void handleSlipDocumentAction(slip, a)} />
+                        </div>
                       </div>
                     </div>
                   );
@@ -744,11 +798,6 @@ export function Dispatch() {
                           {slip.measurementType === "Volume (Brass)"
                             ? "br"
                             : "t"}
-                          {slip.freightAmount > 0 && (
-                            <span className="text-indigo-500 ml-1">
-                              + ₹{slip.freightAmount} frt
-                            </span>
-                          )}
                         </p>
                       </td>
                       <td className="px-4 py-4">
@@ -799,14 +848,9 @@ export function Dispatch() {
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => setPrintSlip(slip)}
-                            className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
-                            title="Print"
-                            aria-label={`Print slip ${slip.id}`}
-                          >
-                            <Printer className="w-4 h-4" />
-                          </button>
+                          <DocumentActionButton entityId={slip.id} entityLabel={`slip ${slip.id}`} action="download" label="Download" icon={<Download className="h-3.5 w-3.5" />} className="bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-50 dark:bg-zinc-800 dark:text-zinc-200 dark:border-zinc-700 dark:hover:bg-zinc-700" activeAction={activeSlipAction} onClick={(a) => void handleSlipDocumentAction(slip, a)} />
+                          <DocumentActionButton entityId={slip.id} entityLabel={`slip ${slip.id}`} action="whatsapp" label="WhatsApp" icon={<MessageCircle className="h-3.5 w-3.5" />} className="bg-emerald-600 text-white hover:bg-emerald-700" activeAction={activeSlipAction} onClick={(a) => void handleSlipDocumentAction(slip, a)} />
+                          <DocumentActionButton entityId={slip.id} entityLabel={`slip ${slip.id}`} action="print" label="Print" icon={<Printer className="h-3.5 w-3.5" />} className="bg-primary-600 text-white hover:bg-primary-700" activeAction={activeSlipAction} onClick={(a) => void handleSlipDocumentAction(slip, a)} />
                         </div>
                       </td>
                     </tr>
@@ -856,11 +900,6 @@ export function Dispatch() {
           />
         )}
       </MobileModal>
-
-      {/* ── Print Modal ── */}
-      {printSlip && (
-        <PrintSlipModal slip={printSlip} onClose={() => setPrintSlip(null)} />
-      )}
 
       {/* ── Cancel Slip Confirmation ── */}
       <ConfirmationModal

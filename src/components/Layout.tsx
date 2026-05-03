@@ -185,7 +185,7 @@ export function Layout() {
     }
   }, [userRole, currentView]);
 
-  let content = null;
+  let content: React.ReactNode;
   switch (currentView) {
     case "dashboard":
       content = <Dashboard />;

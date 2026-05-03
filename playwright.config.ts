@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 /**
  * Playwright E2E configuration for CrushTrack ERP.
- * Targets the local dev server at http://localhost:8081.
+ * Targets the local dev server at http://localhost:8083.
  * Screenshots and traces are captured on first retry to aid debugging.
  */
 export default defineConfig({
@@ -18,7 +18,7 @@ export default defineConfig({
     ['list'],
   ],
   use: {
-    baseURL: 'http://localhost:8081',
+    baseURL: 'http://localhost:8083',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'off',
@@ -36,7 +36,7 @@ export default defineConfig({
   // Dev server is assumed to be started externally; see task instructions.
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:8081',
+    url: 'http://localhost:8083',
     reuseExistingServer: true,
     timeout: 60_000,
   },

@@ -52,7 +52,7 @@ export const pool = new Pool({
   ssl: { rejectUnauthorized: false },
   max: 5,
   idleTimeoutMillis: 20_000,
-  connectionTimeoutMillis: 10_000,
+  connectionTimeoutMillis: 20_000,
 });
 
 /** Ensures a value that might be a raw JSON string is parsed into an object. */
@@ -70,11 +70,17 @@ export async function upsertRecord(
   table: string,
   item: Record<string, unknown>,
 ): Promise<void> {
-  const keys = Object.keys(item);
+  const sanitizedItem =
+    table === 'slips'
+      ? Object.fromEntries(Object.entries(item).filter(([key]) => key !== 'freightAmount'))
+      : item;
+  const keys = Object.keys(sanitizedItem);
   const columns = keys.map((k) => `"${k}"`).join(', ');
   const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
   const values = keys.map((k) =>
-    typeof item[k] === 'object' && item[k] !== null ? JSON.stringify(item[k]) : item[k],
+    typeof sanitizedItem[k] === 'object' && sanitizedItem[k] !== null
+      ? JSON.stringify(sanitizedItem[k])
+      : sanitizedItem[k],
   );
 
   const updateCols = keys.filter((k) => k !== 'id');
@@ -163,6 +169,7 @@ export async function initDb(): Promise<void> {
       "driverName"              TEXT,
       "driverPhone"             TEXT,
       "defaultMeasurementType"  TEXT,
+      "defaultDeliveryMode"     TEXT,
       measurement               JSONB,
       "isActive"                BOOLEAN DEFAULT TRUE
     );
@@ -179,7 +186,6 @@ export async function initDb(): Promise<void> {
       measurement       JSONB,
       quantity          DOUBLE PRECISION,
       "ratePerUnit"     DOUBLE PRECISION,
-      "freightAmount"   DOUBLE PRECISION,
       "totalAmount"     DOUBLE PRECISION,
       "amountPaid"      DOUBLE PRECISION,
       "customerId"      TEXT,
@@ -259,8 +265,10 @@ export async function initDb(): Promise<void> {
     'ALTER TABLE employee_transactions ADD COLUMN IF NOT EXISTS "paymentMode" TEXT',
     'ALTER TABLE employee_transactions ADD COLUMN IF NOT EXISTS "linkedTransactionId" TEXT',
     'ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN DEFAULT TRUE',
+    'ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS "defaultDeliveryMode" TEXT',
     'ALTER TABLE invoices ADD COLUMN IF NOT EXISTS "slipIds" JSONB',
     'ALTER TABLE slips ADD COLUMN IF NOT EXISTS "attachmentUri" TEXT',
+    'ALTER TABLE slips DROP COLUMN IF EXISTS "freightAmount"',
   ];
 
   for (const sql of migrations) {

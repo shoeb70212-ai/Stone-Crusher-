@@ -3,7 +3,7 @@ import { Page, expect } from '@playwright/test';
 /**
  * Page Object Model for the CrushTrack Login screen.
  * The login form is a React component that validates credentials
- * against companySettings.users (or falls back to admin@admin.com / admin123).
+ * against companySettings.users and Supabase Auth.
  */
 export class LoginPage {
   readonly page: Page;

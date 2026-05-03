@@ -117,7 +117,6 @@ export function buildSlipWhatsAppMessage({
     `Material: ${slip.materialType}`,
     `Quantity: ${slip.quantity.toFixed(2)} ${quantityUnit(slip.measurementType)}`,
     `Rate: ${formatMoney(slip.ratePerUnit)}`,
-    slip.freightAmount > 0 ? `Freight: ${formatMoney(slip.freightAmount)}` : "",
     `Total: ${formatMoney(slip.totalAmount)}`,
     paidAmount > 0 ? `Paid: ${formatMoney(paidAmount)}` : "",
     paidAmount > 0 ? `Balance: ${formatMoney(balance)}` : "",

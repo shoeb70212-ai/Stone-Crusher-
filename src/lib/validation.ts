@@ -30,7 +30,6 @@ export const slipSchema = z.object({
   grossWeight: z.coerce.number().min(0).max(1000).optional(),
   tareWeight: z.coerce.number().min(0).max(1000).optional(),
   ratePerUnit: z.coerce.number().min(0, "Rate must be positive"),
-  freightAmount: z.coerce.number().min(0).default(0),
   customerId: z.string().min(1, "Customer is required"),
   notes: z.string().max(500).optional(),
 });
@@ -85,8 +84,7 @@ export const employeeTransactionSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  // Accepts either a plain username or an email address
-  email: z.string().min(1, "Username or email is required"),
+  email: z.string().min(1, "Email is required").email("Enter a valid email address"),
   password: z.string().min(1, "Password is required"),
 });
 

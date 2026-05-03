@@ -2,6 +2,9 @@ import { test, expect } from '@playwright/test';
 import { LoginPage } from './pages/LoginPage';
 import { AppPage } from './pages/AppPage';
 
+const TEST_ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@admin.com';
+const TEST_ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'CrushTrack@123';
+
 /**
  * P0 — Authentication flows.
  *
@@ -16,7 +19,10 @@ test.describe('Login flow', () => {
     loginPage = new LoginPage(page);
     // Clear any existing session so we always start at the login screen
     await page.goto('/');
-    await page.evaluate(() => localStorage.removeItem('erp_auth_token'));
+    await page.evaluate(() => {
+      localStorage.removeItem('erp_auth_token');
+      localStorage.removeItem('crushtrack-auth');
+    });
     await page.reload();
     await loginPage.usernameInput.waitFor({ state: 'visible', timeout: 15_000 });
   });
@@ -29,23 +35,23 @@ test.describe('Login flow', () => {
   });
 
   test('valid credentials redirect to dashboard', async ({ page }) => {
-    await loginPage.login('admin@admin.com', 'admin123');
+    await loginPage.login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
     // After successful login the sidebar should appear (app layout rendered)
     await expect(page.locator('aside')).toBeVisible({ timeout: 15_000 });
-    // The auth token should now be in localStorage
-    const token = await page.evaluate(() => localStorage.getItem('erp_auth_token'));
+    // The Supabase auth session should now be in localStorage.
+    const token = await page.evaluate(() => localStorage.getItem('crushtrack-auth'));
     expect(token).toBeTruthy();
   });
 
   test('invalid password shows error alert', async ({ page }) => {
-    await loginPage.login('admin@admin.com', 'wrongpassword');
+    await loginPage.login(TEST_ADMIN_EMAIL, 'wrongpassword');
     await loginPage.assertError('Invalid username or password');
     // Must stay on login page
     await expect(loginPage.usernameInput).toBeVisible();
   });
 
   test('invalid email shows error alert', async ({ page }) => {
-    await loginPage.login('notauser@example.com', 'admin123');
+    await loginPage.login('notauser@example.com', TEST_ADMIN_PASSWORD);
     await loginPage.assertError('Invalid username or password');
   });
 
@@ -65,8 +71,8 @@ test.describe('Login flow', () => {
   });
 
   test('submit button is disabled while submitting', async ({ page }) => {
-    await loginPage.usernameInput.fill('admin@admin.com');
-    await loginPage.passwordInput.fill('admin123');
+    await loginPage.usernameInput.fill(TEST_ADMIN_EMAIL);
+    await loginPage.passwordInput.fill(TEST_ADMIN_PASSWORD);
     // Intercept the click but check the disabled state briefly
     // We assert the button becomes disabled immediately after click
     await loginPage.submitButton.click();

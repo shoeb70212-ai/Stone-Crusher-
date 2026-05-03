@@ -67,22 +67,9 @@ export function Login({ onLogin }: LoginProps) {
     }
 
     try {
-      const users = companySettings.users ?? [];
       // Resolve the email — the user may have typed their name instead.
-      const loginIdentity = cleanedUsername.toLowerCase();
-      const matchedUser = users.find(
-        (u) =>
-          (u.email.toLowerCase() === loginIdentity || u.name.toLowerCase() === loginIdentity) &&
-          u.status === 'Active',
-      );
-
-      if (!matchedUser) {
-        setError('Invalid username or password.');
-        return;
-      }
-
       const { error: authError } = await supabase.auth.signInWithPassword({
-        email: matchedUser.email,
+        email: cleanedUsername.toLowerCase(),
         password,
       });
 
@@ -94,8 +81,8 @@ export function Login({ onLogin }: LoginProps) {
       recordAuditEvent({
         action: 'Signed in',
         entityType: 'System',
-        description: `Signed in as ${matchedUser.role}.`,
-        metadata: { role: matchedUser.role },
+        description: 'Signed in.',
+        metadata: { method: 'password' },
       });
 
       // Offer biometric enrolment on native devices.
@@ -228,7 +215,7 @@ export function Login({ onLogin }: LoginProps) {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className={`w-full pl-11 pr-4 py-3 text-sm bg-zinc-100 dark:bg-zinc-800 border-0 rounded-2xl focus:ring-2 focus:ring-primary-500 outline-none transition-all text-zinc-900 dark:text-white placeholder:text-zinc-400 ${fieldErrors.email ? 'ring-2 ring-rose-500' : ''}`}
-                placeholder="Username or email"
+                placeholder="Email address"
               />
             </div>
             {fieldErrors.email && (

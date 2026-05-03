@@ -1,21 +1,27 @@
 import React, { useState, useEffect } from "react";
 import { useErp } from "../context/ErpContext";
 import { Invoice } from "../types";
-import { Plus, Download, FileText, Upload, Printer, Filter, ChevronDown } from "lucide-react";
+import { Plus, Download, FileText, Upload, Printer, Filter, ChevronDown, MessageCircle } from "lucide-react";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
-import { PrintInvoiceModal } from "../components/forms/PrintInvoiceModal";
 import { MobileActionSheet, MobileChip, MobileFilterSheet } from "../components/ui/MobilePrimitives";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { DocumentActionButton, type DocumentAction } from "../components/ui/DocumentActionButton";
 import { useInvoiceGenerator } from "./invoices/useInvoiceGenerator";
 import { InvoiceCreateModal } from "./invoices/InvoiceCreateModal";
 import { CREATE_EVENT } from "../components/Layout";
+import { createInvoicePdfBlob, downloadInvoicePdf, printPdfBlob, sharePdfBlob } from "../lib/print-utils";
+import { buildInvoiceWhatsAppMessage, openWhatsAppMessage } from "../lib/whatsapp-share";
+import { useToast } from "../components/ui/Toast";
+
+type InvoiceDocumentAction = DocumentAction;
 
 function InvoicesContent() {
   const { invoices, customers, transactions, updateInvoice, updateSlip, deleteTransaction, companySettings } = useErp();
+  const { addToast } = useToast();
 
   const [invoiceToCancel, setInvoiceToCancel] = useState<string | null>(null);
-  const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
   const [statusActionInvoice, setStatusActionInvoice] = useState<Invoice | null>(null);
+  const [activeInvoiceAction, setActiveInvoiceAction] = useState<{ id: string; action: InvoiceDocumentAction } | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"All" | "GST" | "Cash">("All");
   const [filterCustomerId, setFilterCustomerId] = useState("All");
@@ -54,6 +60,43 @@ function InvoicesContent() {
     setFilterCustomerId("All");
     setStartDate("");
     setEndDate("");
+  };
+
+  const handleInvoiceDocumentAction = async (invoice: Invoice, action: InvoiceDocumentAction) => {
+    const customer = customers.find((c) => c.id === invoice.customerId);
+    const filename = `Invoice-${invoice.invoiceNo}.pdf`;
+    setActiveInvoiceAction({ id: invoice.id, action });
+
+    try {
+      if (action === "download") {
+        await downloadInvoicePdf(invoice, customer, companySettings, filename);
+        addToast("success", "Invoice PDF downloaded successfully.");
+        return;
+      }
+
+      const blob = await createInvoicePdfBlob(invoice, customer, companySettings);
+
+      if (action === "whatsapp") {
+        const message = buildInvoiceWhatsAppMessage({ invoice, customer, companySettings });
+        const result = await sharePdfBlob(blob, filename, `Invoice ${invoice.invoiceNo}`, message);
+
+        if (result === "downloaded") {
+          openWhatsAppMessage(message);
+          addToast("info", "Invoice PDF downloaded. Attach it in WhatsApp.");
+        } else if (result === "shared") {
+          addToast("success", "Invoice PDF is ready to send. Choose WhatsApp from the share sheet.");
+        }
+        return;
+      }
+
+      await printPdfBlob(blob, `Invoice ${invoice.invoiceNo}`);
+      addToast("success", "Invoice sent to print.");
+    } catch (error) {
+      console.error("Invoice document action failed:", error);
+      addToast("error", "Could not prepare the invoice PDF. Please try again.");
+    } finally {
+      setActiveInvoiceAction(null);
+    }
   };
 
   return (
@@ -220,7 +263,7 @@ function InvoicesContent() {
               </button>
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-1 pb-[calc(8.5rem+env(safe-area-inset-bottom))] md:pb-0">
               {filteredInvoices.map((inv) => (
                 <div key={inv.id} className="p-2.5 bg-white dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700">
                   <div className="flex justify-between items-center">
@@ -262,14 +305,12 @@ function InvoicesContent() {
                       >
                         Edit
                       </button>
-                      <button
-                        onClick={() => setPrintInvoice(inv)}
-                        className="text-zinc-600 dark:text-zinc-300 font-medium text-xs px-3 py-1.5 min-h-8 bg-zinc-100 dark:bg-zinc-700/50 rounded flex items-center gap-1"
-                      >
-                        <Printer className="w-3 h-3" />
-                        Print
-                      </button>
                     </div>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-1.5">
+                    <DocumentActionButton entityId={inv.id} entityLabel={`invoice ${inv.invoiceNo}`} action="download" label="Download" icon={<Download className="h-3.5 w-3.5" />} className="bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-50 dark:bg-zinc-800 dark:text-zinc-200 dark:border-zinc-700 dark:hover:bg-zinc-700" activeAction={activeInvoiceAction} onClick={(a) => void handleInvoiceDocumentAction(inv, a)} />
+                    <DocumentActionButton entityId={inv.id} entityLabel={`invoice ${inv.invoiceNo}`} action="whatsapp" label="WhatsApp" icon={<MessageCircle className="h-3.5 w-3.5" />} className="bg-emerald-600 text-white hover:bg-emerald-700" activeAction={activeInvoiceAction} onClick={(a) => void handleInvoiceDocumentAction(inv, a)} />
+                    <DocumentActionButton entityId={inv.id} entityLabel={`invoice ${inv.invoiceNo}`} action="print" label="Print" icon={<Printer className="h-3.5 w-3.5" />} className="bg-primary-600 text-white hover:bg-primary-700" activeAction={activeInvoiceAction} onClick={(a) => void handleInvoiceDocumentAction(inv, a)} />
                   </div>
                 </div>
               ))}
@@ -329,20 +370,18 @@ function InvoicesContent() {
                       <ChevronDown className="pointer-events-none absolute right-2 h-3 w-3 text-current opacity-70" />
                     </div>
                   </td>
-                  <td className="py-4 px-6 text-right space-x-3">
-                    <button
-                      onClick={() => generator.openEditModal(inv)}
-                      className="text-indigo-500 hover:text-indigo-700 transition-colors text-sm font-medium"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => setPrintInvoice(inv)}
-                      className="text-zinc-500 hover:text-primary-600 transition-colors text-sm font-medium"
-                    >
-                      <Printer className="w-5 h-5 inline mr-1" />
-                      <span className="hidden sm:inline">Print / Download</span>
-                    </button>
+                  <td className="py-4 px-6 text-right">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <button
+                        onClick={() => generator.openEditModal(inv)}
+                        className="inline-flex min-h-9 items-center justify-center rounded-lg px-2.5 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors dark:text-indigo-400 dark:hover:bg-indigo-900/30"
+                      >
+                        Edit
+                      </button>
+                      <DocumentActionButton entityId={inv.id} entityLabel={`invoice ${inv.invoiceNo}`} action="download" label="Download" icon={<Download className="h-3.5 w-3.5" />} className="bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-50 dark:bg-zinc-800 dark:text-zinc-200 dark:border-zinc-700 dark:hover:bg-zinc-700" activeAction={activeInvoiceAction} onClick={(a) => void handleInvoiceDocumentAction(inv, a)} />
+                      <DocumentActionButton entityId={inv.id} entityLabel={`invoice ${inv.invoiceNo}`} action="whatsapp" label="WhatsApp" icon={<MessageCircle className="h-3.5 w-3.5" />} className="bg-emerald-600 text-white hover:bg-emerald-700" activeAction={activeInvoiceAction} onClick={(a) => void handleInvoiceDocumentAction(inv, a)} />
+                      <DocumentActionButton entityId={inv.id} entityLabel={`invoice ${inv.invoiceNo}`} action="print" label="Print" icon={<Printer className="h-3.5 w-3.5" />} className="bg-primary-600 text-white hover:bg-primary-700" activeAction={activeInvoiceAction} onClick={(a) => void handleInvoiceDocumentAction(inv, a)} />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -478,14 +517,6 @@ function InvoicesContent() {
         }}
         onCancel={() => setInvoiceToCancel(null)}
       />
-
-      {printInvoice && (
-        <PrintInvoiceModal
-          invoice={printInvoice}
-          customer={customers.find((c) => c.id === printInvoice.customerId)}
-          onClose={() => setPrintInvoice(null)}
-        />
-      )}
 
     </div>
   );

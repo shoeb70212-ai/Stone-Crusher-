@@ -14,7 +14,7 @@ import { recordDeviceAccess } from "./lib/device-info";
  * to ErpContext's `flushSync`. Must be rendered inside ErpProvider.
  */
 function AppShell({ isAuthenticated, onLogin }: { isAuthenticated: boolean; onLogin: () => void }) {
-  const { flushSync, companySettings, isLoading } = useErp();
+  const { flushSync, bootstrapRequired, isLoading } = useErp();
 
   // Show the welcome wizard once after the very first account creation.
   const [showWelcome, setShowWelcome] = useState(
@@ -26,7 +26,7 @@ function AppShell({ isAuthenticated, onLogin }: { isAuthenticated: boolean; onLo
   };
 
   // No users configured yet — show the first-run admin setup screen.
-  const isFirstRun = !isLoading && (companySettings.users ?? []).length === 0;
+  const isFirstRun = !isLoading && bootstrapRequired === true;
 
   return (
     <>
@@ -57,6 +57,10 @@ export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
+    // Clear any stale legacy or dev-bypass auth tokens on every mount so they
+    // can never silently restore an authenticated state on a fresh page load.
+    localStorage.removeItem('erp_auth_token');
+
     // Read the current session on mount — covers page reload with a live session.
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) setIsAuthenticated(true);
@@ -68,9 +72,6 @@ export default function App() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsAuthenticated(!!session);
     });
-
-    // Clear stale legacy auth keys from the old PBKDF2 system on first load.
-    localStorage.removeItem('erp_auth_token');
 
     recordDeviceAccess();
 

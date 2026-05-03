@@ -34,3 +34,5 @@ dev-server-*.out.log
 
 # Memory files
 memory/
+
+.vercel

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useErp } from "../../context/ErpContext";
-import { Invoice, InvoiceItem } from "../../types";
+import { Invoice, InvoiceItem, Slip } from "../../types";
 import { useToast } from "../../components/ui/Toast";
 import { downloadCSV } from "../../lib/export-utils";
 import { invoiceSchema } from "../../lib/validation";
@@ -176,6 +176,28 @@ export function useInvoiceGenerator() {
       finalCustomerId = newCust.id;
     }
 
+    const selectedSlips = selectedSlipIds
+      .map((id) => slips.find((s) => s.id === id))
+      .filter((slip): slip is Slip => Boolean(slip));
+
+    if (selectedSlips.length !== selectedSlipIds.length) {
+      addToast("error", "One or more selected slips could not be found. Refresh and try again.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    const invalidSlip = selectedSlips.find(
+      (slip) =>
+        slip.customerId !== finalCustomerId ||
+        slip.status !== "Tallied" ||
+        (slip.invoiceId && slip.invoiceId !== editingInvoiceId),
+    );
+    if (invalidSlip) {
+      addToast("error", "Selected slips no longer match this customer or invoice.");
+      setIsSubmitting(false);
+      return;
+    }
+
     let subTotal = 0, cgst = 0, sgst = 0;
     newInvoice.items.forEach((item) => {
       subTotal += item.amount;
@@ -185,6 +207,16 @@ export function useInvoiceGenerator() {
         sgst += itemGst / 2;
       }
     });
+
+    if (selectedSlips.length > 0) {
+      const selectedSlipTotal = Math.round(selectedSlips.reduce((sum, slip) => sum + slip.totalAmount, 0));
+      if (Math.abs(Math.round(subTotal) - selectedSlipTotal) > 1) {
+        addToast("error", "Invoice item total must match the selected slip total before slips can be linked.");
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
     cgst = Math.round(cgst * 100) / 100;
     sgst = Math.round(sgst * 100) / 100;
     const total = Math.round(subTotal + cgst + sgst);

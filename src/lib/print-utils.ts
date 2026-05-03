@@ -336,7 +336,7 @@ export function safeNumber(value: unknown): number {
 }
 
 function sanitizePdfFilename(filename: string): string {
-  return filename.replace(/[<>:"/\\|?*\x00-\x1F]/g, '-');
+  return filename.replace(/[<>:"/\\|?*\x00-\x1f]/g, '-');
 }
 
 function triggerBlobDownload(blob: Blob, filename: string): void {
@@ -355,6 +355,55 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
     document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
   }, 1000);
+}
+
+export function downloadPdfBlob(blob: Blob, filename: string): void {
+  triggerBlobDownload(blob, filename);
+}
+
+export function printPdfBlob(blob: Blob, title = 'Print Document'): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof document === 'undefined') {
+      reject(new Error('Printing is only available in a browser.'));
+      return;
+    }
+
+    const url = URL.createObjectURL(blob);
+    const iframe = document.createElement('iframe');
+    iframe.title = title;
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+
+    let settled = false;
+    const cleanup = () => {
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      URL.revokeObjectURL(url);
+    };
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+      setTimeout(cleanup, 2000);
+    };
+
+    iframe.onload = () => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        iframe.contentWindow?.addEventListener('afterprint', cleanup, { once: true });
+        finish();
+      } catch (error) {
+        cleanup();
+        reject(error instanceof Error ? error : new Error('Print failed.'));
+      }
+    };
+    iframe.onerror = () => {
+      cleanup();
+      reject(new Error('Could not load PDF for printing.'));
+    };
+
+    document.body.appendChild(iframe);
+    iframe.src = url;
+  });
 }
 
 function isShareCancel(error: unknown): boolean {

@@ -268,9 +268,7 @@ export interface Slip {
   /** Computed brass volume or net weight depending on `measurementType`. */
   quantity: number;
   ratePerUnit: number;
-  /** Transport/freight charges — non-zero only for Company Vehicle mode. */
-  freightAmount: number;
-  /** Final billable amount: (rate × qty) + freight. */
+  /** Final billable amount: rate multiplied by quantity. */
   totalAmount: number;
   amountPaid?: number;
   /** `"CASH"` for walk-in customers without an account. */

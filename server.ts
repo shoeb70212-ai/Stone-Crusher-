@@ -111,7 +111,11 @@ function upsertById(records: DataRecord[], incoming: DataRecord[]): DataRecord[]
 
   for (const item of incoming) {
     if (!item.id) continue;
-    byId.set(String(item.id), item);
+    const sanitized =
+      "freightAmount" in item
+        ? Object.fromEntries(Object.entries(item).filter(([key]) => key !== "freightAmount"))
+        : item;
+    byId.set(String(item.id), sanitized);
   }
 
   return Array.from(byId.values());
@@ -133,7 +137,9 @@ async function start() {
 
   app.get("/api/data", requireApiKey, async (_req, res) => {
     try {
-      res.json(await readData());
+      const data = await readData();
+      const users = Array.isArray(data.companySettings?.users) ? data.companySettings.users : [];
+      res.json({ ...data, bootstrapRequired: users.length === 0 });
     } catch (error) {
       console.error("GET /api/data failed:", error);
       res.status(500).json({ error: "Failed to read local data" });

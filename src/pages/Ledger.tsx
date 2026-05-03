@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from "react";
 import { useErp } from "../context/ErpContext";
-import { TransactionType, Transaction, Customer, Invoice } from "../types";
+import { TransactionType, Transaction, Customer } from "../types";
 import {
   Plus,
   X,
@@ -839,6 +839,10 @@ export function Ledger() {
           bal = bal + e.debit - e.credit;
           return { ...e, runningBalance: bal };
         });
+        const statementClosingBalance =
+          entriesWithBalance.length > 0
+            ? entriesWithBalance[entriesWithBalance.length - 1].runningBalance
+            : periodOpeningBalance;
 
         return (
         <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center p-4 z-50">
@@ -977,18 +981,18 @@ export function Ledger() {
                 <span className="text-zinc-500 dark:text-zinc-400 mr-2">Closing Balance:</span>
                 <span
                   className={
-                    getCustomerBalance(viewCustomerLedger.id) > 0
+                    statementClosingBalance > 0
                       ? "text-rose-600"
-                      : getCustomerBalance(viewCustomerLedger.id) < 0
+                      : statementClosingBalance < 0
                         ? "text-primary-600"
                         : "text-zinc-900 dark:text-white"
                   }
                 >
                   ₹{" "}
-                  {Math.abs(getCustomerBalance(viewCustomerLedger.id)).toLocaleString()}{" "}
-                  {getCustomerBalance(viewCustomerLedger.id) < 0
+                  {Math.abs(statementClosingBalance).toLocaleString()}{" "}
+                  {statementClosingBalance < 0
                     ? "(Cr)"
-                    : getCustomerBalance(viewCustomerLedger.id) > 0
+                    : statementClosingBalance > 0
                       ? "(Dr)"
                       : ""}
                 </span>

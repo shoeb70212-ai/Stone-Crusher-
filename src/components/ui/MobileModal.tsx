@@ -124,7 +124,7 @@ export function MobileModal({
         : "w-full rounded-t-2xl max-h-[92dvh]";
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end md:justify-center md:items-center md:p-4 overflow-hidden">
+    <div className="fixed inset-0 z-[70] flex flex-col justify-end md:justify-center md:items-center md:p-4 overflow-hidden">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"

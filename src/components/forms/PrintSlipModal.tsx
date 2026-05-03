@@ -146,7 +146,7 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
   };
 
   return (
-    <div className="fixed inset-0 bg-zinc-900/80 flex items-center justify-center md:p-4 z-50 overflow-hidden">
+    <div className="fixed inset-0 bg-zinc-900/80 flex items-center justify-center md:p-4 z-[70] overflow-hidden">
       <div className={`bg-white dark:bg-zinc-800 md:rounded-2xl w-full h-full md:h-auto shadow-xl flex flex-col md:max-h-[90vh] ${format === 'A4' ? 'md:max-w-3xl' : 'md:max-w-sm'}`}>
         <div className="p-4 border-b flex justify-between items-center print:hidden">
           <h3 className="font-bold text-zinc-900 dark:text-white">Print Loading Token</h3>

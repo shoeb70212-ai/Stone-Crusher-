@@ -46,7 +46,7 @@ export const supabaseAdmin = new Proxy({} as SupabaseClient, {
  */
 export async function verifyBearerToken(
   req: VercelRequest,
-): Promise<{ userId: string; email: string } | null> {
+): Promise<{ userId: string; email: string; appMetadata: Record<string, unknown> } | null> {
   const auth = req.headers['authorization'];
   if (!auth?.startsWith('Bearer ')) return null;
   const token = auth.slice('Bearer '.length);
@@ -57,5 +57,6 @@ export async function verifyBearerToken(
   return {
     userId: data.user.id,
     email: data.user.email ?? '',
+    appMetadata: data.user.app_metadata ?? {},
   };
 }
