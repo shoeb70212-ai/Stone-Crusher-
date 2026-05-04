@@ -1,8 +1,9 @@
-import React, { useState } from "react";
-import { Bell, Shield, Loader2, AlertTriangle, Sun, Moon, Monitor } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Bell, Shield, Loader2, AlertTriangle, Sun, Moon, Monitor, ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import { useErp } from "../context/ErpContext";
 import { clearAuthSession } from "../lib/session";
+import { NAVIGATE_EVENT } from "./Layout";
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -11,6 +12,15 @@ interface HeaderProps {
 export function Header({ onMenuClick }: HeaderProps) {
   const { userRole, syncStatus, companySettings, updateCompanySettings } = useErp();
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
+  const [currentView, setCurrentView] = useState("dashboard");
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      setCurrentView((e as CustomEvent<string>).detail);
+    };
+    window.addEventListener(NAVIGATE_EVENT, handler);
+    return () => window.removeEventListener(NAVIGATE_EVENT, handler);
+  }, []);
 
   const theme = companySettings.theme ?? "system";
   const cycleTheme = () => {
@@ -19,18 +29,31 @@ export function Header({ onMenuClick }: HeaderProps) {
   };
   const ThemeIcon = theme === "dark" ? Moon : theme === "light" ? Sun : Monitor;
 
+  const showBack = currentView !== "dashboard";
+
   return (
     <header
-      className="flex h-12 md:h-16 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-2 md:px-8 items-center justify-between shrink-0 transition-colors z-20 mobile-header"
+      className="flex h-14 md:h-16 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-2 md:px-8 items-center justify-between shrink-0 transition-colors z-20 mobile-header"
       style={{ paddingTop: 'env(safe-area-inset-top)' }}
     >
-      {/* Left: date (desktop) / app name (mobile) */}
+      {/* Left: date (desktop) / app name or back (mobile) */}
       <div className="flex items-center gap-2 flex-1 min-w-0">
+        {showBack ? (
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent(NAVIGATE_EVENT, { detail: "dashboard" }))}
+            className="sm:hidden flex items-center gap-1 text-sm font-bold text-zinc-900 dark:text-white tracking-tight active:scale-95 transition-transform"
+            aria-label="Back to dashboard"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span className="mobile-header-title">CrushTrack</span>
+          </button>
+        ) : (
+          <span className="text-sm font-bold text-zinc-900 dark:text-white sm:hidden tracking-tight mobile-header-title">
+            CrushTrack
+          </span>
+        )}
         <span className="text-xs md:text-sm font-medium text-zinc-500 dark:text-zinc-400 hidden sm:block truncate">
           {format(new Date(), "EEE, dd MMM yyyy")}
-        </span>
-        <span className="text-sm font-bold text-zinc-900 dark:text-white sm:hidden tracking-tight mobile-header-title">
-          CrushTrack
         </span>
       </div>
 

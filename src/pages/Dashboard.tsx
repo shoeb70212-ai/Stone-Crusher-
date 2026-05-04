@@ -7,8 +7,14 @@ import {
   Printer,
   ArrowDownCircle,
   ArrowUpCircle,
+  FileText,
+  Receipt,
+  Plus,
+  CalendarDays,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
-import { NAVIGATE_EVENT } from "../components/Layout";
+import { NAVIGATE_EVENT, CREATE_EVENT } from "../components/Layout";
 import { getStatusColor } from "../lib/status-styles";
 import {
   endOfDay,
@@ -196,6 +202,7 @@ export function Dashboard() {
       icon: Truck,
       color: "text-blue-600 dark:text-blue-400",
       bg: "bg-blue-100 dark:bg-blue-500/20",
+      gradient: "from-blue-500/10 to-blue-600/5 dark:from-blue-500/20 dark:to-blue-600/10",
       navTarget: "dispatch",
     },
     {
@@ -206,6 +213,7 @@ export function Dashboard() {
       icon: ArrowDownCircle,
       color: "text-emerald-600 dark:text-emerald-400",
       bg: "bg-emerald-100 dark:bg-emerald-500/20",
+      gradient: "from-emerald-500/10 to-emerald-600/5 dark:from-emerald-500/20 dark:to-emerald-600/10",
       navTarget: "daybook",
     },
     {
@@ -216,6 +224,7 @@ export function Dashboard() {
       icon: ArrowUpCircle,
       color: "text-orange-600 dark:text-orange-400",
       bg: "bg-orange-100 dark:bg-orange-500/20",
+      gradient: "from-orange-500/10 to-orange-600/5 dark:from-orange-500/20 dark:to-orange-600/10",
       navTarget: "daybook",
     },
     {
@@ -226,6 +235,7 @@ export function Dashboard() {
       icon: Wallet,
       color: "text-amber-600 dark:text-amber-400",
       bg: "bg-amber-100 dark:bg-amber-500/20",
+      gradient: "from-amber-500/10 to-amber-600/5 dark:from-amber-500/20 dark:to-amber-600/10",
       navTarget: "customers",
     },
   ];
@@ -296,8 +306,34 @@ export function Dashboard() {
         )}
       </div>
 
+      {/* Quick Actions Row */}
+      <div className="md:hidden -mx-1">
+        <div className="flex gap-2 overflow-x-auto no-scrollbar px-1 pb-1">
+          {[
+            { label: "New Slip", icon: FileText, target: "dispatch", color: "bg-blue-600 text-white" },
+            { label: "New Invoice", icon: Receipt, target: "invoices", color: "bg-violet-600 text-white" },
+            { label: "Add Income", icon: TrendingUp, target: "daybook", color: "bg-emerald-600 text-white" },
+            { label: "Add Expense", icon: TrendingDown, target: "daybook", color: "bg-rose-600 text-white" },
+          ].map((action) => (
+            <button
+              key={action.label}
+              onClick={() => {
+                if (action.label === "New Slip" || action.label === "New Invoice") {
+                  window.dispatchEvent(new CustomEvent(CREATE_EVENT));
+                }
+                navigateTo(action.target);
+              }}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl whitespace-nowrap text-xs font-semibold active:scale-95 transition-transform ${action.color}`}
+            >
+              <action.icon className="w-4 h-4" />
+              {action.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* TOP 4 KEY METRICS - Dense 2x2 grid with touch feedback */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4 stagger-animation">
         {stats.map((stat, i) => {
           const Icon = stat.icon;
           return (
@@ -305,7 +341,7 @@ export function Dashboard() {
               key={i}
               onClick={() => navigateTo(stat.navTarget)}
               aria-label={`${stat.label}: ${stat.value}. ${stat.subValue}. Open ${stat.navTarget}.`}
-              className="bg-white dark:bg-zinc-900/40 p-2.5 md:p-5 rounded-xl md:rounded-2xl shadow-sm border border-zinc-200/80 dark:border-zinc-800 flex flex-col gap-1 relative overflow-hidden active:scale-[0.98] active:shadow-inner transition-all cursor-pointer text-left hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-md"
+              className={`bg-gradient-to-br ${stat.gradient} bg-white dark:bg-zinc-900/40 p-2.5 md:p-5 rounded-xl md:rounded-2xl shadow-sm border border-zinc-200/80 dark:border-zinc-800 flex flex-col gap-1 relative overflow-hidden active:scale-[0.98] active:shadow-inner transition-all cursor-pointer text-left hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-md animate-stat`}
             >
               <div className="flex justify-between items-start">
                 <p className="text-xs md:text-sm font-semibold text-zinc-500 dark:text-zinc-400 leading-tight line-clamp-2 uppercase tracking-wide">
@@ -335,112 +371,85 @@ export function Dashboard() {
         })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-5">
-      {/* Recent Dispatches - Full width on mobile */}
-      <div className="bg-white dark:bg-zinc-800 rounded-xl md:rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 p-2.5 md:p-5">
-        <div className="flex justify-between items-center mb-2">
+      {/* Unified Activity Feed */}
+      <div className="bg-white dark:bg-zinc-800 rounded-xl md:rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2.5 md:px-5 md:py-4 border-b border-zinc-100 dark:border-zinc-700/50">
           <h3 className="font-semibold text-zinc-900 dark:text-white text-xs md:text-sm">
-            Recent Dispatches
+            Activity Feed
           </h3>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => navigateTo("dispatch")}
-              className="text-xs font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
-            >
-              View all
-            </button>
-            <span className="text-xs font-semibold bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 px-2 py-0.5 rounded-lg">
-              {slips.length > 6 ? "6+" : slips.length}
-            </span>
-          </div>
+          <button
+            type="button"
+            onClick={() => navigateTo("dispatch")}
+            className="text-xs font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+          >
+            View all
+          </button>
         </div>
-        <div className="space-y-1 max-h-45 md:max-h-55 overflow-y-auto">
-          {recentSlips.map((slip) => (
-            // Single-row layout: vehicle+status left | amount+print right, date below
-            <div key={slip.id} className="bg-zinc-50 dark:bg-zinc-900/50 px-2.5 py-2 rounded-lg border border-zinc-100 dark:border-zinc-700/50 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <Truck className="w-3 h-3 text-zinc-400 shrink-0" />
-                  <span className="font-bold text-zinc-900 dark:text-white uppercase tracking-wide text-[11px] truncate">{slip.vehicleNo}</span>
-                  <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold tracking-wide uppercase shrink-0 ${getStatusColor(slip.status)}`}>
-                    {slip.status}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="font-bold text-zinc-900 dark:text-white text-[11px]">₹{slip.totalAmount.toLocaleString()}</span>
-                  <button
-                    onClick={() => setPrintSlip(slip)}
-                    className="text-zinc-400 p-1 rounded bg-white dark:bg-zinc-800 shadow-sm border border-zinc-200 dark:border-zinc-700 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-                    aria-label={`Print slip ${slip.id}`}
-                  >
-                    <Printer className="w-3 h-3" />
-                  </button>
-                </div>
+        <div className="divide-y divide-zinc-100 dark:divide-zinc-700/50 max-h-80 md:max-h-96 overflow-y-auto">
+          {/* Merge and sort recent slips + transactions by date */}
+          {useMemo(() => {
+            const activityItems = [
+              ...recentSlips.map((s) => ({
+                id: s.id,
+                type: "slip" as const,
+                date: s.date,
+                title: s.vehicleNo,
+                subtitle: `${s.materialType} · ${s.quantity.toFixed(1)} ${s.measurementType === "Volume (Brass)" ? "Brass" : "Tons"}`,
+                amount: s.totalAmount,
+                status: s.status,
+                color: "border-l-blue-500",
+                icon: Truck,
+              })),
+              ...recentTransactions.map((t) => ({
+                id: t.id,
+                type: "transaction" as const,
+                date: t.date,
+                title: t.category,
+                subtitle: t.type,
+                amount: t.amount,
+                status: t.type,
+                color: t.type === "Income" ? "border-l-emerald-500" : "border-l-rose-500",
+                icon: t.type === "Income" ? ArrowDownCircle : ArrowUpCircle,
+              })),
+            ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 8);
+            return activityItems;
+          }, [recentSlips, recentTransactions]).map((item) => (
+            <div
+              key={item.id + item.type}
+              className={`flex items-center gap-3 px-3 py-2.5 md:px-5 md:py-3 border-l-4 ${item.color} hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors active:bg-zinc-100 dark:active:bg-zinc-800`}
+            >
+              <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                <item.icon className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
               </div>
-              <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5 pl-4.5">
-                {slip.materialType} · {slip.quantity.toFixed(1)} · {new Date(slip.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
-              </p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-bold text-zinc-900 dark:text-white truncate uppercase">{item.title}</p>
+                  {item.type === "slip" ? (
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase shrink-0 ${getStatusColor(item.status)}`}>
+                      {item.status}
+                    </span>
+                  ) : (
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase shrink-0 ${item.status === "Income" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400"}`}>
+                      {item.status}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">{item.subtitle}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className={`text-xs font-bold ${item.type === "transaction" && item.status === "Expense" ? "text-rose-600 dark:text-rose-400" : "text-zinc-900 dark:text-white"}`}>
+                  {item.type === "transaction" && item.status === "Expense" ? "-" : ""}₹{item.amount.toLocaleString()}
+                </p>
+                <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                  {new Date(item.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                </p>
+              </div>
             </div>
           ))}
-          {slips.length === 0 && (
-            <div className="text-center text-xs text-zinc-500 py-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-lg">No dispatches yet</div>
+          {recentSlips.length === 0 && recentTransactions.length === 0 && (
+            <div className="text-center text-xs text-zinc-500 py-8">No recent activity</div>
           )}
         </div>
-      </div>
-
-      {/* Recent Transactions - Full width on mobile */}
-      <div className="bg-white dark:bg-zinc-800 rounded-xl md:rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 p-2.5 md:p-5">
-        <div className="flex justify-between items-center mb-2">
-          <h3 className="font-semibold text-zinc-900 dark:text-white text-xs md:text-sm">
-            Recent Transactions
-          </h3>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => navigateTo("daybook")}
-              className="text-xs font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
-            >
-              View all
-            </button>
-            <span className="text-xs font-semibold bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 px-2 py-0.5 rounded-lg">
-              {transactions.length > 6 ? "6+" : transactions.length}
-            </span>
-          </div>
-        </div>
-        <div className="space-y-1.5 max-h-45 md:max-h-55 overflow-y-auto">
-          {recentTransactions.map((t) => (
-              <div
-                key={t.id}
-                className="bg-zinc-50 dark:bg-zinc-900/50 p-2 rounded-lg flex items-center justify-between border border-zinc-100 dark:border-zinc-700/50"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <div
-                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${t.type === "Income" ? "bg-emerald-500" : "bg-rose-500"}`}
-                  />
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-semibold text-zinc-900 dark:text-white truncate">
-                      {t.category}
-                    </p>
-                    <p className="text-xs text-zinc-400 dark:text-zinc-500">{t.type}</p>
-                  </div>
-                </div>
-                <div
-                  className={`text-xs font-bold flex items-center shrink-0 ${t.type === "Income" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}
-                >
-                  {t.type === "Income" ? "+" : "-"}₹
-                  {t.amount.toLocaleString()}
-                </div>
-              </div>
-            ))}
-          {transactions.length === 0 && (
-            <p className="text-center text-xs text-zinc-500 dark:text-zinc-400 py-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-lg">
-              No transactions yet
-            </p>
-          )}
-        </div>
-      </div>
-
       </div>
 
       {/* COMPANY VEHICLES - Compact grid */}
@@ -449,8 +458,8 @@ export function Dashboard() {
           <Truck className="w-3 h-3 md:w-4 md:h-4 text-zinc-400" />
           Company Vehicles
         </h3>
-        
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1.5">
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1.5 stagger-animation">
           {(
             Object.entries(companyVehicleTrips) as [
               string,
@@ -459,7 +468,7 @@ export function Dashboard() {
           ).map(([vehicleNo, data]) => (
             <div
               key={vehicleNo}
-              className="flex justify-between items-center p-2 bg-zinc-50 border border-zinc-100 dark:border-zinc-700/50 dark:bg-zinc-900/50 rounded-lg"
+              className="flex justify-between items-center p-2 bg-zinc-50 border border-zinc-100 dark:border-zinc-700/50 dark:bg-zinc-900/50 rounded-lg active:scale-[0.98] transition-transform"
             >
               <span className="font-bold text-zinc-900 dark:text-white text-[11px] md:text-sm">{vehicleNo}</span>
               <div className="text-right">

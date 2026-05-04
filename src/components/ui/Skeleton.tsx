@@ -17,7 +17,7 @@ export function Skeleton({ className = '', variant = 'rectangular', width, heigh
 
   return (
     <div
-      className={`${baseClasses} ${variantClasses[variant]} ${className}`}
+      className={`${baseClasses} ${variantClasses[variant]} ${className} shimmer`}
       style={{ width, height }}
       aria-hidden="true"
     />

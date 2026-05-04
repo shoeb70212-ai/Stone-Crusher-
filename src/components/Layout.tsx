@@ -295,11 +295,11 @@ export function Layout() {
           onClick={() => window.dispatchEvent(new CustomEvent(CREATE_EVENT))}
           style={{
             position: "fixed",
-            bottom: "calc(64px + env(safe-area-inset-bottom) + 12px)",
+            bottom: "calc(72px + env(safe-area-inset-bottom))",
             right: "16px",
             left: "auto",
           }}
-          className="md:hidden w-14 h-14 bg-primary-600 text-white hover:bg-primary-700 active:scale-90 shadow-xl shadow-primary-500/40 flex items-center justify-center rounded-full z-50 transition-transform animate-fab-pop"
+          className="md:hidden w-14 h-14 bg-primary-600 text-white hover:bg-primary-700 active:scale-90 shadow-2xl shadow-primary-500/30 flex items-center justify-center rounded-full z-50 transition-transform animate-fab-pop"
           aria-label="Create new"
         >
           <Plus className="w-7 h-7" />

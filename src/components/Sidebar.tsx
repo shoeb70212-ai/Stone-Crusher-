@@ -19,6 +19,7 @@ import {
 import { cn } from "../lib/utils";
 import { useErp } from "../context/ErpContext";
 import { clearAuthSession } from "../lib/session";
+import { useHapticFeedback } from "../lib/use-haptic-feedback";
 
 interface SidebarProps {
   currentView: string;
@@ -55,6 +56,7 @@ export function Sidebar({
   setIsOpen,
 }: SidebarProps) {
   const { userRole } = useErp();
+  const { tap } = useHapticFeedback();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
 
@@ -83,6 +85,7 @@ export function Sidebar({
   });
 
   const handleNavigate = (view: string) => {
+    tap();
     onChangeView(view);
     setIsOpen(false);
     setIsMoreOpen(false);
@@ -220,7 +223,7 @@ export function Sidebar({
       {/* ═══════════════════════════════════════════════════════════
           Mobile Bottom Navigation Bar - Thumb Zone Optimized
           ═══════════════════════════════════════════════════════════ */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-t border-zinc-200 dark:border-zinc-800 z-40 flex items-stretch shadow-[0_-1px_0_0_rgba(0,0,0,0.06),0_-4px_16px_-4px_rgba(0,0,0,0.08)] pb-[env(safe-area-inset-bottom)] min-h-16">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 backdrop-blur-xl bg-white/80 dark:bg-zinc-950/80 border-t border-zinc-200/60 dark:border-zinc-800/60 z-40 flex items-stretch shadow-[0_-1px_0_0_rgba(0,0,0,0.06),0_-8px_24px_-8px_rgba(0,0,0,0.12)] pb-[env(safe-area-inset-bottom)] min-h-16">
         {bottomBarItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
@@ -230,7 +233,7 @@ export function Sidebar({
               onClick={() => handleNavigate(item.id)}
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-14 transition-all duration-150 active:scale-95 active:bg-primary-50/50 dark:active:bg-primary-500/10",
+                "flex-1 flex flex-col items-center justify-center gap-1 py-2 min-h-14 transition-all duration-200 active:scale-90 relative",
                 isActive
                   ? "text-primary-600 dark:text-primary-400"
                   : "text-zinc-500 dark:text-zinc-400",
@@ -238,10 +241,10 @@ export function Sidebar({
               aria-label={item.label}
             >
               {isActive && (
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-10 h-0.5 bg-primary-500 rounded-b-full animate-fade-in" />
+                <div className="absolute inset-x-3 top-1 bottom-1 bg-primary-100 dark:bg-primary-500/20 rounded-2xl -z-10 transition-all duration-200" />
               )}
-              <Icon className="w-5 h-5" strokeWidth={isActive ? 2.5 : 2} />
-              <span className={cn("text-[10px] font-medium leading-none", isActive ? "font-semibold" : "")}>
+              <Icon className="w-6 h-6" strokeWidth={isActive ? 2.5 : 2} fill={isActive ? "currentColor" : "none"} />
+              <span className={cn("text-[11px] font-medium leading-none", isActive ? "font-semibold" : "")}>
                 {item.label}
               </span>
             </button>
@@ -250,17 +253,20 @@ export function Sidebar({
 
         {/* "More" button */}
         <button
-          onClick={() => setIsMoreOpen(true)}
+          onClick={() => { tap(); setIsMoreOpen(true); }}
           className={cn(
-            "flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-14 transition-all duration-150 active:scale-95 active:bg-zinc-100 dark:active:bg-zinc-800",
+            "flex-1 flex flex-col items-center justify-center gap-1 py-2 min-h-14 transition-all duration-200 active:scale-90 relative",
             isMoreOpen
               ? "text-primary-600 dark:text-primary-400"
               : "text-zinc-500 dark:text-zinc-400",
           )}
           aria-label="More"
         >
-          <MoreHorizontal className="w-5 h-5" strokeWidth={2} />
-          <span className="text-[10px] font-medium leading-none">More</span>
+          {isMoreOpen && (
+            <div className="absolute inset-x-3 top-1 bottom-1 bg-zinc-100 dark:bg-zinc-800/60 rounded-2xl -z-10 transition-all duration-200" />
+          )}
+          <MoreHorizontal className="w-6 h-6" strokeWidth={2} />
+          <span className="text-[11px] font-medium leading-none">More</span>
         </button>
       </nav>
 

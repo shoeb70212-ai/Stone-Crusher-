@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useErp } from "../context/ErpContext";
 import { CREATE_EVENT } from "../components/Layout";
 import { Slip } from "../types";
@@ -13,6 +13,7 @@ import {
   Filter,
   X,
   MessageCircle,
+  Search,
 } from "lucide-react";
 import { CreateSlipForm } from "../components/forms/CreateSlipForm";
 import { EditSlipForm } from "../components/forms/EditSlipForm";
@@ -47,6 +48,11 @@ export function Dispatch() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [activeQuickFilter, setActiveQuickFilter] = useState<"today" | "week" | "month" | null>(null);
 
+  // Mobile search bar
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebounce(searchQuery, 300);
+
   // Filters
   const [filterDate, setFilterDate] = useState("");
   const [filterStartDate, setFilterStartDate] = useState("");
@@ -65,6 +71,20 @@ export function Dispatch() {
       // Vehicle search uses the debounced value to avoid filtering on every keystroke.
       if (debouncedFilterVehicle.trim() && !s.vehicleNo.toLowerCase().includes(debouncedFilterVehicle.trim().toLowerCase())) {
         return false;
+      }
+
+      // Global search query (mobile persistent search bar)
+      const q = debouncedSearch.trim().toLowerCase();
+      if (q) {
+        const cust = customers.find((c) => c.id === s.customerId);
+        const haystack = [
+          s.vehicleNo,
+          s.materialType,
+          s.driverName,
+          cust?.name,
+          s.status,
+        ].filter(Boolean).join(" ").toLowerCase();
+        if (!haystack.includes(q)) return false;
       }
 
       if (filterMaterial !== "All" && s.materialType !== filterMaterial)
@@ -89,7 +109,7 @@ export function Dispatch() {
       return true;
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-  [slips, activeTab, debouncedFilterVehicle, filterMaterial, filterDeliveryMode, filterCustomer, filterDate, filterStartDate, filterEndDate]);
+  [slips, activeTab, debouncedFilterVehicle, debouncedSearch, filterMaterial, filterDeliveryMode, filterCustomer, filterDate, filterStartDate, filterEndDate]);
 
   // Reset to first page whenever filters change
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [filteredSlips.length]);
@@ -393,6 +413,30 @@ export function Dispatch() {
         </button>
       </div>
 
+      {/* Mobile persistent search bar */}
+      <div className="md:hidden"
+      >
+        <div className="relative"
+        >
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search slips..."
+            className="w-full h-11 pl-9 pr-8 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-zinc-400 hover:text-zinc-600"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Tab bar + filter button - Compact */}
       <div className="bg-white dark:bg-zinc-900 rounded-xl md:rounded-2xl border border-zinc-200 dark:border-zinc-700 shadow-sm overflow-hidden">
         <div className="flex items-center border-b border-zinc-100 dark:border-zinc-700 px-3 md:px-4">
@@ -611,67 +655,64 @@ export function Dispatch() {
                 </button>
               </div>
             ) : (
-              <div className="space-y-2 pb-[calc(8.5rem+env(safe-area-inset-bottom))] md:pb-0">
+              <div className="space-y-2 pb-[calc(8.5rem+env(safe-area-inset-bottom))] md:pb-0 stagger-animation">
                 {filteredSlips.slice(0, visibleCount).map((slip) => {
                   const cust = customers.find((c) => c.id === slip.customerId);
                   return (
                     <div
                       key={slip.id}
-                      className="bg-zinc-50 dark:bg-zinc-800/60 rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden active:bg-zinc-100 dark:active:bg-zinc-700/50 transition-colors"
+                      className="bg-white dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden active:scale-[0.98] transition-all shadow-sm"
                     >
-                      {/* Compact header - inline layout */}
-                      <div className="flex items-center justify-between px-3 py-2.5 bg-white dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700/50">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Truck className="w-4 h-4 text-zinc-400 shrink-0" />
-                          <span className="font-bold text-zinc-900 dark:text-white uppercase tracking-wide text-xs truncate">
-                            {slip.vehicleNo}
+                      {/* Compact 2-row layout */}
+                      <div className="px-3 py-2.5"
+                      >
+                        <div className="flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-2 min-w-0"
+                          >
+                            <span className="font-bold text-zinc-900 dark:text-white uppercase tracking-wide text-xs truncate"
+                            >
+                              {slip.vehicleNo}
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase shrink-0 ${getStatusColor(slip.status)}`}
+                            >
+                              {slip.status}
+                            </span>
+                          </div>
+                          <span className="font-bold text-primary-600 dark:text-primary-400 text-sm"
+                          >
+                            ₹{slip.totalAmount.toLocaleString()}
                           </span>
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${getStatusColor(slip.status)}`}>
-                            {slip.status}
-                          </span>
                         </div>
-                        <span className="font-bold text-primary-600 dark:text-primary-400 text-sm">
-                          ₹{slip.totalAmount.toLocaleString()}
-                        </span>
-                      </div>
-
-                      {/* Compact body - horizontal layout */}
-                      <div className="px-3 py-2.5 bg-white dark:bg-zinc-800 grid grid-cols-2 min-[380px]:grid-cols-3 gap-3 text-xs">
-                        <div className="min-w-0">
-                          <p className="text-zinc-400 font-medium text-xs uppercase tracking-wide">Customer</p>
-                          <p className="font-semibold text-zinc-900 dark:text-white truncate">
-                            {slip.customerId === "CASH" ? "Cash" : cust?.name?.slice(0, 12) ?? "—"}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-zinc-400 font-medium text-xs uppercase tracking-wide">Material</p>
-                          <p className="font-semibold text-zinc-900 dark:text-white truncate">
-                            {slip.materialType?.slice(0, 12)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-zinc-400 font-medium text-xs uppercase tracking-wide">Quantity</p>
-                          <p className="font-semibold text-zinc-900 dark:text-white">
-                            {slip.quantity.toFixed(1)}
-                          </p>
+                        <div className="flex items-center gap-3 mt-1 text-[11px] text-zinc-500 dark:text-zinc-400"
+                        >
+                          <span className="truncate"
+                          >{slip.materialType}</span>
+                          <span>·</span>
+                          <span>{slip.quantity.toFixed(1)} {slip.measurementType === "Volume (Brass)" ? "Br" : "T"}</span>
+                          <span>·</span>
+                          <span className="truncate"
+                          >{slip.customerId === "CASH" ? "Cash" : cust?.name?.slice(0, 14) ?? "—"}</span>
                         </div>
                       </div>
 
-                      {/* Compact actions - horizontal */}
-                      <div className="px-2 py-2 border-t border-zinc-100 dark:border-zinc-700/50 bg-zinc-50 dark:bg-zinc-800/50">
-                        <div className="flex items-center gap-1.5">
+                      {/* Swipe-like action row */}
+                      <div className="px-2 py-2 border-t border-zinc-100 dark:border-zinc-700/50 bg-zinc-50 dark:bg-zinc-800/50"
+                      >
+                        <div className="flex items-center gap-1.5"
+                        >
                           {slip.status === "Pending" && (
                             <>
                               <button
                                 onClick={() => { success(); updateSlipStatus(slip.id, "Loaded"); }}
-                                className="flex-1 py-2.5 text-[12px] font-semibold bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 rounded-lg hover:bg-blue-100 active:scale-[0.98] transition-all"
+                                className="flex-1 py-2 text-[11px] font-semibold bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 rounded-lg hover:bg-blue-100 active:scale-[0.98] transition-all"
                                 aria-label={`Mark slip ${slip.id} as loaded`}
                               >
                                 Load
                               </button>
                               <button
                                 onClick={() => { tap(); setSlipToCancel(slip.id); }}
-                                className="p-2.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 active:scale-95 transition-all"
+                                className="p-2 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 active:scale-95 transition-all"
                                 title="Cancel"
                                 aria-label={`Cancel slip ${slip.id}`}
                               >
@@ -682,7 +723,7 @@ export function Dispatch() {
                           {slip.status === "Loaded" && (
                             <button
                               onClick={() => { success(); updateSlipStatus(slip.id, "Tallied"); }}
-                              className="flex-1 py-2.5 text-[12px] font-semibold bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400 rounded-lg hover:bg-primary-100 active:scale-[0.98] transition-all"
+                              className="flex-1 py-2 text-[11px] font-semibold bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400 rounded-lg hover:bg-primary-100 active:scale-[0.98] transition-all"
                               aria-label={`Mark slip ${slip.id} as tallied`}
                             >
                               Tally
@@ -690,24 +731,34 @@ export function Dispatch() {
                           )}
                           <button
                             onClick={() => setEditingSlip(slip)}
-                            className="p-2.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
+                            className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
                             title="Edit"
                             aria-label={`Edit slip ${slip.id}`}
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
-                        </div>
-                        <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-                          <DocumentActionButton entityId={slip.id} entityLabel={`slip ${slip.id}`} action="download" label="Download" icon={<Download className="h-3.5 w-3.5" />} className="bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-50 dark:bg-zinc-800 dark:text-zinc-200 dark:border-zinc-700 dark:hover:bg-zinc-700" activeAction={activeSlipAction} onClick={(a) => void handleSlipDocumentAction(slip, a)} />
-                          <DocumentActionButton entityId={slip.id} entityLabel={`slip ${slip.id}`} action="whatsapp" label="WhatsApp" icon={<MessageCircle className="h-3.5 w-3.5" />} className="bg-emerald-600 text-white hover:bg-emerald-700" activeAction={activeSlipAction} onClick={(a) => void handleSlipDocumentAction(slip, a)} />
-                          <DocumentActionButton entityId={slip.id} entityLabel={`slip ${slip.id}`} action="print" label="Print" icon={<Printer className="h-3.5 w-3.5" />} className="bg-primary-600 text-white hover:bg-primary-700" activeAction={activeSlipAction} onClick={(a) => void handleSlipDocumentAction(slip, a)} />
+                          <button
+                            onClick={() => void handleSlipDocumentAction(slip, "download")}
+                            className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
+                            title="Download"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => void handleSlipDocumentAction(slip, "print")}
+                            className="p-2 text-zinc-400 hover:text-primary-600 dark:hover:text-primary-400 rounded-lg hover:bg-primary-50 active:scale-95 transition-all"
+                            title="Print"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
                     </div>
                   );
                 })}
                 {visibleCount < filteredSlips.length && (
-                  <div ref={loadMoreRef} className="py-3 text-center text-xs text-zinc-400 dark:text-zinc-500">
+                  <div ref={loadMoreRef} className="py-3 text-center text-xs text-zinc-400 dark:text-zinc-500"
+                  >
                     Showing {visibleCount} of {filteredSlips.length} slips…
                   </div>
                 )}

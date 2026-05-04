@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useErp } from "../context/ErpContext";
 import { Invoice } from "../types";
-import { Plus, Download, FileText, Upload, Printer, Filter, ChevronDown, MessageCircle } from "lucide-react";
+import { Plus, Download, FileText, Upload, Printer, Filter, ChevronDown, MessageCircle, Search, X } from "lucide-react";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { MobileActionSheet, MobileChip, MobileFilterSheet } from "../components/ui/MobilePrimitives";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -12,6 +12,7 @@ import { CREATE_EVENT } from "../components/Layout";
 import { createInvoicePdfBlob, downloadInvoicePdf, printPdfBlob, sharePdfBlob } from "../lib/print-utils";
 import { buildInvoiceWhatsAppMessage, openWhatsAppMessage } from "../lib/whatsapp-share";
 import { useToast } from "../components/ui/Toast";
+import { useDebounce } from "../lib/use-debounce";
 
 type InvoiceDocumentAction = DocumentAction;
 
@@ -27,6 +28,10 @@ function InvoicesContent() {
   const [filterCustomerId, setFilterCustomerId] = useState("All");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+
+  // Mobile search
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebounce(searchQuery, 300);
 
   const generator = useInvoiceGenerator();
   // Bottom-nav FAB fires this event to open the create modal
@@ -44,16 +49,30 @@ function InvoicesContent() {
     }
   };
 
-  const filteredInvoices = invoices
+  const filteredInvoices = useMemo(() => invoices
     .filter((inv) => {
       const matchTab = activeTab === "All" || inv.type === activeTab;
       const matchCustomer = filterCustomerId === "All" || inv.customerId === filterCustomerId;
       const invDate = inv.date.slice(0, 10);
       const matchStart = !startDate || invDate >= startDate;
       const matchEnd = !endDate || invDate <= endDate;
+
+      const q = debouncedSearch.trim().toLowerCase();
+      if (q) {
+        const cust = customers.find((c) => c.id === inv.customerId);
+        const haystack = [
+          inv.invoiceNo,
+          cust?.name,
+          inv.type,
+          inv.status,
+        ].filter(Boolean).join(" ").toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+
       return matchTab && matchCustomer && matchStart && matchEnd;
     })
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+  [invoices, activeTab, filterCustomerId, startDate, endDate, debouncedSearch, customers]);
 
   const hasInvoiceFilters = filterCustomerId !== "All" || !!startDate || !!endDate;
   const clearInvoiceFilters = () => {
@@ -170,8 +189,23 @@ function InvoicesContent() {
           ))}
         </div>
 
-        {/* Mobile filter bar */}
-        <div className="md:hidden border-b border-zinc-100 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2">
+        {/* Mobile search + filter bar */}
+        <div className="md:hidden border-b border-zinc-100 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 space-y-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search invoices..."
+              className="w-full h-10 pl-9 pr-8 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-zinc-400 hover:text-zinc-600">
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsFilterOpen(true)}
@@ -263,54 +297,68 @@ function InvoicesContent() {
               </button>
             </div>
           ) : (
-            <div className="space-y-1 pb-[calc(8.5rem+env(safe-area-inset-bottom))] md:pb-0">
+            <div className="space-y-1 pb-[calc(8.5rem+env(safe-area-inset-bottom))] md:pb-0 stagger-animation">
               {filteredInvoices.map((inv) => (
-                <div key={inv.id} className="p-2.5 bg-white dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700">
-                  <div className="flex justify-between items-center">
-                    <div>
+                <div key={inv.id} className="p-3 bg-white dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700 rounded-xl shadow-sm active:scale-[0.98] transition-transform">
+                  <div className="flex justify-between items-start">
+                    <div className="min-w-0">
                       <div className="font-bold text-zinc-900 dark:text-white text-xs">
                         {inv.invoiceNo}
-                        <span className="ml-1.5 text-xs text-zinc-500 font-normal px-1.5 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-700/50">
+                        <span className="ml-1.5 text-[10px] text-zinc-500 font-normal px-1.5 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-700/50">
                           {inv.type}
                         </span>
                       </div>
-                      <div className="text-xs text-zinc-500">{new Date(inv.date).toLocaleDateString()}</div>
+                      <div className="text-[11px] text-zinc-500 mt-0.5">{new Date(inv.date).toLocaleDateString()}</div>
+                      <div className="text-[11px] text-zinc-500 truncate max-w-[140px]">
+                        {customers.find((c) => c.id === inv.customerId)?.name || "Cash"}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-zinc-900 dark:text-white text-xs">₹{inv.total.toLocaleString()}</span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="font-bold text-zinc-900 dark:text-white text-sm">₹{inv.total.toLocaleString()}</span>
                       <button
                         type="button"
                         onClick={() => setStatusActionInvoice(inv)}
                         aria-label={`Change status for invoice ${inv.invoiceNo}`}
-                        className={`px-2 py-1.5 rounded text-xs font-semibold min-h-8 ${
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${
                           inv.status === "Paid"
-                            ? "bg-primary-100 text-primary-700"
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
                             : inv.status === "Cancelled"
-                              ? "bg-rose-100 text-rose-700"
-                              : "bg-amber-100 text-amber-700"
+                              ? "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400"
+                              : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"
                         }`}
                       >
                         {inv.status}
                       </button>
                     </div>
                   </div>
-                  <div className="flex justify-between items-center mt-1">
-                    <div className="text-xs text-zinc-500 truncate max-w-30">
-                      {customers.find((c) => c.id === inv.customerId)?.name || "Cash"}
-                    </div>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => generator.openEditModal(inv)}
-                        className="text-indigo-600 dark:text-indigo-400 font-medium text-xs px-3 py-1.5 min-h-8 bg-indigo-50 dark:bg-indigo-900/30 rounded"
-                      >
-                        Edit
-                      </button>
-                    </div>
-                  </div>
-                  <div className="mt-2 grid grid-cols-3 gap-1.5">
-                    <DocumentActionButton entityId={inv.id} entityLabel={`invoice ${inv.invoiceNo}`} action="download" label="Download" icon={<Download className="h-3.5 w-3.5" />} className="bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-50 dark:bg-zinc-800 dark:text-zinc-200 dark:border-zinc-700 dark:hover:bg-zinc-700" activeAction={activeInvoiceAction} onClick={(a) => void handleInvoiceDocumentAction(inv, a)} />
-                    <DocumentActionButton entityId={inv.id} entityLabel={`invoice ${inv.invoiceNo}`} action="whatsapp" label="WhatsApp" icon={<MessageCircle className="h-3.5 w-3.5" />} className="bg-emerald-600 text-white hover:bg-emerald-700" activeAction={activeInvoiceAction} onClick={(a) => void handleInvoiceDocumentAction(inv, a)} />
-                    <DocumentActionButton entityId={inv.id} entityLabel={`invoice ${inv.invoiceNo}`} action="print" label="Print" icon={<Printer className="h-3.5 w-3.5" />} className="bg-primary-600 text-white hover:bg-primary-700" activeAction={activeInvoiceAction} onClick={(a) => void handleInvoiceDocumentAction(inv, a)} />
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <button
+                      onClick={() => generator.openEditModal(inv)}
+                      className="flex-1 py-2 text-[11px] font-semibold bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 active:scale-[0.98] transition-all"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => void handleInvoiceDocumentAction(inv, "download")}
+                      className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
+                      title="Download"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => void handleInvoiceDocumentAction(inv, "print")}
+                      className="p-2 text-zinc-400 hover:text-primary-600 dark:hover:text-primary-400 rounded-lg hover:bg-primary-50 active:scale-95 transition-all"
+                      title="Print"
+                    >
+                      <Printer className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => void handleInvoiceDocumentAction(inv, "whatsapp")}
+                      className="p-2 text-emerald-600 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 active:scale-95 transition-all"
+                      title="WhatsApp"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               ))}

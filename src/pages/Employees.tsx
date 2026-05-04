@@ -518,7 +518,7 @@ export function Employees() {
             }
           />
         ) : (
-          <div className="divide-y divide-zinc-100 dark:divide-zinc-700/70">
+          <div className="divide-y divide-zinc-100 dark:divide-zinc-700/70 stagger-animation">
             {filteredEmployees.map((employee) => {
               const balance = getEmployeeBalance(employee.id);
               const isExpanded = expandedEmployeeId === employee.id;
@@ -527,11 +527,11 @@ export function Employees() {
                   <button
                     type="button"
                     onClick={() => setExpandedEmployeeId(isExpanded ? null : employee.id)}
-                    className="flex w-full items-center justify-between gap-3 p-3 text-left sm:p-4"
+                    className="flex w-full items-center justify-between gap-3 p-3 text-left sm:p-4 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors"
                     aria-expanded={isExpanded}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 text-blue-600 dark:from-blue-500/20 dark:to-blue-500/10 dark:text-blue-300">
                         <UserRound className="h-5 w-5" />
                       </div>
                       <div className="min-w-0">
@@ -552,12 +552,12 @@ export function Employees() {
                     </div>
                     <div className="flex shrink-0 items-center gap-2 sm:gap-4">
                       <div className="text-right">
-                        <p className="text-xs text-zinc-500">Bal</p>
+                        <p className="text-[10px] uppercase tracking-wide text-zinc-500 font-semibold">Bal</p>
                         <p className={`text-xs font-bold sm:text-sm ${balanceClass(balance)}`}>
                           {formatMoney(balance)} {getEmployeeBalanceLabel(balance)}
                         </p>
                       </div>
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${employee.isActive !== false ? "bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-300" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300"}`}>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase ${employee.isActive !== false ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300"}`}>
                         {employee.isActive !== false ? "Active" : "Inactive"}
                       </span>
                       {isExpanded ? <ChevronUp className="h-4 w-4 text-zinc-400" /> : <ChevronDown className="h-4 w-4 text-zinc-400" />}
@@ -568,19 +568,19 @@ export function Employees() {
                     <div className="border-t border-zinc-100 bg-zinc-50 px-3 pb-3 pt-3 dark:border-zinc-700 dark:bg-zinc-900/20 sm:px-4 sm:pb-4">
                       <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Salary</p>
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Salary</p>
                           <p className="font-medium text-zinc-900 dark:text-white">{formatMoney(employee.salaryAmount)} / {employee.salaryType}</p>
                         </div>
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Opening</p>
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Opening</p>
                           <p className="font-medium text-zinc-900 dark:text-white">{formatMoney(employee.openingBalance)} {getEmployeeBalanceLabel(employee.openingBalance)}</p>
                         </div>
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Entries</p>
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Entries</p>
                           <p className="font-medium text-zinc-900 dark:text-white">{totalEntriesForEmployee(employee.id)}</p>
                         </div>
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Joined</p>
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Joined</p>
                           <p className="font-medium text-zinc-900 dark:text-white">
                             {employee.joiningDate ? format(parseISO(employee.joiningDate), "dd MMM yyyy") : "-"}
                           </p>
@@ -595,7 +595,7 @@ export function Employees() {
                         <button
                           type="button"
                           onClick={() => openEntryModal(employee.id)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary-50 px-3 py-2 text-sm font-semibold text-primary-700 hover:bg-primary-100 dark:bg-primary-500/10 dark:text-primary-300"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary-50 px-3 py-2 text-sm font-semibold text-primary-700 hover:bg-primary-100 dark:bg-primary-500/10 dark:text-primary-300 active:scale-[0.98] transition-transform"
                         >
                           <Plus className="h-4 w-4" />
                           Entry
@@ -603,7 +603,7 @@ export function Employees() {
                         <button
                           type="button"
                           onClick={() => setSelectedEmployee(employee)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-300"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-300 active:scale-[0.98] transition-transform"
                         >
                           <FileText className="h-4 w-4" />
                           Statement
@@ -611,7 +611,7 @@ export function Employees() {
                         <button
                           type="button"
                           onClick={() => openEditEmployee(employee)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 active:scale-[0.98] transition-transform"
                         >
                           <Edit2 className="h-4 w-4" />
                           Edit
@@ -619,7 +619,7 @@ export function Employees() {
                         <button
                           type="button"
                           onClick={() => setEmployeeToDelete(employee)}
-                          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold ${
+                          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold active:scale-[0.98] transition-transform ${
                             employee.isActive !== false
                               ? "border-rose-100 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300"
                               : "border-primary-100 bg-primary-50 text-primary-700 hover:bg-primary-100 dark:border-primary-500/20 dark:bg-primary-500/10 dark:text-primary-300"

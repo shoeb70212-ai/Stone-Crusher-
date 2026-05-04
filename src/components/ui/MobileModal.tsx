@@ -177,7 +177,7 @@ export function MobileModal({
         {/* Scrollable body */}
         <div
           ref={scrollRef}
-          className={cn("flex-1 overflow-y-auto overscroll-contain", bodyClassName)}
+          className={cn("flex-1 overflow-y-auto overscroll-contain scroll-smooth", bodyClassName)}
         >
           {children}
         </div>

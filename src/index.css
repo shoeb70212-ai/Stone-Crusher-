@@ -185,10 +185,16 @@ body {
   .mobile-card {
     touch-action: pan-y;
   }
-  
+
   /* Smooth transitions for all interactive elements */
   button, a, input, select, textarea {
     transition: all 0.2s ease-in-out;
+  }
+
+  /* GPU-accelerated animation helpers */
+  .gpu-layer {
+    will-change: transform, opacity;
+    transform: translateZ(0);
   }
   
   /* Focus visible for keyboard navigation */
@@ -331,6 +337,27 @@ body {
 .stagger-animation > *:nth-child(7) { animation-delay: 300ms; }
 .stagger-animation > *:nth-child(8) { animation-delay: 350ms; }
 
+/* Card stagger entrance for mobile lists */
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.stagger-animation > * {
+  animation: card-enter 0.25s ease-out both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+.stagger-animation > *:nth-child(1) { --i: 0; }
+.stagger-animation > *:nth-child(2) { --i: 1; }
+.stagger-animation > *:nth-child(3) { --i: 2; }
+.stagger-animation > *:nth-child(4) { --i: 3; }
+.stagger-animation > *:nth-child(5) { --i: 4; }
+.stagger-animation > *:nth-child(6) { --i: 5; }
+.stagger-animation > *:nth-child(7) { --i: 6; }
+.stagger-animation > *:nth-child(8) { --i: 7; }
+.stagger-animation > *:nth-child(9) { --i: 8; }
+.stagger-animation > *:nth-child(10) { --i: 9; }
+
 /* Card hover lift — desktop only (hover media query prevents mobile jank) */
 @media (hover: hover) {
   .card-hover {
@@ -341,6 +368,11 @@ body {
     box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.12);
   }
 }
+
+/* Dark mode shadow visibility */
+.dark .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0,0,0,0.3); }
+.dark .shadow-md { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.4); }
+.dark .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.5); }
 
 /* Reduced motion for accessibility */
 @media (prefers-reduced-motion: reduce) {
@@ -397,7 +429,7 @@ body {
     transform: scale(1);
   }
 
-/* Active scale feedback */
+  /* Active scale feedback */
   button:active, .btn:active, [role="button"]:active {
     transform: scale(0.96);
   }
@@ -410,8 +442,14 @@ body {
 
   body {
     font-size: 15px;
-    line-height: 1.4;
+    line-height: 1.5;
     -webkit-text-size-adjust: 100%;
+  }
+
+  /* Minimum touch targets 44x44 */
+  button, .btn, [role="button"], a {
+    min-height: 44px;
+    min-width: 44px;
   }
 
   /* Full viewport height app-like feel */
@@ -896,6 +934,16 @@ body {
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   CONTENT-VISIBILITY FOR LIST PERFORMANCE
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@media (max-width: 640px) {
+  .stagger-animation > * {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 80px;
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    TOUCH FEEDBACK & INTERACTION STATES
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 @media (max-width: 640px) {
@@ -1093,6 +1141,38 @@ body {
   100% {
     background-position: 200% 0;
   }
+}
+
+/* Shimmer overlay for list skeletons */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255,255,255,0.35) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer-sweep 1.8s infinite;
+  pointer-events: none;
+}
+.dark .shimmer::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255,255,255,0.06) 50%,
+    transparent 100%
+  );
+}
+@keyframes shimmer-sweep {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
