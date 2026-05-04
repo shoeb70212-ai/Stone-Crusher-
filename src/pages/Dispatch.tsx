@@ -413,28 +413,37 @@ export function Dispatch() {
         </button>
       </div>
 
-      {/* Mobile persistent search bar */}
-      <div className="md:hidden"
-      >
-        <div className="relative"
-        >
-          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search slips..."
-            className="w-full h-11 pl-9 pr-8 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors"
-          />
-          {searchQuery && (
+      {/* Mobile expandable search */}
+      <div className="md:hidden">
+        {!searchOpen ? (
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setSearchQuery("")}
+              onClick={() => setSearchOpen(true)}
+              className="flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300"
+              aria-label="Search"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="animate-fade-in relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+            <input
+              type="text"
+              autoFocus
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search slips..."
+              className="w-full h-11 pl-9 pr-8 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors"
+            />
+            <button
+              onClick={() => { setSearchQuery(""); setSearchOpen(false); }}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-zinc-400 hover:text-zinc-600"
             >
               <X className="w-4 h-4" />
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Tab bar + filter button - Compact */}
@@ -655,7 +664,7 @@ export function Dispatch() {
                 </button>
               </div>
             ) : (
-              <div className="space-y-2 pb-[calc(8.5rem+env(safe-area-inset-bottom))] md:pb-0 stagger-animation">
+              <div className="space-y-2 pb-[calc(10rem+env(safe-area-inset-bottom))] md:pb-0 stagger-animation">
                 {filteredSlips.slice(0, visibleCount).map((slip) => {
                   const cust = customers.find((c) => c.id === slip.customerId);
                   return (

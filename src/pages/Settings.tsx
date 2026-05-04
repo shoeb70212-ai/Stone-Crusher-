@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useErp } from "../context/ErpContext";
 import { CompanySettings } from "../types";
-import { Building2, Users, Receipt, Palette, X, Mail, KeyRound, Lock } from "lucide-react";
+import { Building2, Users, Receipt, Palette, X, Mail, KeyRound, Lock, Database, Upload, Download } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { downloadCSV } from "../lib/export-utils";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { useToast } from "../components/ui/Toast";
 import { getDeviceSummary, type DeviceSummary } from "../lib/device-info";
@@ -13,7 +14,7 @@ import { SettingsMaterials } from "./settings/SettingsMaterials";
 import { SettingsAppearance } from "./settings/SettingsAppearance";
 import { SettingsInvoicing } from "./settings/SettingsInvoicing";
 
-type Tab = "general" | "categories" | "users" | "materials" | "appearance" | "invoicing";
+type Tab = "general" | "categories" | "users" | "materials" | "appearance" | "invoicing" | "data";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "general",    label: "General Info",         icon: Building2 },
@@ -22,10 +23,11 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "materials",  label: "Materials Master",     icon: Receipt   },
   { id: "appearance", label: "Appearance",           icon: Palette   },
   { id: "invoicing",  label: "Invoicing",            icon: Receipt   },
+  { id: "data",       label: "Data",                 icon: Database  },
 ];
 
 export function Settings() {
-  const { userRole, companySettings, updateCompanySettings, purgeInactiveRecords, session } = useErp();
+  const { userRole, companySettings, updateCompanySettings, purgeInactiveRecords, session, invoices, addInvoice } = useErp();
   const { addToast } = useToast();
 
   const [activeTab, setActiveTab] = useState<Tab>("general");
@@ -358,7 +360,7 @@ export function Settings() {
         </div>
 
         {/* Tab bar */}
-        <div className="grid grid-cols-3 md:flex md:space-x-1 border-b border-zinc-200 dark:border-zinc-700">
+        <div className="flex flex-wrap md:space-x-1 border-b border-zinc-200 dark:border-zinc-700">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -401,6 +403,95 @@ export function Settings() {
           {activeTab === "materials" && <SettingsMaterials {...sharedProps} />}
           {activeTab === "appearance" && <SettingsAppearance {...sharedProps} />}
           {activeTab === "invoicing" && <SettingsInvoicing {...sharedProps} />}
+          {activeTab === "data" && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-1">Data Management</h3>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">Import and export invoice records.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Upload className="w-5 h-5 text-primary-600" />
+                    <h4 className="font-semibold text-zinc-900 dark:text-white">Import Invoices</h4>
+                  </div>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Upload a JSON file containing invoice records.</p>
+                  <label className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg cursor-pointer hover:bg-primary-700 transition-colors active:scale-95">
+                    <Upload className="w-4 h-4" />
+                    Choose JSON File
+                    <input
+                      type="file"
+                      accept=".json"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          const text = await file.text();
+                          const data = JSON.parse(text);
+                          const items = Array.isArray(data) ? data : data.invoices;
+                          if (!Array.isArray(items)) {
+                            addToast("error", "Invalid file format. Expected an array of invoices.");
+                            return;
+                          }
+                          let imported = 0;
+                          for (const inv of items) {
+                            if (inv && inv.id && inv.invoiceNo) {
+                              addInvoice(inv);
+                              imported++;
+                            }
+                          }
+                          addToast("success", `Imported ${imported} invoice(s).`);
+                        } catch {
+                          addToast("error", "Failed to import invoices. Ensure the file is valid JSON.");
+                        } finally {
+                          if (e.target) e.target.value = "";
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+
+                <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Download className="w-5 h-5 text-primary-600" />
+                    <h4 className="font-semibold text-zinc-900 dark:text-white">Export Invoices</h4>
+                  </div>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Download all invoices as a CSV file.</p>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const rows = invoices.map((inv) => ({
+                          invoiceNo: inv.invoiceNo,
+                          date: new Date(inv.date).toLocaleDateString(),
+                          type: inv.type,
+                          customerId: inv.customerId,
+                          total: inv.total,
+                          status: inv.status,
+                        }));
+                        await downloadCSV(rows, {
+                          invoiceNo: "Invoice No",
+                          date: "Date",
+                          type: "Type",
+                          customerId: "Customer ID",
+                          total: "Total (₹)",
+                          status: "Status",
+                        }, `Invoices_${new Date().toISOString().split("T")[0]}`);
+                        addToast("success", "Invoices exported successfully.");
+                      } catch {
+                        addToast("error", "Failed to export invoices.");
+                      }
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-sm font-medium rounded-lg hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors active:scale-95"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export CSV
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -498,9 +589,9 @@ export function Settings() {
                 <select id="inv-role" value={inviteFormData.role} onChange={(e) => setInviteFormData({ ...inviteFormData, role: e.target.value })}
                   className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none bg-white dark:bg-zinc-800 dark:text-white"
                 >
-                  <option value="Admin">Admin (Full Access)</option>
-                  <option value="Manager">Manager (Operations &amp; Settings)</option>
-                  <option value="Partner">Partner (View Only / Basic)</option>
+                <option value="Admin">Admin (Full Access)</option>
+                <option value="Manager">Manager (Operations & Settings)</option>
+                <option value="Partner">Partner (View Only / Basic)</option>
                 </select>
               </div>
               <div className="pt-4 flex justify-end gap-3">

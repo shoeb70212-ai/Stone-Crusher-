@@ -26,8 +26,8 @@ import {
 import { verifyBearerToken } from './_supabase-admin.js';
 import { getCorsOrigin } from './_cors.js';
 import type { UserRole, UserAccount } from './_types.js';
-
-const RATE_LIMIT = 100;
+import * as Sentry from '@sentry/node';
+import { getRatelimit } from './_ratelimit.js';
 
 function getRateLimitKey(req: VercelRequest): string {
   const fwd = req.headers['x-forwarded-for'];
@@ -35,22 +35,7 @@ function getRateLimitKey(req: VercelRequest): string {
     (Array.isArray(fwd) ? fwd[0] : fwd) ||
     (req.headers['client-ip'] as string) ||
     'unknown';
-  return `rate_${ip.split(',')[0].trim()}`;
-}
-
-const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
-
-function checkRateLimit(req: VercelRequest): boolean {
-  const key = getRateLimitKey(req);
-  const now = Date.now();
-  const record = rateLimitStore.get(key);
-  if (!record || now > record.resetTime) {
-    rateLimitStore.set(key, { count: 1, resetTime: now + 60_000 });
-    return true;
-  }
-  if (record.count >= RATE_LIMIT) return false;
-  record.count++;
-  return true;
+  return `${ip.split(',')[0].trim()}`;
 }
 
 function isUserRole(value: unknown): value is UserRole {
@@ -65,9 +50,9 @@ function hasValidApiKey(req: VercelRequest): boolean {
 
 async function resolveCaller(
   req: VercelRequest,
-): Promise<{ role: UserRole; userId: string; email: string; viaApiKey?: boolean } | null> {
+): Promise<{ role: UserRole; userId: string; viaApiKey?: boolean } | null> {
   if (hasValidApiKey(req)) {
-    return { role: 'Admin', userId: 'api-key', email: '', viaApiKey: true };
+    return { role: 'Admin', userId: 'api-key', viaApiKey: true };
   }
 
   const caller = await verifyBearerToken(req).catch(() => null);
@@ -91,7 +76,7 @@ async function resolveCaller(
       : null;
   if (!role) return null;
 
-  return { role, userId: caller.userId, email: caller.email };
+  return { role, userId: caller.userId };
 }
 
 function canWriteData(role: UserRole): boolean {
@@ -199,14 +184,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,POST');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'Accept, Content-Type, Content-Length, X-Requested-With, X-API-Key, Authorization',
+    'Accept, Content-Type, Content-Length, X-Requested-With, X-API-Key, Authorization, X-CSRF-Token',
   );
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  if (!checkRateLimit(req)) {
-    res.setHeader('Retry-After', '60');
-    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  try {
+    const ratelimit = getRatelimit();
+    if (ratelimit) {
+      const key = getRateLimitKey(req);
+      const { success, reset } = await ratelimit.limit(key);
+      if (!success) {
+        const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
+        res.setHeader('Retry-After', String(retryAfter));
+        res.setHeader('X-RateLimit-Remaining', '0');
+        return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+      }
+    }
+  } catch (err) {
+    Sentry.captureException(err);
+    // fail open
   }
 
   try {
@@ -214,6 +211,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     return res.status(500).json({ error: 'Failed to initialise database', details: msg });
+  }
+
+  const caller = await resolveCaller(req);
+  if (caller) {
+    Sentry.setUser({ id: caller.userId });
   }
 
   // -------------------------------------------------------------------------
@@ -310,7 +312,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
-      console.error('GET /api/data failed:', msg);
+      Sentry.captureException(error);
       return res.status(500).json({ error: 'Failed to fetch data', details: msg });
     }
   }
@@ -349,11 +351,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // ── Step 1: Apply updates — skip tombstoned records ──
       if (updates) {
+        // Hoist tombstone fetch per table per request to avoid N+1 queries.
+        const tombstoneCache = new Map<string, Set<string>>();
         for (const [table, items] of Object.entries(updates)) {
           if (!items || (Array.isArray(items) && (items as unknown[]).length === 0)) continue;
 
           if (table === 'companySettings') {
-            await writeSettings(items as Record<string, unknown>);
+            const incoming = items as Record<string, unknown>;
+            const expectedVersion = typeof incoming.version === 'number' ? incoming.version : undefined;
+            const result = await writeSettings(incoming, expectedVersion);
+            if (!result.ok) {
+              return res.status(409).json({
+                error: 'Company settings were modified by another user. Please refresh and try again.',
+                currentVersion: result.currentVersion,
+              });
+            }
             continue;
           }
 
@@ -361,8 +373,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const dbTable = dbTableName(table);
           if (!dbTable) continue;
 
-          // Fetch tombstoned IDs for this table to prevent resurrection.
-          const deadIds = await getTombstonedIds(table);
+          let deadIds = tombstoneCache.get(table);
+          if (!deadIds) {
+            deadIds = await getTombstonedIds(table);
+            tombstoneCache.set(table, deadIds);
+          }
 
           for (const item of items as DataRecord[]) {
             if (item.id && deadIds.has(String(item.id))) continue; // skip tombstoned
@@ -391,7 +406,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch (error: unknown) {
       await client.query('ROLLBACK');
       const msg = error instanceof Error ? error.message : String(error);
-      console.error('PATCH /api/data failed:', msg);
+      Sentry.captureException(error);
       return res.status(500).json({ error: 'Failed to sync data', details: msg });
     } finally {
       client.release();
@@ -402,6 +417,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // POST — Full overwrite (admin backup restore only)
   // -------------------------------------------------------------------------
   if (req.method === 'POST') {
+    const csrfToken = req.headers['x-csrf-token'];
+    const expectedCsrf = process.env.CSRF_SECRET;
+    if (!expectedCsrf || csrfToken !== expectedCsrf) {
+      return res.status(403).json({ error: 'Invalid or missing CSRF token.' });
+    }
+
     const caller = await resolveCaller(req);
     if (!caller || caller.role !== 'Admin') {
       return res.status(403).json({ error: 'Only Admins can restore backups.' });
@@ -480,10 +501,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         );
       }
 
-      await client.query('DELETE FROM audit_logs');
+      // Audit logs are append-only — never delete during restore.
       for (const log of auditLogs || []) {
         await upsertRecord(client, 'audit_logs', log as Record<string, unknown>);
       }
+      // Record a server-side restore event.
+      await upsertRecord(client, 'audit_logs', {
+        id: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+        actorId: caller.userId,
+        actorName: 'System',
+        actorRole: 'Admin',
+        action: 'restore',
+        entityType: 'System',
+        entityId: 'system',
+        entityLabel: 'Full Restore',
+        description: `Restored backup with ${(auditLogs || []).length} audit log entries.`,
+        metadata: { before: 0, after: (auditLogs || []).length },
+      } as Record<string, unknown>);
 
       // Clear tombstones on a full restore — all records are fresh.
       await client.query('DELETE FROM tombstones');
@@ -497,7 +532,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch (error: unknown) {
       await client.query('ROLLBACK');
       const msg = error instanceof Error ? error.message : String(error);
-      console.error('POST /api/data failed:', msg);
+      Sentry.captureException(error);
       return res.status(500).json({ error: 'Full sync failed', details: msg });
     } finally {
       client.release();

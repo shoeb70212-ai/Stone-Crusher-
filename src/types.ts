@@ -136,13 +136,15 @@ export interface Material {
 }
 
 /** A system user with role-based access. */
+export type UserRole = "Admin" | "Partner" | "Manager";
+
 export interface UserAccount {
   id: string;
   name: string;
   email: string;
   /** SHA-256 hex digest of the user's password. Never store plaintext. */
   passwordHash?: string;
-  role: "Admin" | "Partner" | "Manager";
+  role: UserRole;
   status: "Active" | "Inactive";
 }
 
@@ -217,6 +219,12 @@ export interface CompanySettings {
   termsAndConditions?: string;
   materials?: Material[];
   users?: UserAccount[];
+
+  /** Feature flags for gradual rollouts. */
+  flags?: Record<string, boolean>;
+
+  /** Optimistic locking version for concurrent edit detection. */
+  version?: number;
 }
 
 // ---------------------------------------------------------------------------

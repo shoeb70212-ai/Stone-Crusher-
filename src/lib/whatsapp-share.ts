@@ -96,6 +96,30 @@ export function buildInvoiceWhatsAppMessage({
   ].join("\n");
 }
 
+export function buildLedgerWhatsAppMessage({
+  customer,
+  entries,
+  closingBalance,
+}: {
+  customer: Customer;
+  entries: Array<{ date: Date; desc: string; debit: number; credit: number }>;
+  closingBalance: number;
+}): string {
+  const lines = [
+    `Ledger Statement: ${customer.name}`,
+    `Phone: ${customer.phone || "N/A"}`,
+    `---`,
+    ...entries.slice(-10).map((e) => {
+      const dateStr = e.date.toLocaleDateString("en-IN");
+      if (e.debit > 0) return `${dateStr}: ${e.desc} | Dr: ₹${e.debit.toLocaleString()}`;
+      return `${dateStr}: ${e.desc} | Cr: ₹${e.credit.toLocaleString()}`;
+    }),
+    `---`,
+    `Closing Balance: ₹${Math.abs(closingBalance).toLocaleString()} ${closingBalance < 0 ? "Cr" : "Dr"}`,
+  ];
+  return lines.join("\n");
+}
+
 export function buildSlipWhatsAppMessage({
   slip,
   customerName,

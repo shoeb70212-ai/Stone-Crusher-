@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { Router } from "wouter";
 import { ErpProvider, useErp } from "./context/ErpContext";
 import { ToastProvider } from "./components/ui/Toast";
 import { OfflineIndicator } from "./components/ui/OfflineIndicator";
@@ -16,7 +17,7 @@ import { isNative } from "./lib/capacitor";
  * to ErpContext's `flushSync`. Must be rendered inside ErpProvider.
  */
 function AppShell({ isAuthenticated, onLogin }: { isAuthenticated: boolean; onLogin: () => void }) {
-  const { flushSync, bootstrapRequired, isLoading } = useErp();
+  const { flushSync, bootstrapRequired, isLoading, syncStatus, retryCountRef } = useErp();
 
   // Show the welcome wizard once after the very first account creation.
   const [showWelcome, setShowWelcome] = useState(
@@ -32,7 +33,14 @@ function AppShell({ isAuthenticated, onLogin }: { isAuthenticated: boolean; onLo
 
   return (
     <>
-      <OfflineIndicator onReconnect={flushSync} />
+      <OfflineIndicator
+        onReconnect={flushSync}
+        syncStatus={syncStatus}
+        onRetry={() => {
+          retryCountRef.current = 0;
+          flushSync();
+        }}
+      />
       {isAuthenticated ? (
         showWelcome ? (
           <WelcomeScreen onDone={handleWelcomeDone} />
@@ -99,7 +107,13 @@ export default function App() {
 
   // Show nothing until we know whether there is an active session, so we
   // never flash the login screen to an already-authenticated user.
-  if (!authChecked) return null;
+  if (!authChecked) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-900">
+        <div className="animate-pulse h-8 w-32 bg-zinc-200 dark:bg-zinc-700 rounded" />
+      </div>
+    );
+  }
 
   if (isPasswordRecovery) {
     return (
@@ -118,10 +132,12 @@ export default function App() {
   return (
     <ToastProvider>
       <ErpProvider>
-        <AppShell
-          isAuthenticated={isAuthenticated}
-          onLogin={() => setIsAuthenticated(true)}
-        />
+        <Router>
+          <AppShell
+            isAuthenticated={isAuthenticated}
+            onLogin={() => setIsAuthenticated(true)}
+          />
+        </Router>
       </ErpProvider>
     </ToastProvider>
   );

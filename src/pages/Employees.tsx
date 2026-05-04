@@ -66,7 +66,7 @@ function entryFormDefaults(employeeId = "") {
 }
 
 function formatMoney(value: number) {
-  return `Rs. ${Math.abs(Math.round(value)).toLocaleString("en-IN")}`;
+  return `₹${Math.abs(Math.round(value)).toLocaleString("en-IN")}`;
 }
 
 function balanceClass(balance: number) {
@@ -494,7 +494,7 @@ export function Employees() {
           <input
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search employees by name, phone, or role..."
+            placeholder="Search by name, phone, or role"
             className="w-full rounded-lg border border-zinc-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
           />
         </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from "react";
+import { useLocation } from "wouter";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { PageSkeleton } from "./ui/Skeleton";
@@ -31,19 +32,21 @@ export const NAVIGATE_EVENT = "crushtrack:navigate";
 export const CREATE_EVENT = "crushtrack:create";
 
 export function Layout() {
-  const [currentView, setCurrentView] = useState("dashboard");
+  const [location, setLocation] = useLocation();
+  const currentView = location.replace(/^\//, '') || 'dashboard';
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { userRole, companySettings, isLoading } = useErp();
+  const isAdmin = userRole === 'Admin';
 
-  // Listen for navigation events from child pages (e.g. Dashboard stat cards)
+  // Keep old event API working as a fallback during migration
   useEffect(() => {
     const handler = (e: Event) => {
       const view = (e as CustomEvent<string>).detail;
-      if (VALID_VIEWS.has(view)) setCurrentView(view);
+      if (VALID_VIEWS.has(view)) setLocation(`/${view}`);
     };
     window.addEventListener(NAVIGATE_EVENT, handler);
     return () => window.removeEventListener(NAVIGATE_EVENT, handler);
-  }, []);
+  }, [setLocation]);
 
   // Register home screen shortcuts (long-press app icon on Android / iOS)
   useEffect(() => {
@@ -82,11 +85,11 @@ export function Layout() {
       AppShortcuts.addListener('click', (event) => {
         const view = event.shortcutId === 'new_slip' ? 'dispatch' : event.shortcutId;
         if (VALID_VIEWS.has(view)) {
-          setCurrentView(view);
+          setLocation(`/${view}`);
         }
       }).catch(() => {});
     });
-  }, []);
+  }, [setLocation]);
 
   // Android hardware back button — navigate to dashboard instead of exiting app
   useEffect(() => {
@@ -96,7 +99,7 @@ export function Layout() {
     import('@capacitor/app').then(({ App }) => {
       App.addListener('backButton', () => {
         if (currentView !== 'dashboard') {
-          setCurrentView('dashboard');
+          setLocation('/dashboard');
         } else {
           App.exitApp();
         }
@@ -106,7 +109,7 @@ export function Layout() {
     });
 
     return () => removeListener?.();
-  }, [currentView]);
+  }, [currentView, setLocation]);
 
   // Deep link handler — listens for crushtrack://view/<name> URLs
   useEffect(() => {
@@ -121,7 +124,7 @@ export function Layout() {
           const url = new URL(event.url);
           const view = url.pathname.replace(/^\//, ''); // strip leading slash
           if (VALID_VIEWS.has(view)) {
-            setCurrentView(view);
+            setLocation(`/${view}`);
           }
         } catch {
           // Malformed URL — ignore
@@ -132,7 +135,7 @@ export function Layout() {
     });
 
     return () => cleanup?.();
-  }, []);
+  }, [setLocation]);
 
   // Apply visual theme to HTML root
   useEffect(() => {
@@ -172,18 +175,18 @@ export function Layout() {
       userRole === "Manager" &&
       (currentView === "ledger" || currentView === "settings")
     ) {
-      setCurrentView("dashboard");
+      setLocation("/dashboard");
     }
     if (userRole === "Partner" && currentView === "settings") {
-      setCurrentView("dashboard");
+      setLocation("/dashboard");
     }
-    if (userRole !== "Admin" && currentView === "audit") {
-      setCurrentView("dashboard");
+    if (!isAdmin && currentView === "audit") {
+      setLocation("/dashboard");
     }
-    if (userRole !== "Admin" && currentView === "employees") {
-      setCurrentView("dashboard");
+    if (!isAdmin && currentView === "employees") {
+      setLocation("/dashboard");
     }
-  }, [userRole, currentView]);
+  }, [userRole, currentView, isAdmin, setLocation]);
 
   let content: React.ReactNode;
   switch (currentView) {
@@ -206,7 +209,7 @@ export function Layout() {
       content = <Customers />;
       break;
     case "employees":
-      if (userRole !== "Admin") {
+      if (!isAdmin) {
         content = (
           <div className="flex flex-col items-center justify-center h-full text-zinc-500">
             <ShieldAlert className="w-12 h-12 mb-4 text-rose-400" />
@@ -232,7 +235,7 @@ export function Layout() {
       }
       break;
     case "settings":
-      if (userRole !== "Admin") {
+      if (!isAdmin) {
         content = (
           <div className="flex flex-col items-center justify-center h-full text-zinc-500">
             <ShieldAlert className="w-12 h-12 mb-4 text-rose-400" />
@@ -245,7 +248,7 @@ export function Layout() {
       }
       break;
     case "audit":
-      if (userRole !== "Admin") {
+      if (!isAdmin) {
         content = (
           <div className="flex flex-col items-center justify-center h-full text-zinc-500">
             <ShieldAlert className="w-12 h-12 mb-4 text-rose-400" />
@@ -265,16 +268,16 @@ export function Layout() {
 
   return (
     <>
-      <div className="flex h-screen bg-zinc-50 dark:bg-zinc-900 transition-colors duration-200 font-sans overflow-hidden">
+      <div className="flex h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-900 dark:to-zinc-950 transition-colors duration-200 font-sans overflow-hidden">
         <Sidebar
           currentView={currentView}
-          onChangeView={setCurrentView}
+          onChangeView={(view) => setLocation(`/${view}`)}
           isOpen={isSidebarOpen}
           setIsOpen={setIsSidebarOpen}
         />
         <div className="flex-1 flex flex-col min-h-0 w-full relative min-w-0">
           <Header onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
-          <main className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-4 lg:p-6 md:pb-6 app-content smooth-scroll has-bottom-nav">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-4 lg:p-6 app-content smooth-scroll has-bottom-nav">
             <Suspense fallback={<PageSkeleton />}>
               {isLoading ? (
                 <PageSkeleton />
@@ -295,7 +298,7 @@ export function Layout() {
           onClick={() => window.dispatchEvent(new CustomEvent(CREATE_EVENT))}
           style={{
             position: "fixed",
-            bottom: "calc(72px + env(safe-area-inset-bottom))",
+            bottom: "calc(80px + env(safe-area-inset-bottom))",
             right: "16px",
             left: "auto",
           }}

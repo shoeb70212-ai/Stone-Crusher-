@@ -9,6 +9,15 @@
  */
 
 import { Pool, PoolClient } from 'pg';
+import * as Sentry from '@sentry/node';
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    tracesSampleRate: 0.1,
+    environment: process.env.VERCEL_ENV || 'development',
+  });
+}
 
 export type DataRecord = { id?: string; [key: string]: unknown };
 export type AppData = Record<string, unknown> & {
@@ -348,6 +357,9 @@ export async function initDb(): Promise<void> {
     'CREATE INDEX IF NOT EXISTS idx_audit_logs_updated_at ON audit_logs ("updatedAt")',
     'CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs (timestamp DESC)',
     'CREATE INDEX IF NOT EXISTS idx_tombstones_table_deleted ON tombstones ("tableKey", "deletedAt")',
+    // Revoke DELETE on audit_logs from authenticated role (append-only enforcement)
+    'REVOKE DELETE ON audit_logs FROM authenticated',
+    'GRANT INSERT ON audit_logs TO authenticated',
   ];
 
   for (const sql of migrations) {
@@ -384,7 +396,7 @@ export async function readSettings(): Promise<Record<string, unknown>> {
  * Writes companySettings back to the settings table.
  * Strips any passwordHash fields from users before persisting.
  */
-export async function writeSettings(data: Record<string, unknown>): Promise<void> {
+export async function writeSettings(data: Record<string, unknown>, expectedVersion?: number): Promise<{ ok: boolean; currentVersion?: number }> {
   // Strip passwordHash from every user entry — passwords live in Supabase Auth only.
   const cleaned = {
     ...data,
@@ -392,10 +404,24 @@ export async function writeSettings(data: Record<string, unknown>): Promise<void
       ? (data.users as Record<string, unknown>[]).map(({ passwordHash: _ph, ...u }) => u)
       : data.users,
   };
+
+  const nextVersion = (typeof cleaned.version === 'number' ? cleaned.version : 0) + 1;
+  const payload = { ...cleaned, version: nextVersion };
+
+  if (typeof expectedVersion === 'number') {
+    const { rows } = await pool.query('SELECT data FROM settings WHERE id = $1', ['global']);
+    const existing = parseJsonField<Record<string, unknown>>(rows[0]?.data ?? {});
+    const currentVersion = typeof existing.version === 'number' ? existing.version : 0;
+    if (currentVersion !== expectedVersion) {
+      return { ok: false, currentVersion };
+    }
+  }
+
   await pool.query(
     'INSERT INTO settings (id, data) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data',
-    ['global', JSON.stringify(cleaned)],
+    ['global', JSON.stringify(payload)],
   );
+  return { ok: true, currentVersion: nextVersion };
 }
 
 // ---------------------------------------------------------------------------

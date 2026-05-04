@@ -60,3 +60,13 @@ export async function verifyBearerToken(
     appMetadata: data.user.app_metadata ?? {},
   };
 }
+
+/** Returns the userId only (no PII) for Sentry and logging. */
+export async function verifyBearerTokenSafe(
+  req: VercelRequest,
+): Promise<{ userId: string; appMetadata: Record<string, unknown> } | null> {
+  const result = await verifyBearerToken(req);
+  if (!result) return null;
+  const { userId, appMetadata } = result;
+  return { userId, appMetadata };
+}

@@ -3,9 +3,11 @@ import { useErp } from "../../context/ErpContext";
 import { Invoice, InvoiceItem, Slip } from "../../types";
 import { Combobox } from "../ui/Combobox";
 import { Plus, Trash2 } from "lucide-react";
+import { useActive } from "../../hooks/useActive";
 
 export function CreateInvoiceForm({ onSuccess }: { onSuccess: (invoice?: Invoice) => void }) {
   const { invoices, customers, addInvoice, addCustomer, slips, updateSlip, companySettings } = useErp();
+  const activeMaterials = useActive(companySettings.materials || []);
   const [billedSlips, setBilledSlips] = useState<string[]>([]);
 
   const FALLBACK_MATERIALS = [
@@ -18,9 +20,8 @@ export function CreateInvoiceForm({ onSuccess }: { onSuccess: (invoice?: Invoice
   ];
 
   const materials = React.useMemo(() => {
-    if (companySettings.materials && companySettings.materials.length > 0) {
-      return companySettings.materials
-        .filter((m) => m.isActive !== false)
+    if (activeMaterials.length > 0) {
+      return activeMaterials
         .map((m, idx) => ({
           id: (m.id as unknown as number) || idx + 1,
           name: m.name,

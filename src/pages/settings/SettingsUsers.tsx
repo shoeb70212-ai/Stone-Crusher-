@@ -7,7 +7,7 @@ interface Props {
   localSettings: CompanySettings;
   setLocalSettings: (s: CompanySettings) => void;
   isSaved: boolean;
-  userRole: string;
+  userRole: string | null;
   onSave: () => void;
   // Modals are kept in Settings.tsx to avoid extra prop drilling of async handlers
   onOpenInvite: () => void;
@@ -47,7 +47,8 @@ export function SettingsUsers({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      {/* Desktop table */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-zinc-50 dark:bg-zinc-900/50 border-y border-zinc-200 dark:border-zinc-700">
@@ -128,6 +129,85 @@ export function SettingsUsers({
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-3">
+        {(localSettings.users || []).map((user) => {
+          const isCurrentUser = user.id === currentUserId;
+          const updUsers = (patch: Partial<typeof user>) =>
+            setLocalSettings({
+              ...localSettings,
+              users: (localSettings.users || []).map((u) => u.id === user.id ? { ...u, ...patch } : u),
+            });
+          return (
+            <div key={user.id} className="bg-white dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 space-y-3">
+              <div className="space-y-2">
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Name</label>
+                  <input type="text" value={user.name}
+                    onChange={(e) => updUsers({ name: e.target.value })}
+                    className="w-full bg-transparent border-b border-transparent focus:border-primary-500 outline-none text-zinc-900 dark:text-white font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Email</label>
+                  <input type="email" value={user.email}
+                    onChange={(e) => updUsers({ email: e.target.value })}
+                    className="w-full bg-transparent border-b border-transparent focus:border-primary-500 outline-none text-zinc-500 dark:text-zinc-400 text-sm"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500 block mb-1">Role</label>
+                  <select value={user.role}
+                    onChange={(e) => updUsers({ role: e.target.value as any })}
+                    className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-zinc-800 outline-none focus:border-primary-500 dark:text-white"
+                  >
+                    <option value="Admin">Admin</option>
+                    <option value="Manager">Manager</option>
+                    <option value="Partner">Partner</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500 block mb-1">Status</label>
+                  <select value={user.status}
+                    onChange={(e) => updUsers({ status: e.target.value as any })}
+                    className={`w-full border border-transparent rounded-lg px-2 py-1.5 text-xs font-medium outline-none focus:border-primary-500 ${user.status === "Active" ? "bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-300" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200"}`}
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-2 border-t border-zinc-100 dark:border-zinc-700">
+                {userRole === "Admin" && (
+                  <button
+                    onClick={() => onOpenResetPassword(user.id)}
+                    className="text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300 text-xs font-medium flex items-center gap-1"
+                    title="Reset password for this user"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" /> Reset
+                  </button>
+                )}
+                {userRole === "Admin" && !isCurrentUser && (
+                  <button
+                    onClick={() =>
+                      setLocalSettings({
+                        ...localSettings,
+                        users: (localSettings.users || []).filter((u) => u.id !== user.id),
+                      })
+                    }
+                    className="text-rose-600 hover:text-rose-900 dark:text-rose-400 dark:hover:text-rose-300 text-xs font-medium"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div className="flex justify-end pt-4 border-t border-zinc-100 dark:border-zinc-700">

@@ -184,7 +184,8 @@ export function Dashboard() {
   }, [customers, getCustomerBalance]);
 
   const percentChange = (current: number, previous: number) => {
-    if (previous === 0) return current > 0 ? "100" : "0";
+    if (previous === 0 && current === 0) return "0";
+    if (previous === 0) return "100";
     const change = ((current - previous) / Math.abs(previous)) * 100;
     return change.toFixed(1);
   };
@@ -195,10 +196,11 @@ export function Dashboard() {
 
   const stats = [
     {
-      label: "Dispatches",
+      label: "Trips",
       value: `${dateSlips.filter(s => s.status !== "Cancelled").length} Trips`,
       subValue: `${volumePercent}% vs prev period`,
       isPositive: currentVolume >= prevVolume,
+      showNeutral: currentVolume === 0 && prevVolume === 0,
       icon: Truck,
       color: "text-blue-600 dark:text-blue-400",
       bg: "bg-blue-100 dark:bg-blue-500/20",
@@ -210,6 +212,7 @@ export function Dashboard() {
       value: `₹${income.toLocaleString()}`,
       subValue: `${incomePercent}% vs prev period`,
       isPositive: income >= prevIncome,
+      showNeutral: income === 0 && prevIncome === 0,
       icon: ArrowDownCircle,
       color: "text-emerald-600 dark:text-emerald-400",
       bg: "bg-emerald-100 dark:bg-emerald-500/20",
@@ -221,6 +224,7 @@ export function Dashboard() {
       value: `₹${expense.toLocaleString()}`,
       subValue: `${expensePercent}% vs prev period`,
       isPositive: expense <= prevExpense,
+      showNeutral: expense === 0 && prevExpense === 0,
       icon: ArrowUpCircle,
       color: "text-orange-600 dark:text-orange-400",
       bg: "bg-orange-100 dark:bg-orange-500/20",
@@ -232,6 +236,7 @@ export function Dashboard() {
       value: `₹${totalReceivables.toLocaleString()}`,
       subValue: `Pending collection`,
       isPositive: true,
+      showNeutral: false,
       icon: Wallet,
       color: "text-amber-600 dark:text-amber-400",
       bg: "bg-amber-100 dark:bg-amber-500/20",
@@ -310,22 +315,22 @@ export function Dashboard() {
       <div className="md:hidden -mx-1">
         <div className="flex gap-2 overflow-x-auto no-scrollbar px-1 pb-1">
           {[
-            { label: "New Slip", icon: FileText, target: "dispatch", color: "bg-blue-600 text-white" },
-            { label: "New Invoice", icon: Receipt, target: "invoices", color: "bg-violet-600 text-white" },
-            { label: "Add Income", icon: TrendingUp, target: "daybook", color: "bg-emerald-600 text-white" },
-            { label: "Add Expense", icon: TrendingDown, target: "daybook", color: "bg-rose-600 text-white" },
+            { label: "Slip", icon: FileText, target: "dispatch", color: "bg-blue-600 text-white" },
+            { label: "Invoice", icon: Receipt, target: "invoices", color: "bg-violet-600 text-white" },
+            { label: "Income", icon: TrendingUp, target: "daybook", color: "bg-emerald-600 text-white" },
+            { label: "Expense", icon: TrendingDown, target: "daybook", color: "bg-rose-600 text-white" },
           ].map((action) => (
             <button
               key={action.label}
               onClick={() => {
-                if (action.label === "New Slip" || action.label === "New Invoice") {
+                if (action.label === "Slip" || action.label === "Invoice") {
                   window.dispatchEvent(new CustomEvent(CREATE_EVENT));
                 }
                 navigateTo(action.target);
               }}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl whitespace-nowrap text-xs font-semibold active:scale-95 transition-transform ${action.color}`}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl whitespace-nowrap text-[11px] font-semibold active:scale-95 transition-transform ${action.color}`}
             >
-              <action.icon className="w-4 h-4" />
+              <action.icon className="w-3.5 h-3.5" />
               {action.label}
             </button>
           ))}
@@ -341,14 +346,14 @@ export function Dashboard() {
               key={i}
               onClick={() => navigateTo(stat.navTarget)}
               aria-label={`${stat.label}: ${stat.value}. ${stat.subValue}. Open ${stat.navTarget}.`}
-              className={`bg-gradient-to-br ${stat.gradient} bg-white dark:bg-zinc-900/40 p-2.5 md:p-5 rounded-xl md:rounded-2xl shadow-sm border border-zinc-200/80 dark:border-zinc-800 flex flex-col gap-1 relative overflow-hidden active:scale-[0.98] active:shadow-inner transition-all cursor-pointer text-left hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-md animate-stat`}
+              className={`bg-gradient-to-br ${stat.gradient} bg-white dark:bg-zinc-900/40 p-2 md:p-5 rounded-xl md:rounded-2xl shadow-sm border border-zinc-200/80 dark:border-zinc-800 flex flex-col gap-1 relative overflow-hidden active:scale-[0.98] active:shadow-inner transition-all cursor-pointer text-left hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-md animate-stat`}
             >
               <div className="flex justify-between items-start">
                 <p className="text-xs md:text-sm font-semibold text-zinc-500 dark:text-zinc-400 leading-tight line-clamp-2 uppercase tracking-wide">
                   {stat.label}
                 </p>
                 <div className={`p-1 rounded-lg md:rounded-xl ${stat.bg} shrink-0`}>
-                  <Icon className={`w-3.5 h-3.5 md:w-5 md:h-5 ${stat.color}`} />
+                  <Icon className={`w-3 h-3 md:w-5 md:h-5 ${stat.color}`} />
                 </div>
               </div>
               <p className="text-base md:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white truncate">
@@ -357,12 +362,19 @@ export function Dashboard() {
               <p className="text-xs font-medium leading-tight">
                 {stat.label === "Receivables" ? (
                   <span className="text-zinc-500 dark:text-zinc-400">{stat.subValue}</span>
+                ) : stat.showNeutral ? (
+                  <span
+                    title={previousPeriodLabel}
+                    className="px-1.5 py-0.5 rounded-md inline-flex items-center gap-0.5 bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                  >
+                    - 0%
+                  </span>
                 ) : (
                   <span
                     title={previousPeriodLabel}
                     className={`px-1.5 py-0.5 rounded-md inline-flex items-center gap-0.5 ${stat.isPositive ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400"}`}
                   >
-                    {stat.isPositive ? "↑" : "↓"} {stat.subValue.split(" vs")[0]}
+                    {stat.isPositive ? "↑" : "↓"} {stat.subValue.split(" vs")[0]}%
                   </span>
                 )}
               </p>

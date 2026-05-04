@@ -3,6 +3,7 @@ import { useErp } from "../context/ErpContext";
 import { Truck, Plus, X, FileText, Edit2, Printer } from "lucide-react";
 import { MeasurementType, Slip, Vehicle } from "../types";
 import { format, parseISO } from "date-fns";
+import { parseFeetInches } from "../lib/utils";
 import { PrintSlipModal } from "../components/forms/PrintSlipModal";
 
 export function Vehicles() {
@@ -57,9 +58,9 @@ export function Vehicles() {
       driverPhone: formData.driverPhone,
       defaultMeasurementType: formData.measurementType,
       measurement: {
-        lengthFeet: parseFloat(formData.lengthFeet) || undefined,
-        widthFeet: parseFloat(formData.widthFeet) || undefined,
-        heightFeet: parseFloat(formData.heightFeet) || undefined,
+        lengthFeet: parseFeetInches(formData.lengthFeet) || undefined,
+        widthFeet: parseFeetInches(formData.widthFeet) || undefined,
+        heightFeet: parseFeetInches(formData.heightFeet) || undefined,
         tareWeight: parseFloat(formData.tareWeight) || undefined,
       },
     };

@@ -54,7 +54,7 @@ async function resolveCallerRole(
   const settings = await readSettings();
   const users = (settings.users ?? []) as UserAccount[];
   const callerUser = users.find(
-    (u) => u.id === caller.userId || u.email.toLowerCase() === caller.email.toLowerCase(),
+    (u) => u.id === caller.userId || u.email.toLowerCase() === (caller.email || '').toLowerCase(),
   );
   if (!callerUser || callerUser.status !== 'Active') return null;
 

@@ -21,6 +21,7 @@ import {
   Task,
   AuditLog,
 } from "../types";
+import type { UserRole } from "../types";
 import { supabase } from "../lib/supabase";
 import { isNative } from "../lib/capacitor";
 import { getEmployeeTransactionImpact } from "../lib/employee-ledger";
@@ -43,7 +44,7 @@ function apiHeaders(session?: Session | null, includeContentType = true): Record
 // Types
 // ---------------------------------------------------------------------------
 
-export type UserRole = "Admin" | "Partner" | "Manager";
+export type { UserRole };
 
 type AuditLogInput = Omit<AuditLog, "id" | "timestamp" | "actorId" | "actorName" | "actorRole">;
 
@@ -66,10 +67,10 @@ interface ErpState {
   companySettings: CompanySettings;
   bootstrapRequired: boolean | null;
   isLoading: boolean;
-  syncStatus: 'idle' | 'syncing' | 'error';
+  syncStatus: 'idle' | 'syncing' | 'error' | 'failed';
 
   // Auth
-  userRole: UserRole;
+  userRole: UserRole | null;
   session: Session | null;
   signOut: () => Promise<void>;
   recordAuditEvent: (entry: AuditLogInput) => void;
@@ -126,6 +127,8 @@ interface ErpState {
   /** Immediately flushes any pending mutations in the sync queue to the server.
    *  Called by OfflineIndicator when the device comes back online. */
   flushSync: () => Promise<boolean>;
+  /** Ref to the current retry count (exposed for manual reset). */
+  retryCountRef: React.MutableRefObject<number>;
 }
 
 // ---------------------------------------------------------------------------
@@ -170,10 +173,10 @@ const ErpContext = createContext<ErpState | undefined>(undefined);
 // ---------------------------------------------------------------------------
 
 /** Returns true if the role may perform admin-only operations. */
-const isAdmin = (role: UserRole) => role === "Admin";
+const isAdmin = (role: UserRole | null) => role === "Admin";
 
 /** Returns true if the role may perform manager-or-above operations. */
-const isManagerOrAbove = (role: UserRole) => role === "Admin" || role === "Manager";
+const isManagerOrAbove = (role: UserRole | null) => role === "Admin" || role === "Manager";
 
 export function ErpProvider({ children }: { children: ReactNode }) {
   // ---- Core state (initialised empty; hydrated from server on mount) ------
@@ -189,23 +192,39 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   const [companySettings, setCompanySettings] = useState<CompanySettings>(DEFAULT_COMPANY_SETTINGS);
   const [bootstrapRequired, setBootstrapRequired] = useState<boolean | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [userRole, _setUserRole] = useState<UserRole>(() => {
+  const [userRole, _setUserRole] = useState<UserRole | null>(() => {
     const saved = localStorage.getItem('erp_user_role');
-    return saved === 'Admin' || saved === 'Manager' || saved === 'Partner' ? saved : 'Admin';
+    return saved === 'Admin' || saved === 'Manager' || saved === 'Partner' ? saved : null;
   });
   const [isLoading, setIsLoading] = useState(true);
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error' | 'failed'>('idle');
+  const [syncQueueV2Enabled, setSyncQueueV2Enabled] = useState(false);
+  useEffect(() => {
+    setSyncQueueV2Enabled(companySettings.flags?.syncQueueV2 ?? false);
+  }, [companySettings.flags]);
 
   // Subscribe to Supabase Auth state changes.  When the session transitions
   // the role is re-derived below (in the settings-load effect).
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
       // Clear stale legacy keys so they never pollute a fresh Supabase session.
       if (!newSession) {
         localStorage.removeItem('erp_auth_token');
         localStorage.removeItem('erp_user_role');
+      }
+      // Sentry breadcrumb for auth events
+      if (typeof window !== 'undefined') {
+        // @ts-ignore
+        const Sentry = window.Sentry;
+        if (Sentry) {
+          Sentry.addBreadcrumb({
+            category: 'auth',
+            message: `Auth event: ${event}`,
+            level: 'info',
+          });
+        }
       }
     });
     return () => listener.subscription.unsubscribe();
@@ -261,7 +280,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       }
     }
     loadData();
-  }, [session?.access_token]);
+  }, [session?.user?.id]);
 
   // -----------------------------------------------------------------------
   // Delta-Sync Queue — batches mutations and PATCHes them to the server
@@ -289,7 +308,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   const MAX_RETRIES = 5;
   const syncInProgressRef = useRef(false);
 
-  const requeueFailedPayload = useCallback((payload: {
+  const requeueFailedPayloadV0 = useCallback((payload: {
     updates: Record<string, unknown[]> & { companySettings?: CompanySettings };
     deletions: Record<string, string[]>;
   }) => {
@@ -317,6 +336,63 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       syncQueueRef.current.deletions[table] = merged;
     }
   }, []);
+
+  const requeueFailedPayloadV2 = useCallback((payload: {
+    updates: Record<string, unknown[]> & { companySettings?: CompanySettings };
+    deletions: Record<string, string[]>;
+  }) => {
+    for (const [table, items] of Object.entries(payload.updates)) {
+      if (table === "companySettings") {
+        const existing = syncQueueRef.current.updates.companySettings;
+        const retry = items as CompanySettings;
+        if (!existing) {
+          syncQueueRef.current.updates.companySettings = retry;
+        } else {
+          const existingTs = (existing as unknown as { _updatedAt?: number })._updatedAt ?? 0;
+          const retryTs = (retry as unknown as { _updatedAt?: number })._updatedAt ?? 0;
+          syncQueueRef.current.updates.companySettings = retryTs >= existingTs ? retry : existing;
+        }
+        continue;
+      }
+
+      const existing = (syncQueueRef.current.updates[table] || []) as QueueItem[];
+      const retry = items as QueueItem[];
+      const map = new Map<string, QueueItem>();
+
+      for (const item of existing) {
+        const id = (item as { id?: string; clientOpId?: string }).id || (item as { clientOpId?: string }).clientOpId;
+        if (id) map.set(id, item);
+      }
+
+      for (const item of retry) {
+        const typed = item as unknown as { id?: string; clientOpId?: string; _updatedAt?: number };
+        const key = typed.id || typed.clientOpId;
+        if (!key) {
+          existing.push(item);
+          continue;
+        }
+        const current = map.get(key);
+        if (!current) {
+          map.set(key, item);
+        } else {
+          const curTs = (current as unknown as { _updatedAt?: number })._updatedAt ?? 0;
+          if ((typed._updatedAt ?? 0) >= curTs) {
+            map.set(key, item);
+          }
+        }
+      }
+
+      syncQueueRef.current.updates[table] = Array.from(map.values());
+    }
+
+    for (const [table, ids] of Object.entries(payload.deletions)) {
+      const existing = syncQueueRef.current.deletions[table] || [];
+      const merged = Array.from(new Set([...existing, ...ids]));
+      syncQueueRef.current.deletions[table] = merged;
+    }
+  }, []);
+
+  const requeueFailedPayload = syncQueueV2Enabled ? requeueFailedPayloadV2 : requeueFailedPayloadV0;
 
   const flushSyncQueue = useCallback(async (): Promise<boolean> => {
     if (syncInProgressRef.current) return false;
@@ -377,8 +453,9 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         await new Promise((resolve) => setTimeout(resolve, backoff));
         ok = await flushSyncQueue();
       }
-      // When MAX_RETRIES is exhausted, syncStatus remains 'error' so the
-      // OfflineIndicator can surface the failure to the user.
+      if (!ok && retryCountRef.current >= MAX_RETRIES) {
+        setSyncStatus('failed');
+      }
     }, 400);
   }, [flushSyncQueue]);
 
@@ -387,15 +464,18 @@ export function ErpProvider({ children }: { children: ReactNode }) {
    * `companySettings` is treated as a singleton; all other tables are arrays.
    */
   const queueUpdate = useCallback((table: string, item: any) => {
+    const stamped = syncQueueV2Enabled
+      ? { ...item, _updatedAt: Date.now(), clientOpId: item.id ? undefined : crypto.randomUUID() }
+      : item;
     if (table === "companySettings") {
-      syncQueueRef.current.updates.companySettings = item;
+      syncQueueRef.current.updates.companySettings = stamped;
     } else {
       const existing = syncQueueRef.current.updates[table] || [];
       const filtered = existing.filter((i: any) => i.id !== item.id);
-      syncQueueRef.current.updates[table] = [...filtered, item];
+      syncQueueRef.current.updates[table] = [...filtered, stamped];
     }
     triggerSync();
-  }, [triggerSync]);
+  }, [triggerSync, syncQueueV2Enabled]);
 
   /** Enqueues a hard-delete for a record by table name and ID. */
   const queueDelete = useCallback((table: string, id: string) => {
@@ -541,7 +621,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
 
   const getCurrentActor = useCallback(() => {
     if (!session) {
-      return { actorName: 'System', actorRole: userRole };
+      return { actorName: 'System', actorRole: (userRole ?? 'System') as AuditLog['actorRole'] };
     }
 
     const users = companySettings.users ?? [];
@@ -559,7 +639,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    return { actorName: `${userRole} User`, actorRole: userRole };
+    return { actorName: `${userRole ?? 'Unknown'} User`, actorRole: (userRole ?? 'System') as AuditLog['actorRole'] };
   }, [session, companySettings.users, userRole]);
 
   /** Signs the current user out of Supabase Auth and clears local state. */
@@ -1292,6 +1372,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     getEmployeeBalance,
     purgeInactiveRecords,
     flushSync: flushSyncQueue,
+    retryCountRef,
   }), [
     customers, employees, employeeTransactions, slips, transactions, vehicles, invoices, tasks, auditLogs,
     companySettings, bootstrapRequired, isLoading, syncStatus, userRole, session, signOut,

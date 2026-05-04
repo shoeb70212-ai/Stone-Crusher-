@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useErp } from "../context/ErpContext";
 import { Invoice } from "../types";
-import { Plus, Download, FileText, Upload, Printer, Filter, ChevronDown, MessageCircle, Search, X } from "lucide-react";
+import { Plus, Download, FileText, Printer, Filter, ChevronDown, MessageCircle, Search, X } from "lucide-react";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { MobileActionSheet, MobileChip, MobileFilterSheet } from "../components/ui/MobilePrimitives";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -31,6 +31,7 @@ function InvoicesContent() {
 
   // Mobile search
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const debouncedSearch = useDebounce(searchQuery, 300);
 
   const generator = useInvoiceGenerator();
@@ -131,19 +132,6 @@ function InvoicesContent() {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <label className="hidden md:flex items-center gap-2 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors shadow-sm font-medium cursor-pointer text-sm active:scale-95">
-            <Upload className="w-4 h-4 shrink-0" />
-            <span className="hidden md:inline whitespace-nowrap">Import JSON</span>
-            <input type="file" accept=".json" className="hidden" onChange={generator.importData} />
-          </label>
-          <button
-            onClick={() => void generator.exportData(filteredInvoices)}
-            disabled={generator.isExporting}
-            className="hidden md:flex items-center gap-2 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors shadow-sm font-medium text-sm active:scale-95 disabled:opacity-60"
-          >
-            <Download className="w-4 h-4 shrink-0" />
-            <span className="hidden md:inline whitespace-nowrap">{generator.isExporting ? "Exporting..." : "Export CSV"}</span>
-          </button>
           <button
             onClick={generator.openCreateModal}
             className="hidden md:flex items-center gap-2 px-3 py-2 md:px-4 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors shadow-sm font-medium text-sm active:scale-95"
@@ -152,23 +140,6 @@ function InvoicesContent() {
             <span className="whitespace-nowrap">New Invoice</span>
           </button>
         </div>
-      </div>
-
-      <div className="md:hidden grid grid-cols-2 gap-2">
-        <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 shadow-sm active:scale-[0.98] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
-          <Upload className="h-4 w-4" />
-          Import JSON
-          <input type="file" accept=".json" className="hidden" onChange={generator.importData} />
-        </label>
-        <button
-          type="button"
-          onClick={() => void generator.exportData(filteredInvoices)}
-          disabled={generator.isExporting}
-          className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 shadow-sm active:scale-[0.98] disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-        >
-          <Download className="h-4 w-4" />
-          {generator.isExporting ? "Exporting..." : "Export CSV"}
-        </button>
       </div>
 
       <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 overflow-hidden">
@@ -190,35 +161,46 @@ function InvoicesContent() {
         </div>
 
         {/* Mobile search + filter bar */}
-        <div className="md:hidden border-b border-zinc-100 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 space-y-2">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search invoices..."
-              className="w-full h-10 pl-9 pr-8 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors"
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-zinc-400 hover:text-zinc-600">
-                <X className="w-4 h-4" />
+        <div className="md:hidden border-b border-zinc-100 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2">
+          <div className="flex items-center gap-2">
+            {!searchExpanded ? (
+              <button
+                onClick={() => setSearchExpanded(true)}
+                className="flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+                aria-label="Search"
+              >
+                <Search className="h-4 w-4" />
+              </button>
+            ) : (
+              <div className="animate-fade-in flex-1 relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search invoices..."
+                  className="w-full h-10 pl-9 pr-8 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors"
+                />
+                <button onClick={() => { setSearchQuery(""); setSearchExpanded(false); }} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-zinc-400 hover:text-zinc-600">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+            {!searchExpanded && (
+              <button
+                onClick={() => setIsFilterOpen(true)}
+                className={`flex min-h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold ${
+                  hasInvoiceFilters
+                    ? "border-primary-200 bg-primary-50 text-primary-700 dark:border-primary-500/30 dark:bg-primary-500/15 dark:text-primary-300"
+                    : "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                }`}
+              >
+                <Filter className="h-4 w-4" />
+                Filter
               </button>
             )}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsFilterOpen(true)}
-              className={`flex min-h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold ${
-                hasInvoiceFilters
-                  ? "border-primary-200 bg-primary-50 text-primary-700 dark:border-primary-500/30 dark:bg-primary-500/15 dark:text-primary-300"
-                  : "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
-              }`}
-            >
-              <Filter className="h-4 w-4" />
-              Filter
-            </button>
-            {hasInvoiceFilters && (
+            {hasInvoiceFilters && !searchExpanded && (
               <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto no-scrollbar">
                 {filterCustomerId !== "All" && (
                   <MobileChip onRemove={() => setFilterCustomerId("All")}>
@@ -297,9 +279,9 @@ function InvoicesContent() {
               </button>
             </div>
           ) : (
-            <div className="space-y-1 pb-[calc(8.5rem+env(safe-area-inset-bottom))] md:pb-0 stagger-animation">
+              <div className="space-y-1 pb-[calc(10rem+env(safe-area-inset-bottom))] md:pb-0 stagger-animation">
               {filteredInvoices.map((inv) => (
-                <div key={inv.id} className="p-3 bg-white dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700 rounded-xl shadow-sm active:scale-[0.98] transition-transform">
+                <div key={inv.id} className="p-2.5 bg-white dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700 rounded-xl shadow-sm active:scale-[0.98] transition-transform">
                   <div className="flex justify-between items-start">
                     <div className="min-w-0">
                       <div className="font-bold text-zinc-900 dark:text-white text-xs">

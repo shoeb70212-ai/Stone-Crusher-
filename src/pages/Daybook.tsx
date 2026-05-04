@@ -320,7 +320,7 @@ export function Daybook() {
             </p>
           </div>
 
-<div className="bg-zinc-900 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl shadow-sm text-white flex flex-col justify-between">
+<div className="bg-zinc-900 dark:bg-zinc-800 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl shadow-sm text-white flex flex-col justify-between border border-zinc-800 dark:border-zinc-700">
             <div className="flex items-center justify-between mb-1">
                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Net</p>
                <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-zinc-300" />

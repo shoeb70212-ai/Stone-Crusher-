@@ -11,9 +11,15 @@ import {
   Calendar,
   FileText,
   Loader2,
+  Printer,
+  MessageCircle,
+  ArrowDownLeft,
+  ArrowUpRight,
 } from "lucide-react";
 import { format, parseISO, startOfMonth } from "date-fns";
 import { downloadCSV, downloadLedgerStatementPdf } from "../lib/export-utils";
+import { printHtml } from "../lib/print-utils";
+import { buildLedgerWhatsAppMessage, openWhatsAppMessage } from "../lib/whatsapp-share";
 import { useToast } from "../components/ui/Toast";
 
 export function Ledger() {
@@ -302,21 +308,24 @@ export function Ledger() {
                {filteredTransactions.slice().reverse().map((tx) => {
                   const cust = customers.find((c) => c.id === tx.customerId);
                   return (
-                    <div key={tx.id} className="p-4 flex flex-col gap-2">
-                       <div className="flex justify-between items-start">
-                          <div className="font-bold text-zinc-900 dark:text-white">{tx.category}</div>
-                          <span className={`font-semibold inline-flex items-center px-2 py-0.5 rounded text-xs ${tx.type === "Income" ? "bg-primary-50 text-primary-700" : "bg-rose-50 text-rose-700"}`}>
-                             {tx.type === "Income" ? "+" : "-"} ₹{tx.amount.toLocaleString()}
-                          </span>
-                       </div>
-                       <div className="text-sm text-zinc-600 dark:text-zinc-300">
-                          {tx.description}
-                       </div>
-                       <div className="flex justify-between items-center text-xs text-zinc-500 mt-1">
-                          <span>{new Date(tx.date).toLocaleDateString()} {new Date(tx.date).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})}</span>
-                          {tx.customerId && <span className="font-medium text-zinc-700 dark:text-zinc-300">Ref: {cust?.name}</span>}
-                       </div>
-                    </div>
+                     <div key={tx.id} className={`p-3 flex items-center gap-3 border-l-4 ${tx.type === "Income" ? "border-l-primary-500 bg-primary-50/30 dark:bg-primary-500/5" : "border-l-rose-500 bg-rose-50/30 dark:bg-rose-500/5"}`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${tx.type === "Income" ? "bg-primary-100 text-primary-600 dark:bg-primary-500/20 dark:text-primary-400" : "bg-rose-100 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400"}`}>
+                           {tx.type === "Income" ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                           <div className="flex justify-between items-center">
+                              <span className="text-xs font-bold text-zinc-900 dark:text-white truncate">{tx.category}</span>
+                              <span className={`text-xs font-bold ${tx.type === "Income" ? "text-primary-600 dark:text-primary-400" : "text-rose-600 dark:text-rose-400"}`}>
+                                 {tx.type === "Income" ? "+" : "-"} ₹{tx.amount.toLocaleString()}
+                              </span>
+                           </div>
+                           <div className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">{tx.description}</div>
+                           <div className="flex justify-between items-center text-[10px] text-zinc-400 mt-0.5">
+                              <span>{new Date(tx.date).toLocaleDateString()} {new Date(tx.date).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})}</span>
+                              {tx.customerId && <span className="font-medium text-zinc-600 dark:text-zinc-300">Ref: {cust?.name}</span>}
+                           </div>
+                        </div>
+                     </div>
                   );
                })}
             </div>
@@ -885,6 +894,37 @@ export function Ledger() {
               )}
               <div className="ml-auto flex gap-2">
                 <button
+                  onClick={() => {
+                    const html = `
+                      <div style="padding:24px;font-family:Inter,sans-serif;">
+                        <h2 style="margin:0 0 4px;">${viewCustomerLedger.name}</h2>
+                        <p style="margin:0 0 12px;color:#666;">Phone: ${viewCustomerLedger.phone || 'N/A'}${viewCustomerLedger.address ? ` | ${viewCustomerLedger.address}` : ''}${viewCustomerLedger.gstin ? ` | GSTIN: ${viewCustomerLedger.gstin}` : ''}</p>
+                        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                          <thead><tr style="background:#f4f4f5;"><th style="padding:8px;text-align:left;">Date</th><th style="padding:8px;text-align:left;">Particulars</th><th style="padding:8px;text-align:right;">Debit</th><th style="padding:8px;text-align:right;">Credit</th><th style="padding:8px;text-align:right;">Balance</th></tr></thead>
+                          <tbody>
+                            <tr style="background:#fafafa;"><td style="padding:8px;border-bottom:1px solid #eee;">-</td><td style="padding:8px;border-bottom:1px solid #eee;">Opening Balance</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${periodOpeningBalance > 0 ? periodOpeningBalance.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${periodOpeningBalance < 0 ? Math.abs(periodOpeningBalance).toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;">${Math.abs(periodOpeningBalance).toLocaleString()} ${periodOpeningBalance < 0 ? 'Cr' : 'Dr'}</td></tr>
+                            ${entriesWithBalance.map(e => `<tr><td style="padding:8px;border-bottom:1px solid #eee;">${e.date.toLocaleDateString()}</td><td style="padding:8px;border-bottom:1px solid #eee;">${e.desc}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#e11d48;">${e.debit > 0 ? e.debit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#059669;">${e.credit > 0 ? e.credit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;">${Math.abs(e.runningBalance).toLocaleString()} ${e.runningBalance < 0 ? 'Cr' : e.runningBalance > 0 ? 'Dr' : ''}</td></tr>`).join('')}
+                          </tbody>
+                        </table>
+                        <p style="margin-top:12px;text-align:right;font-weight:bold;">Closing Balance: ₹${Math.abs(statementClosingBalance).toLocaleString()} ${statementClosingBalance < 0 ? 'Cr' : statementClosingBalance > 0 ? 'Dr' : ''}</p>
+                      </div>
+                    `;
+                    printHtml(html);
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-xs font-semibold rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5" /> Print
+                </button>
+                <button
+                  onClick={() => {
+                    const message = buildLedgerWhatsAppMessage({ customer: viewCustomerLedger, entries: entriesWithBalance, closingBalance: statementClosingBalance });
+                    openWhatsAppMessage(message);
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                </button>
+                <button
                   onClick={() => handleExportCustomerCSV(viewCustomerLedger, filteredEntries)}
                   className="flex items-center gap-1 px-2.5 py-1 bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-xs font-semibold rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors"
                 >
@@ -901,7 +941,23 @@ export function Ledger() {
               </div>
             </div>
 
-            <div className="overflow-x-auto flex-1 w-full p-3 md:p-5" ref={statementRef}>
+            {/* Mobile customer header */}
+            <div className="md:hidden px-4 py-3 border-b border-zinc-100 dark:border-zinc-700 bg-white dark:bg-zinc-800">
+              <div className="text-base font-bold text-zinc-900 dark:text-white">{viewCustomerLedger.name}</div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{viewCustomerLedger.phone}{viewCustomerLedger.address ? ` · ${viewCustomerLedger.address}` : ''}{viewCustomerLedger.gstin ? ` · GSTIN: ${viewCustomerLedger.gstin}` : ''}</div>
+              <div className="flex gap-3 mt-2">
+                <div className="flex-1 bg-zinc-50 dark:bg-zinc-900 rounded-lg p-2 text-center border border-zinc-100 dark:border-zinc-700">
+                  <div className="text-[10px] text-zinc-500 uppercase font-semibold">Opening</div>
+                  <div className="text-xs font-bold text-zinc-900 dark:text-white">₹{Math.abs(periodOpeningBalance).toLocaleString()} {periodOpeningBalance < 0 ? 'Cr' : 'Dr'}</div>
+                </div>
+                <div className="flex-1 bg-zinc-50 dark:bg-zinc-900 rounded-lg p-2 text-center border border-zinc-100 dark:border-zinc-700">
+                  <div className="text-[10px] text-zinc-500 uppercase font-semibold">Closing</div>
+                  <div className={`text-xs font-bold ${statementClosingBalance > 0 ? 'text-rose-600' : statementClosingBalance < 0 ? 'text-primary-600' : 'text-zinc-900 dark:text-white'}`}>₹{Math.abs(statementClosingBalance).toLocaleString()} {statementClosingBalance < 0 ? 'Cr' : statementClosingBalance > 0 ? 'Dr' : ''}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto flex-1 w-full p-3 md:p-5 hidden md:block" ref={statementRef}>
               <table className="w-full min-w-[560px] text-sm text-left">
                 <thead className="text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-900/50 uppercase rounded-lg">
                   <tr>
@@ -973,6 +1029,31 @@ export function Ledger() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Mobile card list for statement */}
+            <div className="md:hidden flex-1 w-full overflow-y-auto p-3">
+              <div className="space-y-2">
+                <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-700 rounded-xl p-3">
+                  <div className="text-[10px] text-zinc-500 uppercase font-semibold">Opening Balance</div>
+                  <div className="text-sm font-bold text-zinc-900 dark:text-white">₹{Math.abs(periodOpeningBalance).toLocaleString()} {periodOpeningBalance < 0 ? 'Cr' : 'Dr'}</div>
+                </div>
+                {entriesWithBalance.map((entry, idx) => (
+                  <div key={idx} className={`bg-white dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl p-3 ${entry.debit > 0 ? 'border-l-4 border-l-rose-500' : entry.credit > 0 ? 'border-l-4 border-l-primary-500' : ''}`}>
+                    <div className="flex justify-between items-start">
+                      <span className="text-[11px] text-zinc-500 dark:text-zinc-400">{entry.date.toLocaleDateString()}</span>
+                      <span className="text-xs font-bold text-zinc-900 dark:text-white">
+                        ₹{Math.abs(entry.runningBalance).toLocaleString()} {entry.runningBalance < 0 ? 'Cr' : entry.runningBalance > 0 ? 'Dr' : ''}
+                      </span>
+                    </div>
+                    <div className="text-xs font-medium text-zinc-800 dark:text-zinc-200 mt-0.5">{entry.desc}</div>
+                    <div className="flex gap-3 mt-1">
+                      {entry.debit > 0 && <span className="text-[11px] font-semibold text-rose-600">Dr: ₹{entry.debit.toLocaleString()}</span>}
+                      {entry.credit > 0 && <span className="text-[11px] font-semibold text-primary-600">Cr: ₹{entry.credit.toLocaleString()}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="px-4 py-3 md:px-6 md:py-4 border-t border-zinc-100 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/50 rounded-b-2xl flex justify-between items-center text-sm">

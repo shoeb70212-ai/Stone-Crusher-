@@ -5,6 +5,7 @@ import { Plus, Truck, StickyNote } from "lucide-react";
 import { Combobox } from "../ui/Combobox";
 import { MobileStickyFooter } from "../ui/MobilePrimitives";
 import { parseFeetInches } from "../../lib/utils";
+import { useActive } from "../../hooks/useActive";
 import { useToast } from "../ui/Toast";
 import { useKeepAwake } from "../../lib/use-keep-awake";
 import { captureDocument } from "../../lib/camera";
@@ -12,6 +13,10 @@ import { Camera } from "lucide-react";
 
 export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSuccess: () => void; onCancel: () => void }) {
   const { vehicles, addVehicle, updateVehicle, customers, updateSlip, slips, transactions, addTransaction, updateTransaction, deleteTransaction, companySettings, employees } = useErp();
+  const activeVehicles = useActive(vehicles);
+  const activeCustomers = useActive(customers);
+  const activeEmployees = useActive(employees);
+  const activeMaterials = useActive(companySettings.materials || []);
   const { addToast } = useToast();
   useKeepAwake();
   const creatingVehicleRef = useRef(false);
@@ -252,7 +257,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
             </div>
           </div>
           <Combobox
-            options={vehicles.filter(v => v.isActive !== false).map(v => ({ label: v.vehicleNo, value: v.vehicleNo }))}
+            options={activeVehicles.map(v => ({ label: v.vehicleNo, value: v.vehicleNo }))}
             value={formData.vehicleNo} allowCreate onChange={autofillVehicle} placeholder="Vehicle No"
           />
         </div>
@@ -343,7 +348,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
       <div>
         <label className={lbl}>Customer</label>
         <Combobox
-          options={[{ label: "Cash Sale", value: "CASH" }, ...customers.filter(c => c.isActive !== false).map(c => ({ label: c.name, value: c.id }))]}
+          options={[{ label: "Cash Sale", value: "CASH" }, ...activeCustomers.map(c => ({ label: c.name, value: c.id }))]}
           value={formData.customerId} allowCreate
           onChange={(val) => setFormData({ ...formData, customerId: val || "" })}
           placeholder="Select customer" mobileTitle="Select Customer"
@@ -355,7 +360,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
         <div>
           <label className={lbl}>Material *</label>
           <Combobox
-            options={(companySettings.materials || []).filter(m => m.isActive !== false).map(mat => ({ label: mat.name, value: mat.name }))}
+            options={activeMaterials.map(mat => ({ label: mat.name, value: mat.name }))}
             value={formData.materialType}
             onChange={(val) => setFormData({ ...formData, materialType: val as MaterialType })}
             placeholder="Material" mobileTitle="Select Material"
@@ -385,7 +390,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
           <label className={lbl}>Loader</label>
           <Combobox
             options={employees
-              .filter((e) => e.isActive !== false && /loader/i.test(e.role || ""))
+              .filter((e) => /loader/i.test(e.role || ""))
               .map((e) => ({ label: e.name, value: e.name }))}
             value={formData.loaderName}
             onChange={(val) => setFormData({ ...formData, loaderName: val })}

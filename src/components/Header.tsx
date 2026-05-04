@@ -34,7 +34,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   return (
     <header
       className="flex h-14 md:h-16 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-2 md:px-8 items-center justify-between shrink-0 transition-colors z-20 mobile-header"
-      style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      style={{ paddingTop: 'max(4px, env(safe-area-inset-top))' }}
     >
       {/* Left: date (desktop) / app name or back (mobile) */}
       <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -103,9 +103,9 @@ export function Header({ onMenuClick }: HeaderProps) {
             className="h-9 pl-2.5 pr-2 rounded-xl bg-primary-50 dark:bg-primary-500/10 flex items-center gap-1.5 text-primary-700 dark:text-primary-300 font-semibold text-sm border border-primary-100 dark:border-primary-500/20 hover:bg-primary-100 dark:hover:bg-primary-500/20 transition-colors active:scale-95"
           >
             <Shield className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden sm:inline">{userRole}</span>
+            <span className="hidden sm:inline">{userRole ?? '—'}</span>
             <div className="w-6 h-6 rounded-lg bg-primary-200 dark:bg-primary-500/30 flex items-center justify-center text-primary-800 dark:text-primary-200 text-xs font-bold">
-              {userRole.charAt(0)}
+              {userRole?.charAt(0) ?? '?'}
             </div>
           </button>
 

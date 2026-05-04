@@ -7,7 +7,7 @@ interface Props {
   localSettings: CompanySettings;
   setLocalSettings: (s: CompanySettings) => void;
   isSaved: boolean;
-  userRole: string;
+  userRole: string | null;
   deviceInfo: DeviceSummary | null;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onSave: () => void;
