@@ -466,16 +466,11 @@ body {
     inset: 0;
   }
 
-.app-content {
-  overflow-x: hidden;
-}
-
-@media (max-width: 640px) {
   .app-content {
+    overflow-x: hidden;
     /* 48px mobile header + 56px bottom nav + safe areas */
     height: calc(100dvh - 48px - 56px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     overflow-y: auto;
-    overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
   }
