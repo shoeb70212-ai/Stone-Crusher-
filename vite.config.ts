@@ -40,7 +40,7 @@ export default defineConfig(({mode}) => {
         output: {
           manualChunks: {
             // Keep heavy PDF/print libs out of the main bundle
-            'pdf-libs': ['html2pdf.js', 'jspdf'],
+            'pdf-libs': ['html2pdf.js'],
             // Split finance-heavy pages into their own chunk
             'pages-finance': [
               './src/pages/Invoices.tsx',
