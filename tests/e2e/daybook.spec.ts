@@ -13,7 +13,7 @@ test.describe('Daybook page', () => {
 
   test.beforeEach(async ({ page }) => {
     app = new AppPage(page);
-    await app.gotoAuthenticated('admin_session');
+    await app.gotoAuthenticated('Admin');
     await app.navigateTo('Daybook');
     await expect(
       page.locator('h1, h2', { hasText: /Daybook|Transaction/i }).first()

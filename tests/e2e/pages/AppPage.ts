@@ -7,8 +7,9 @@ import { Page, expect } from '@playwright/test';
  * rather than changing the browser URL. All navigation interactions go through
  * the sidebar (desktop) or the mobile bottom bar / More drawer (small screens).
  *
- * Auth bypass: set localStorage.erp_auth_token before loading the page to skip
- * the login form in tests that don't need to exercise authentication.
+ * Auth bypass: inject a fake Supabase session into localStorage under the
+ * `crushtrack-auth` key before the page loads. The app reads it via
+ * `supabase.auth.getSession()` which reads from the storageKey.
  */
 export class AppPage {
   readonly page: Page;
@@ -47,20 +48,50 @@ export class AppPage {
   }
 
   /**
-   * Inject the auth token into localStorage and navigate to the app.
-   * This bypasses the login form so most tests can start directly on the app.
+   * Inject a fake Supabase session into localStorage and navigate to the app.
+   *
+   * The Supabase JS client stores the session under the `storageKey` value
+   * (`crushtrack-auth`). We write a minimal valid-shaped session object so
+   * `supabase.auth.getSession()` parses it as a live session and the app
+   * renders the authenticated layout instead of the login form.
+   *
+   * App.tsx explicitly removes `erp_auth_token` on every mount (L65), so
+   * injecting the legacy key has no effect — only `crushtrack-auth` works.
    */
-  async gotoAuthenticated(token = 'admin_session') {
-    // First load the page so we can access localStorage
+  async gotoAuthenticated(role: 'Admin' | 'Partner' | 'Manager' = 'Admin') {
+    // Build a minimal Supabase session object. The SDK reads this from
+    // localStorage and calls `getSession()` which resolves it synchronously.
+    const fakeSession = {
+      access_token: 'e2e-fake-access-token',
+      refresh_token: 'e2e-fake-refresh-token',
+      expires_in: 3600,
+      // expires_at is a Unix timestamp — set far in the future
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      token_type: 'bearer',
+      user: {
+        id: 'e2e-user-id',
+        aud: 'authenticated',
+        role: 'authenticated',
+        email: 'e2e@crushtrack.test',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        app_metadata: { provider: 'email' },
+        user_metadata: {},
+      },
+    };
+
+    await this.page.addInitScript(
+      ({ sessionKey, session, userRole }: { sessionKey: string; session: object; userRole: string }) => {
+        // Write the session before any JS runs so Supabase picks it up on init.
+        localStorage.setItem(sessionKey, JSON.stringify(session));
+        localStorage.setItem('erp_user_role', userRole);
+      },
+      { sessionKey: 'crushtrack-auth', session: fakeSession, userRole: role },
+    );
+
     await this.page.goto('/');
-    await this.page.evaluate((t) => {
-      localStorage.setItem('erp_auth_token', t);
-      localStorage.setItem('erp_user_role', 'Admin');
-    }, token);
-    // Reload so the app picks up the token
-    await this.page.reload();
     // Wait until the sidebar (main layout) is rendered
-    await this.sidebar.waitFor({ state: 'visible', timeout: 15_000 });
+    await this.sidebar.waitFor({ state: 'visible', timeout: 20_000 });
   }
 
   /**
@@ -89,12 +120,9 @@ export class AppPage {
   }
 
   /**
-   * Clear the auth token from localStorage and reload — simulates logout.
+   * Sign out via the sidebar Sign Out button.
    */
   async logout() {
-    await this.page.evaluate(() => {
-      localStorage.removeItem('erp_auth_token');
-    });
-    await this.page.reload();
+    await this.signOutButton.click();
   }
 }

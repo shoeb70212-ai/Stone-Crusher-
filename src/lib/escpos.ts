@@ -120,6 +120,8 @@ const PRINTER_PROFILES = [
 let connectedDeviceId: string | null = null;
 let connectedProfile: typeof PRINTER_PROFILES[0] | null = null;
 
+const PRINTER_DEVICE_KEY = 'crushtrack_last_printer_id';
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -169,6 +171,7 @@ export async function connectPrinter(deviceId: string): Promise<boolean> {
       // Device disconnected — reset state
       connectedDeviceId = null;
       connectedProfile = null;
+      try { localStorage.removeItem(PRINTER_DEVICE_KEY); } catch { /* noop */ }
     });
 
     // Try each profile until one works
@@ -185,6 +188,7 @@ export async function connectPrinter(deviceId: string): Promise<boolean> {
 
         connectedDeviceId = deviceId;
         connectedProfile = profile;
+        try { localStorage.setItem(PRINTER_DEVICE_KEY, deviceId); } catch { /* noop */ }
         return true;
       } catch {
         continue;
@@ -197,6 +201,15 @@ export async function connectPrinter(deviceId: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Attempts to reconnect to the last known printer, if any. */
+export async function reconnectLastPrinter(): Promise<boolean> {
+  if (!isNative()) return false;
+  let lastId: string | null = null;
+  try { lastId = localStorage.getItem(PRINTER_DEVICE_KEY); } catch { /* noop */ }
+  if (!lastId) return false;
+  return connectPrinter(lastId);
 }
 
 /** Disconnects the currently connected printer. */

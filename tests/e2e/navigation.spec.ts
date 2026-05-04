@@ -13,7 +13,7 @@ test.describe('Sidebar navigation', () => {
 
   test.beforeEach(async ({ page }) => {
     app = new AppPage(page);
-    await app.gotoAuthenticated('admin_session');
+    await app.gotoAuthenticated('Admin');
   });
 
   test('app layout renders sidebar and header', async ({ page }) => {

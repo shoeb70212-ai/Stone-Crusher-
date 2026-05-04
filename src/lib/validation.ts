@@ -88,6 +88,18 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().min(1, "Email is required").email("Enter a valid email address"),
+});
+
+export const resetPasswordSchema = z.object({
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  confirmPassword: z.string().min(1, "Please confirm your password"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
+});
+
 export type CustomerInput = z.infer<typeof customerSchema>;
 export type SlipInput = z.infer<typeof slipSchema>;
 export type TransactionInput = z.infer<typeof transactionSchema>;
@@ -95,3 +107,5 @@ export type InvoiceInput = z.infer<typeof invoiceSchema>;
 export type EmployeeInput = z.infer<typeof employeeSchema>;
 export type EmployeeTransactionInput = z.infer<typeof employeeTransactionSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

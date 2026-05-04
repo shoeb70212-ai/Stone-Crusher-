@@ -6,8 +6,10 @@ import { Layout } from "./components/Layout";
 import { Login } from "./components/Login";
 import { SetupAdminScreen } from "./components/SetupAdminScreen";
 import { WelcomeScreen } from "./components/WelcomeScreen";
+import { ResetPasswordScreen } from "./components/ResetPasswordScreen";
 import { supabase } from "./lib/supabase";
 import { recordDeviceAccess } from "./lib/device-info";
+import { isNative } from "./lib/capacitor";
 
 /**
  * Thin inner wrapper that wires the OfflineIndicator's `onReconnect` callback
@@ -55,6 +57,17 @@ function AppShell({ isAuthenticated, onLogin }: { isAuthenticated: boolean; onLo
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  // True when Supabase fires a PASSWORD_RECOVERY event (user clicked the reset email link).
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+
+  // Configure Android status bar so the WebView sits below it (not behind it).
+  useEffect(() => {
+    if (!isNative()) return;
+    import('@capacitor/status-bar').then(({ StatusBar, Style }) => {
+      StatusBar.setOverlaysWebView({ overlay: false });
+      StatusBar.setStyle({ style: Style.Default });
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     // Clear any stale legacy or dev-bypass auth tokens on every mount so they
@@ -69,8 +82,14 @@ export default function App() {
 
     // Keep isAuthenticated in sync with Supabase's auth state changes
     // (sign-in from Login, sign-out from Sidebar, token refresh, etc.).
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(!!session);
+    // PASSWORD_RECOVERY fires when the user lands via the reset-password email link.
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordRecovery(true);
+        setIsAuthenticated(false);
+      } else {
+        setIsAuthenticated(!!session);
+      }
     });
 
     recordDeviceAccess();
@@ -81,6 +100,20 @@ export default function App() {
   // Show nothing until we know whether there is an active session, so we
   // never flash the login screen to an already-authenticated user.
   if (!authChecked) return null;
+
+  if (isPasswordRecovery) {
+    return (
+      <ToastProvider>
+        <ResetPasswordScreen
+          onDone={async () => {
+            await supabase.auth.signOut({ scope: 'global' }).catch(() => {});
+            setIsPasswordRecovery(false);
+            setIsAuthenticated(true);
+          }}
+        />
+      </ToastProvider>
+    );
+  }
 
   return (
     <ToastProvider>

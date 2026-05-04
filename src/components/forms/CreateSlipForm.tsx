@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useErp } from "../../context/ErpContext";
 import { MaterialType, DeliveryMode, MeasurementType, Slip } from "../../types";
 import { Plus, Truck, StickyNote } from "lucide-react";
@@ -17,6 +17,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
   const { vehicles, customers, employees, addSlip, slips, companySettings, addVehicle, updateVehicle, addCustomer, addTransaction, userRole, session } = useErp();
   const { addToast } = useToast();
   useKeepAwake();
+  const creatingVehicleRef = useRef(false);
 
   // Resolve the operator name from the Supabase session — match by user id or email
   // against companySettings.users so the slip records the correct person's name.
@@ -152,7 +153,8 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
           updateVehicle({ ...existing, driverName: formData.driverName, driverPhone: formData.driverPhone });
       } else if (userRole === 'Partner') {
         addToast('warning', `Vehicle ${formData.vehicleNo.toUpperCase()} not saved — Partners cannot add vehicles.`);
-      } else {
+      } else if (!creatingVehicleRef.current) {
+        creatingVehicleRef.current = true;
         addVehicle({
           id: crypto.randomUUID(),
           vehicleNo: formData.vehicleNo.toUpperCase(),
@@ -168,6 +170,9 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
             tareWeight: parseFloat(formData.tareWeight) || undefined,
           },
         });
+        // Release the guard after a tick so subsequent rapid submissions
+        // can see the newly created vehicle in the vehicles array.
+        setTimeout(() => { creatingVehicleRef.current = false; }, 0);
       }
     }
 

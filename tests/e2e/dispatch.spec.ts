@@ -16,7 +16,7 @@ test.describe('Dispatch page', () => {
   test.beforeEach(async ({ page }) => {
     app = new AppPage(page);
     dispatch = new DispatchPage(page);
-    await app.gotoAuthenticated('admin_session');
+    await app.gotoAuthenticated('Admin');
     await dispatch.goto();
   });
 

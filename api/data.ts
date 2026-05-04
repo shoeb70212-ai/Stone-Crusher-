@@ -18,25 +18,16 @@ import {
   ALLOWED_TABLES,
   readSettings,
   writeSettings,
+  addTombstones,
+  getTombstonedIds,
+  getTombstonesSince,
   type DataRecord,
 } from './_db.js';
 import { verifyBearerToken } from './_supabase-admin.js';
+import { getCorsOrigin } from './_cors.js';
 import type { UserRole, UserAccount } from './_types.js';
 
 const RATE_LIMIT = 100;
-
-const ALLOWED_ORIGINS = new Set([
-  'https://stone-crusher.vercel.app',
-  'http://localhost:5173',
-  'http://localhost:8081',
-  'http://localhost:8083',
-]);
-
-function getCorsOrigin(req: VercelRequest): string {
-  const origin = req.headers['origin'] as string | undefined;
-  if (!origin) return '*';
-  return ALLOWED_ORIGINS.has(origin) ? origin : 'null';
-}
 
 function getRateLimitKey(req: VercelRequest): string {
   const fwd = req.headers['x-forwarded-for'];
@@ -127,6 +118,79 @@ function publicBootstrapPayload(settings: Record<string, unknown>) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Orphan-guard helpers — prevent deletes that would leave dangling references
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns an error string if deleting `ids` from `tableKey` would orphan
+ * records in dependent tables. Returns null when the delete is safe.
+ *
+ * Only hard-delete tables (transactions, tasks, employeeTransactions) are
+ * checked here; vehicles/customers/employees use soft-deletes at the app layer
+ * and should not appear in the deletions payload with live dependents.
+ */
+async function checkOrphanSafety(
+  tableKey: string,
+  ids: string[],
+): Promise<string | null> {
+  if (ids.length === 0) return null;
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
+
+  if (tableKey === 'transactions') {
+    // Block deleting a transaction that a slip was auto-generated from.
+    const { rows } = await pool.query(
+      `SELECT id FROM slips WHERE "invoiceId" IS NULL AND "customerId" != 'CASH'
+         AND id IN (
+           SELECT "slipId" FROM transactions WHERE "slipId" IS NOT NULL AND id IN (${placeholders})
+         )`,
+      ids,
+    );
+    if (rows.length > 0) {
+      return `Cannot delete: ${rows.length} slip(s) are linked to these transactions. Cancel the slips first.`;
+    }
+  }
+
+  if (tableKey === 'employeeTransactions') {
+    // Block deleting an employee transaction that created a linked daybook transaction.
+    const { rows } = await pool.query(
+      `SELECT id FROM transactions
+       WHERE id IN (
+         SELECT "linkedTransactionId" FROM employee_transactions
+         WHERE "linkedTransactionId" IS NOT NULL AND id IN (${placeholders})
+       )`,
+      ids,
+    );
+    if (rows.length > 0) {
+      return `Cannot delete: ${rows.length} linked daybook transaction(s) exist. Delete those first.`;
+    }
+  }
+
+  if (tableKey === 'customers') {
+    // Customers should be soft-deleted, not hard-deleted through this path.
+    // Guard anyway: block if any active slips/invoices/transactions reference them.
+    const { rows } = await pool.query(
+      `SELECT 1 FROM slips WHERE "customerId" = ANY($1::text[]) LIMIT 1`,
+      [ids],
+    );
+    if (rows.length > 0) {
+      return 'Cannot hard-delete customers that have dispatch slips. Use soft-delete (isActive=false) instead.';
+    }
+  }
+
+  if (tableKey === 'employees') {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM employee_transactions WHERE "employeeId" = ANY($1::text[]) LIMIT 1`,
+      [ids],
+    );
+    if (rows.length > 0) {
+      return 'Cannot hard-delete employees that have ledger entries. Use soft-delete (isActive=false) instead.';
+    }
+  }
+
+  return null;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const corsOrigin = getCorsOrigin(req);
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -152,9 +216,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'Failed to initialise database', details: msg });
   }
 
-  // -----------------------------------------------------------------------
-  // GET — Return the full dataset (used on app boot)
-  // -----------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // GET — Full dataset or incremental delta since a given timestamp
+  // -------------------------------------------------------------------------
   if (req.method === 'GET') {
     try {
       const caller = await resolveCaller(req);
@@ -162,6 +226,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const settings = await readSettings();
         return res.status(200).json(publicBootstrapPayload(settings));
       }
+
+      const sinceParam = typeof req.query.since === 'string' ? req.query.since : null;
+      let sinceDate: Date | null = null;
+
+      if (sinceParam) {
+        sinceDate = new Date(sinceParam);
+        if (isNaN(sinceDate.getTime())) {
+          return res.status(400).json({ error: 'Invalid ?since value — must be an ISO-8601 timestamp' });
+        }
+      }
+
+      // Build WHERE clause for delta queries.
+      const deltaWhere = sinceDate ? `WHERE "updatedAt" > $1` : '';
+      const deltaParams = sinceDate ? [sinceDate.toISOString()] : [];
 
       const [
         customersRes,
@@ -174,18 +252,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         tasksRes,
         auditLogsRes,
       ] = await Promise.all([
-        pool.query('SELECT * FROM customers'),
-        pool.query('SELECT * FROM employees'),
-        pool.query('SELECT * FROM employee_transactions'),
-        pool.query('SELECT * FROM vehicles'),
-        pool.query('SELECT * FROM slips'),
-        pool.query('SELECT * FROM transactions'),
-        pool.query('SELECT * FROM invoices'),
-        pool.query('SELECT * FROM tasks'),
-        pool.query('SELECT * FROM audit_logs ORDER BY timestamp DESC'),
+        pool.query(`SELECT * FROM customers ${deltaWhere}`, deltaParams),
+        pool.query(`SELECT * FROM employees ${deltaWhere}`, deltaParams),
+        pool.query(`SELECT * FROM employee_transactions ${deltaWhere}`, deltaParams),
+        pool.query(`SELECT * FROM vehicles ${deltaWhere}`, deltaParams),
+        pool.query(`SELECT * FROM slips ${deltaWhere}`, deltaParams),
+        pool.query(`SELECT * FROM transactions ${deltaWhere}`, deltaParams),
+        pool.query(`SELECT * FROM invoices ${deltaWhere}`, deltaParams),
+        pool.query(`SELECT * FROM tasks ${deltaWhere}`, deltaParams),
+        pool.query(
+          `SELECT * FROM audit_logs ${deltaWhere ? deltaWhere + ' ORDER BY timestamp DESC' : 'ORDER BY timestamp DESC'}`,
+          deltaParams,
+        ),
       ]);
 
       const companySettings = await readSettings();
+
+      // Include tombstones for the delta window so clients can drop deleted records.
+      const tombstones = sinceDate ? await getTombstonesSince(sinceDate) : {};
 
       return res.status(200).json({
         bootstrapRequired: false,
@@ -221,6 +305,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           metadata: log.metadata ? parseJsonField(log.metadata) : undefined,
         })),
         companySettings,
+        tombstones,
+        syncedAt: new Date().toISOString(),
       });
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -229,9 +315,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // -----------------------------------------------------------------------
-  // PATCH — Delta sync (used by the debounced sync queue in ErpContext)
-  // -----------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // PATCH — Delta sync: apply updates then deletions inside one transaction
+  // -------------------------------------------------------------------------
   if (req.method === 'PATCH') {
     const caller = await resolveCaller(req);
     if (!caller || !canWriteData(caller.role)) {
@@ -241,11 +327,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(403).json({ error: 'Only Admins can update company settings.' });
     }
 
-    const { updates, deletions } = req.body;
+    const { updates, deletions } = req.body as {
+      updates?: Record<string, unknown>;
+      deletions?: Record<string, string[]>;
+    };
+
+    // ── Pre-flight orphan checks (outside the transaction — read-only) ──
+    if (deletions) {
+      for (const [table, ids] of Object.entries(deletions)) {
+        if (!ALLOWED_TABLES.has(table) || !Array.isArray(ids) || ids.length === 0) continue;
+        const orphanError = await checkOrphanSafety(table, ids as string[]);
+        if (orphanError) {
+          return res.status(409).json({ error: orphanError });
+        }
+      }
+    }
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
+      // ── Step 1: Apply updates — skip tombstoned records ──
       if (updates) {
         for (const [table, items] of Object.entries(updates)) {
           if (!items || (Array.isArray(items) && (items as unknown[]).length === 0)) continue;
@@ -259,26 +361,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const dbTable = dbTableName(table);
           if (!dbTable) continue;
 
+          // Fetch tombstoned IDs for this table to prevent resurrection.
+          const deadIds = await getTombstonedIds(table);
+
           for (const item of items as DataRecord[]) {
+            if (item.id && deadIds.has(String(item.id))) continue; // skip tombstoned
             await upsertRecord(client, dbTable, item as Record<string, unknown>);
           }
         }
       }
 
+      // ── Step 2: Apply deletions, record tombstones ──
       if (deletions) {
         for (const [table, ids] of Object.entries(deletions)) {
           if (!ALLOWED_TABLES.has(table)) continue;
           const dbTable = dbTableName(table);
           if (!dbTable) continue;
-          const idList = ids as string[];
-          if (!idList?.length) continue;
+          const idList = (ids as string[]).filter(Boolean);
+          if (idList.length === 0) continue;
+
           const placeholders = idList.map((_, i) => `$${i + 1}`).join(', ');
           await client.query(`DELETE FROM ${dbTable} WHERE id IN (${placeholders})`, idList);
+          await addTombstones(client, table, idList);
         }
       }
 
       await client.query('COMMIT');
-      return res.status(200).json({ success: true });
+      return res.status(200).json({ success: true, syncedAt: new Date().toISOString() });
     } catch (error: unknown) {
       await client.query('ROLLBACK');
       const msg = error instanceof Error ? error.message : String(error);
@@ -289,9 +398,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // -----------------------------------------------------------------------
-  // POST — Full overwrite (used by the Backup-Restore feature)
-  // -----------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // POST — Full overwrite (admin backup restore only)
+  // -------------------------------------------------------------------------
   if (req.method === 'POST') {
     const caller = await resolveCaller(req);
     if (!caller || caller.role !== 'Admin') {
@@ -375,6 +484,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       for (const log of auditLogs || []) {
         await upsertRecord(client, 'audit_logs', log as Record<string, unknown>);
       }
+
+      // Clear tombstones on a full restore — all records are fresh.
+      await client.query('DELETE FROM tombstones');
 
       if (companySettings) {
         await writeSettings(companySettings as Record<string, unknown>);

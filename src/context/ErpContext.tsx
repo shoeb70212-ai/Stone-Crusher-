@@ -78,44 +78,44 @@ interface ErpState {
   updateCompanySettings: (settings: CompanySettings) => Promise<boolean>;
   toggleMaterialActive: (id: string) => void;
 
-  // Customer CRUD
-  addCustomer: (customer: Customer) => void;
-  updateCustomer: (customer: Customer) => void;
+  // Customer CRUD — returns false when the caller lacks permission or the record is not found
+  addCustomer: (customer: Customer) => boolean;
+  updateCustomer: (customer: Customer) => boolean;
   /** Soft-deletes: sets `isActive: false` to preserve ledger history. */
-  deleteCustomer: (id: string) => void;
+  deleteCustomer: (id: string) => boolean;
 
   // Employee CRUD
-  addEmployee: (employee: Employee) => void;
-  updateEmployee: (employee: Employee) => void;
+  addEmployee: (employee: Employee) => boolean;
+  updateEmployee: (employee: Employee) => boolean;
   /** Soft-deletes: sets `isActive: false` to preserve salary/advance history. */
-  deleteEmployee: (id: string) => void;
-  addEmployeeTransaction: (transaction: EmployeeTransaction) => void;
-  deleteEmployeeTransaction: (id: string) => void;
+  deleteEmployee: (id: string) => boolean;
+  addEmployeeTransaction: (transaction: EmployeeTransaction) => boolean;
+  deleteEmployeeTransaction: (id: string) => boolean;
 
   // Vehicle CRUD
-  addVehicle: (vehicle: Vehicle) => void;
-  updateVehicle: (vehicle: Vehicle) => void;
+  addVehicle: (vehicle: Vehicle) => boolean;
+  updateVehicle: (vehicle: Vehicle) => boolean;
   /** Soft-deletes: sets `isActive: false` to preserve dispatch history. */
-  deleteVehicle: (id: string) => void;
+  deleteVehicle: (id: string) => boolean;
 
   // Slip CRUD
-  addSlip: (slip: Slip) => void;
-  updateSlipStatus: (id: string, status: Slip["status"]) => void;
-  updateSlip: (id: string, updates: Partial<Slip>) => void;
+  addSlip: (slip: Slip) => boolean;
+  updateSlipStatus: (id: string, status: Slip["status"]) => boolean;
+  updateSlip: (id: string, updates: Partial<Slip>) => boolean;
 
   // Invoice CRUD
-  addInvoice: (invoice: Invoice) => void;
-  updateInvoice: (id: string, updates: Partial<Invoice>) => void;
+  addInvoice: (invoice: Invoice) => boolean;
+  updateInvoice: (id: string, updates: Partial<Invoice>) => boolean;
 
   // Transaction CRUD
-  addTransaction: (transaction: Transaction) => void;
-  updateTransaction: (id: string, updates: Partial<Transaction>) => void;
-  deleteTransaction: (id: string) => void;
+  addTransaction: (transaction: Transaction) => boolean;
+  updateTransaction: (id: string, updates: Partial<Transaction>) => boolean;
+  deleteTransaction: (id: string) => boolean;
 
   // Task CRUD
-  addTask: (task: Task) => void;
-  toggleTask: (id: string) => void;
-  deleteTask: (id: string) => void;
+  addTask: (task: Task) => boolean;
+  toggleTask: (id: string) => boolean;
+  deleteTask: (id: string) => boolean;
 
   // Derived / utilities
   getCustomerBalance: (customerId: string) => number;
@@ -287,6 +287,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const retryCountRef = useRef(0);
   const MAX_RETRIES = 5;
+  const syncInProgressRef = useRef(false);
 
   const requeueFailedPayload = useCallback((payload: {
     updates: Record<string, unknown[]> & { companySettings?: CompanySettings };
@@ -318,6 +319,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const flushSyncQueue = useCallback(async (): Promise<boolean> => {
+    if (syncInProgressRef.current) return false;
     if (syncTimeoutRef.current) {
       clearTimeout(syncTimeoutRef.current);
       syncTimeoutRef.current = undefined;
@@ -335,6 +337,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     // Reset queue before the async call so concurrent mutations that arrive
     // while this request is in-flight go into the next batch.
     syncQueueRef.current = { updates: {}, deletions: {} };
+    syncInProgressRef.current = true;
 
     setSyncStatus('syncing');
     try {
@@ -357,18 +360,21 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       setSyncStatus('error');
       requeueFailedPayload(payload);
       return false;
+    } finally {
+      syncInProgressRef.current = false;
     }
   }, [session, requeueFailedPayload]);
 
   /** Flushes the accumulated delta queue to the server after a 400ms debounce.
-   *  Reduced from 1500ms to improve responsiveness during rapid data entry. */
+   *  Retries with exponential backoff (400ms, 800ms, 1.6s, 3.2s, 6.4s). */
   const triggerSync = useCallback(() => {
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(async () => {
       let ok = await flushSyncQueue();
       while (!ok && retryCountRef.current < MAX_RETRIES) {
         retryCountRef.current++;
-        await new Promise((resolve) => setTimeout(resolve, 400));
+        const backoff = Math.min(400 * Math.pow(2, retryCountRef.current - 1), 6400);
+        await new Promise((resolve) => setTimeout(resolve, backoff));
         ok = await flushSyncQueue();
       }
       // When MAX_RETRIES is exhausted, syncStatus remains 'error' so the
@@ -411,22 +417,31 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     if (isLoading) return;
     if (backupTimeoutRef.current) clearTimeout(backupTimeoutRef.current);
     backupTimeoutRef.current = setTimeout(() => {
-      localStorage.setItem(
-        LOCAL_BACKUP_KEY,
-        JSON.stringify({
-          customers,
-          employees,
-          employeeTransactions,
-          slips,
-          transactions,
-          vehicles,
-          invoices,
-          tasks,
-          auditLogs,
-          companySettings,
-        }),
-      );
-    }, 5000);
+      try {
+        localStorage.setItem(
+          LOCAL_BACKUP_KEY,
+          JSON.stringify({
+            customers,
+            employees,
+            employeeTransactions,
+            slips,
+            transactions,
+            vehicles,
+            invoices,
+            tasks,
+            auditLogs,
+            companySettings,
+          }),
+        );
+      } catch (e) {
+        // QuotaExceededError — warn but don't crash; sync queue is the source of truth.
+        if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+          console.warn('[ErpContext] localStorage quota exceeded — backup skipped. Data is still in sync queue.');
+        } else {
+          console.error('[ErpContext] localStorage backup failed:', e);
+        }
+      }
+    }, 1000);
   }, [
     customers,
     employees,
@@ -574,8 +589,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   // -----------------------------------------------------------------------
 
   /** Adds a vehicle, defaulting `isActive` to `true` if omitted. */
-  const addVehicle = useCallback((vehicle: Vehicle) => {
-    if (!isManagerOrAbove(userRole)) return;
+  const addVehicle = useCallback((vehicle: Vehicle): boolean => {
+    if (!isManagerOrAbove(userRole)) return false;
     const normalised = { ...vehicle, isActive: vehicle.isActive ?? true };
     setVehicles((prev) => [...prev, normalised]);
     queueUpdate("vehicles", normalised);
@@ -587,11 +602,12 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       description: `Created vehicle ${normalised.vehicleNo}.`,
       metadata: { ownerName: normalised.ownerName || undefined },
     });
+    return true;
   }, [userRole, queueUpdate, recordAudit]);
 
   /** Replaces a vehicle record in-place by ID. */
-  const updateVehicle = useCallback((updated: Vehicle) => {
-    if (!isManagerOrAbove(userRole)) return;
+  const updateVehicle = useCallback((updated: Vehicle): boolean => {
+    if (!isManagerOrAbove(userRole)) return false;
     setVehicles((prev) => prev.map((v) => (v.id === updated.id ? updated : v)));
     queueUpdate("vehicles", updated);
     recordAudit({
@@ -602,13 +618,14 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       description: `Updated vehicle ${updated.vehicleNo}.`,
       metadata: { ownerName: updated.ownerName || undefined, isActive: updated.isActive !== false },
     });
+    return true;
   }, [userRole, queueUpdate, recordAudit]);
 
   /** Soft-deletes a vehicle so historical slips referencing it stay intact. */
-  const deleteVehicle = useCallback((id: string) => {
-    if (!isManagerOrAbove(userRole)) return;
+  const deleteVehicle = useCallback((id: string): boolean => {
+    if (!isManagerOrAbove(userRole)) return false;
     const vehicle = vehicles.find((v) => v.id === id);
-    if (!vehicle) return;
+    if (!vehicle) return false;
     const deactivated = { ...vehicle, isActive: false };
     setVehicles((prev) => prev.map((v) => (v.id === id ? deactivated : v)));
     queueUpdate("vehicles", deactivated);
@@ -619,6 +636,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       entityLabel: vehicle.vehicleNo,
       description: `Deactivated vehicle ${vehicle.vehicleNo}.`,
     });
+    return true;
   }, [userRole, vehicles, queueUpdate, recordAudit]);
 
   // -----------------------------------------------------------------------
@@ -626,7 +644,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   // -----------------------------------------------------------------------
 
   /** Appends a new invoice to the collection. */
-  const addInvoice = useCallback((invoice: Invoice) => {
+  const addInvoice = useCallback((invoice: Invoice): boolean => {
     setInvoices((prev) => [...prev, invoice]);
     queueUpdate("invoices", invoice);
     recordAudit({
@@ -637,12 +655,13 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       description: `Created ${invoice.type} invoice ${invoice.invoiceNo} for ${invoice.total.toLocaleString("en-IN")}.`,
       metadata: { status: invoice.status, total: invoice.total, slipCount: invoice.slipIds?.length || 0 },
     });
+    return true;
   }, [queueUpdate, recordAudit]);
 
   /** Partially updates an invoice by ID (e.g. changing status to Paid). */
-  const updateInvoice = useCallback((id: string, updates: Partial<Invoice>) => {
+  const updateInvoice = useCallback((id: string, updates: Partial<Invoice>): boolean => {
     const previous = invoices.find((inv) => inv.id === id);
-    if (!previous) return;
+    if (!previous) return false;
     const updated = { ...previous, ...updates };
     setInvoices((prev) => prev.map((inv) => (inv.id === id ? updated : inv)));
     queueUpdate("invoices", updated);
@@ -665,6 +684,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
           : `Updated invoice ${updated.invoiceNo}.`,
       metadata: { status: updated.status, total: updated.total, slipCount: updated.slipIds?.length || 0 },
     });
+    return true;
   }, [invoices, queueUpdate, recordAudit]);
 
   // -----------------------------------------------------------------------
@@ -727,8 +747,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   // -----------------------------------------------------------------------
 
   /** Appends a new customer to the collection. */
-  const addCustomer = useCallback((customer: Customer) => {
-    if (!isManagerOrAbove(userRole)) return;
+  const addCustomer = useCallback((customer: Customer): boolean => {
+    if (!isManagerOrAbove(userRole)) return false;
     setCustomers((prev) => [...prev, customer]);
     queueUpdate("customers", customer);
     recordAudit({
@@ -739,11 +759,12 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       description: `Created customer ${customer.name}.`,
       metadata: { openingBalance: customer.openingBalance },
     });
+    return true;
   }, [userRole, queueUpdate, recordAudit]);
 
   /** Replaces a customer record in-place by ID. */
-  const updateCustomer = useCallback((customer: Customer) => {
-    if (!isManagerOrAbove(userRole)) return;
+  const updateCustomer = useCallback((customer: Customer): boolean => {
+    if (!isManagerOrAbove(userRole)) return false;
     setCustomers((prev) => prev.map((c) => (c.id === customer.id ? customer : c)));
     queueUpdate("customers", customer);
     recordAudit({
@@ -754,13 +775,14 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       description: `Updated customer ${customer.name}.`,
       metadata: { openingBalance: customer.openingBalance, isActive: customer.isActive !== false },
     });
+    return true;
   }, [userRole, queueUpdate, recordAudit]);
 
   /** Soft-deletes a customer so ledger history is preserved. */
-  const deleteCustomer = useCallback((id: string) => {
-    if (!isAdmin(userRole)) return;
+  const deleteCustomer = useCallback((id: string): boolean => {
+    if (!isAdmin(userRole)) return false;
     const customer = customers.find((c) => c.id === id);
-    if (!customer) return;
+    if (!customer) return false;
     const deactivated = { ...customer, isActive: false };
     setCustomers((prev) => prev.map((c) => (c.id === id ? deactivated : c)));
     queueUpdate("customers", deactivated);
@@ -771,6 +793,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       entityLabel: customer.name,
       description: `Deactivated customer ${customer.name}.`,
     });
+    return true;
   }, [userRole, customers, queueUpdate, recordAudit]);
 
   // -----------------------------------------------------------------------
@@ -778,8 +801,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   // -----------------------------------------------------------------------
 
   /** Appends a new employee to the salary/advance ledger. */
-  const addEmployee = useCallback((employee: Employee) => {
-    if (!isAdmin(userRole)) return;
+  const addEmployee = useCallback((employee: Employee): boolean => {
+    if (!isAdmin(userRole)) return false;
     const normalised = { ...employee, isActive: employee.isActive ?? true };
     setEmployees((prev) => [...prev, normalised]);
     queueUpdate("employees", normalised);
@@ -796,11 +819,12 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         openingBalance: normalised.openingBalance,
       },
     });
+    return true;
   }, [userRole, queueUpdate, recordAudit]);
 
   /** Replaces an employee master record in-place by ID. */
-  const updateEmployee = useCallback((employee: Employee) => {
-    if (!isAdmin(userRole)) return;
+  const updateEmployee = useCallback((employee: Employee): boolean => {
+    if (!isAdmin(userRole)) return false;
     const normalised = { ...employee, isActive: employee.isActive ?? true };
     setEmployees((prev) => prev.map((e) => (e.id === normalised.id ? normalised : e)));
     queueUpdate("employees", normalised);
@@ -817,13 +841,19 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         isActive: normalised.isActive !== false,
       },
     });
+    return true;
   }, [userRole, queueUpdate, recordAudit]);
 
   /** Soft-deletes an employee so salary, advance, and deduction history stays intact. */
-  const deleteEmployee = useCallback((id: string) => {
-    if (!isAdmin(userRole)) return;
+  const deleteEmployee = useCallback((id: string): boolean => {
+    if (!isAdmin(userRole)) return false;
     const employee = employees.find((e) => e.id === id);
-    if (!employee) return;
+    if (!employee) return false;
+    const hasLedger = employeeTransactions.some((tx) => tx.employeeId === id);
+    if (hasLedger) {
+      console.warn(`Cannot deactivate employee ${employee.name}: active ledger entries exist.`);
+      return false;
+    }
     const deactivated = { ...employee, isActive: false };
     setEmployees((prev) => prev.map((e) => (e.id === id ? deactivated : e)));
     queueUpdate("employees", deactivated);
@@ -834,11 +864,12 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       entityLabel: employee.name,
       description: `Deactivated employee ${employee.name}.`,
     });
-  }, [userRole, employees, queueUpdate, recordAudit]);
+    return true;
+  }, [userRole, employees, employeeTransactions, queueUpdate, recordAudit]);
 
   /** Adds a salary, advance, deduction, or adjustment entry for an employee. */
-  const addEmployeeTransaction = useCallback((transaction: EmployeeTransaction) => {
-    if (!isAdmin(userRole)) return;
+  const addEmployeeTransaction = useCallback((transaction: EmployeeTransaction): boolean => {
+    if (!isAdmin(userRole)) return false;
     setEmployeeTransactions((prev) => [...prev, transaction]);
     queueUpdate("employeeTransactions", transaction);
     const employee = employees.find((e) => e.id === transaction.employeeId);
@@ -855,11 +886,12 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         linkedTransactionId: transaction.linkedTransactionId,
       },
     });
+    return true;
   }, [userRole, employees, queueUpdate, recordAudit]);
 
   /** Hard-deletes an employee ledger entry. */
-  const deleteEmployeeTransaction = useCallback((id: string) => {
-    if (!isAdmin(userRole)) return;
+  const deleteEmployeeTransaction = useCallback((id: string): boolean => {
+    if (!isAdmin(userRole)) return false;
     const transaction = employeeTransactions.find((t) => t.id === id);
     setEmployeeTransactions((prev) => prev.filter((t) => t.id !== id));
     queueDelete("employeeTransactions", id);
@@ -879,6 +911,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         },
       });
     }
+    return true;
   }, [userRole, employeeTransactions, employees, queueDelete, recordAudit]);
 
   // -----------------------------------------------------------------------
@@ -886,7 +919,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   // -----------------------------------------------------------------------
 
   /** Appends a new dispatch slip. */
-  const addSlip = useCallback((slip: Slip) => {
+  const addSlip = useCallback((slip: Slip): boolean => {
     setSlips((prev) => [...prev, slip]);
     queueUpdate("slips", slip);
     recordAudit({
@@ -902,12 +935,13 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         totalAmount: slip.totalAmount,
       },
     });
+    return true;
   }, [queueUpdate, recordAudit]);
 
   /** Advances a slip's workflow status (Pending → Loaded → Tallied / Cancelled). */
-  const updateSlipStatus = useCallback((id: string, status: Slip["status"]) => {
+  const updateSlipStatus = useCallback((id: string, status: Slip["status"]): boolean => {
     const previous = slips.find((s) => s.id === id);
-    if (!previous) return;
+    if (!previous) return false;
     const updated = { ...previous, status };
     setSlips((prev) => prev.map((s) => (s.id === id ? updated : s)));
     queueUpdate("slips", updated);
@@ -919,12 +953,13 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       description: `Changed slip ${id} from ${previous.status} to ${status}.`,
       metadata: { previousStatus: previous.status, status, totalAmount: updated.totalAmount },
     });
+    return true;
   }, [slips, queueUpdate, recordAudit]);
 
   /** Partially updates a slip by ID (used by EditSlipForm). */
-  const updateSlip = useCallback((id: string, updates: Partial<Slip>) => {
+  const updateSlip = useCallback((id: string, updates: Partial<Slip>): boolean => {
     const previous = slips.find((s) => s.id === id);
-    if (!previous) return;
+    if (!previous) return false;
     const updated = { ...previous, ...updates };
     setSlips((prev) => prev.map((s) => (s.id === id ? updated : s)));
     queueUpdate("slips", updated);
@@ -942,6 +977,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         invoiceId: updated.invoiceId,
       },
     });
+    return true;
   }, [slips, queueUpdate, recordAudit]);
 
   // -----------------------------------------------------------------------
@@ -949,7 +985,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   // -----------------------------------------------------------------------
 
   /** Records a financial transaction (income or expense). */
-  const addTransaction = useCallback((transaction: Transaction) => {
+  const addTransaction = useCallback((transaction: Transaction): boolean => {
     setTransactions((prev) => [...prev, transaction]);
     queueUpdate("transactions", transaction);
     recordAudit({
@@ -966,12 +1002,13 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         slipId: transaction.slipId,
       },
     });
+    return true;
   }, [queueUpdate, recordAudit]);
 
   /** Partially updates a transaction by ID. */
-  const updateTransaction = useCallback((id: string, updates: Partial<Transaction>) => {
+  const updateTransaction = useCallback((id: string, updates: Partial<Transaction>): boolean => {
     const previous = transactions.find((t) => t.id === id);
-    if (!previous) return;
+    if (!previous) return false;
     const updated = { ...previous, ...updates };
     setTransactions((prev) => prev.map((t) => (t.id === id ? updated : t)));
     queueUpdate("transactions", updated);
@@ -983,11 +1020,12 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       description: `Updated ${updated.type.toLowerCase()} transaction for ${updated.amount.toLocaleString("en-IN")}.`,
       metadata: { type: updated.type, amount: updated.amount, category: updated.category },
     });
+    return true;
   }, [transactions, queueUpdate, recordAudit]);
 
   /** Hard-deletes a transaction — only transactions support true deletion. */
-  const deleteTransaction = useCallback((id: string) => {
-    if (!isManagerOrAbove(userRole)) return;
+  const deleteTransaction = useCallback((id: string): boolean => {
+    if (!isManagerOrAbove(userRole)) return false;
     const transaction = transactions.find((t) => t.id === id);
     setTransactions((prev) => prev.filter((t) => t.id !== id));
     queueDelete("transactions", id);
@@ -1001,6 +1039,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         metadata: { type: transaction.type, amount: transaction.amount, category: transaction.category },
       });
     }
+    return true;
   }, [userRole, transactions, queueDelete, recordAudit]);
 
   // -----------------------------------------------------------------------
@@ -1008,7 +1047,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   // -----------------------------------------------------------------------
 
   /** Appends a quick-task to the checklist. */
-  const addTask = useCallback((task: Task) => {
+  const addTask = useCallback((task: Task): boolean => {
     setTasks((prev) => [...prev, task]);
     queueUpdate("tasks", task);
     recordAudit({
@@ -1018,12 +1057,13 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       entityLabel: task.title,
       description: `Created task ${task.title}.`,
     });
+    return true;
   }, [queueUpdate, recordAudit]);
 
   /** Toggles a task's completed state. */
-  const toggleTask = useCallback((id: string) => {
+  const toggleTask = useCallback((id: string): boolean => {
     const task = tasks.find((t) => t.id === id);
-    if (!task) return;
+    if (!task) return false;
     const updated = { ...task, completed: !task.completed };
     setTasks((prev) => prev.map((t) => (t.id === id ? updated : t)));
     queueUpdate("tasks", updated);
@@ -1034,22 +1074,23 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       entityLabel: task.title,
       description: `${updated.completed ? "Completed" : "Reopened"} task ${task.title}.`,
     });
+    return true;
   }, [tasks, queueUpdate, recordAudit]);
 
   /** Hard-deletes a task. */
-  const deleteTask = useCallback((id: string) => {
+  const deleteTask = useCallback((id: string): boolean => {
     const task = tasks.find((t) => t.id === id);
+    if (!task) return false;
     setTasks((prev) => prev.filter((t) => t.id !== id));
     queueDelete("tasks", id);
-    if (task) {
-      recordAudit({
-        action: "Deleted task",
-        entityType: "Task",
-        entityId: id,
-        entityLabel: task.title,
-        description: `Deleted task ${task.title}.`,
-      });
-    }
+    recordAudit({
+      action: "Deleted task",
+      entityType: "Task",
+      entityId: id,
+      entityLabel: task.title,
+      description: `Deleted task ${task.title}.`,
+    });
+    return true;
   }, [tasks, queueDelete, recordAudit]);
 
   // -----------------------------------------------------------------------
@@ -1087,7 +1128,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
             (s.status === "Tallied" || s.status === "Pending" || s.status === "Loaded") &&
             !s.invoiceId,
         )
-        .reduce((sum, s) => sum + s.totalAmount, 0);
+        .reduce((sum, s) => sum + (s.totalAmount - (s.amountPaid ?? 0)), 0);
 
       const invoiceTotal = invoices
         .filter((inv) => inv.customerId === customer.id && inv.status !== "Cancelled")

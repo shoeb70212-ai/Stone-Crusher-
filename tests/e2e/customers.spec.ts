@@ -13,7 +13,7 @@ test.describe('Customers page', () => {
 
   test.beforeEach(async ({ page }) => {
     app = new AppPage(page);
-    await app.gotoAuthenticated('admin_session');
+    await app.gotoAuthenticated('Admin');
     await app.navigateTo('Customers');
     // Wait for the Customers page to fully render
     await expect(

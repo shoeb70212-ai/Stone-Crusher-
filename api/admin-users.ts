@@ -21,6 +21,9 @@ const ALLOWED_ORIGINS = new Set([
   'http://localhost:5173',
   'http://localhost:8081',
   'http://localhost:8083',
+  // Capacitor Android WebView origin
+  'https://localhost',
+  'capacitor://localhost',
 ]);
 
 function getCorsOrigin(req: VercelRequest): string {

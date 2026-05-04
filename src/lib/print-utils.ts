@@ -1315,6 +1315,14 @@ export async function sharePdfBlob(
       const { Filesystem, Directory } = await import('@capacitor/filesystem');
       const { Share } = await import('@capacitor/share');
 
+      // Guard against memory exhaustion on large PDFs (> 5 MB).
+      const MAX_SHARE_SIZE = 5 * 1024 * 1024;
+      if (blob.size > MAX_SHARE_SIZE) {
+        console.warn('PDF too large for native share; falling back to download.');
+        triggerBlobDownload(blob, safeFilename);
+        return 'downloaded';
+      }
+
       const base64 = await blobToBase64(blob);
 
       const result = await Filesystem.writeFile({

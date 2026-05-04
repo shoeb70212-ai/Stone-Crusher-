@@ -46,12 +46,18 @@ export async function authenticateWithBiometrics(): Promise<string | undefined> 
   if (!isNative() || !isBiometricEnabled()) return undefined;
   try {
     const { NativeBiometric } = await import('capacitor-native-biometric');
-    await NativeBiometric.verifyIdentity({
+    // Time-box the biometric prompt so a hung dialog cannot freeze the app.
+    const verifyPromise = NativeBiometric.verifyIdentity({
       reason: 'Sign in to CrushTrack',
       title: 'Biometric Login',
       subtitle: 'Use your fingerprint or face to unlock',
       negativeButtonText: 'Use Password',
     });
+    const timeoutPromise = new Promise<void>((_, reject) =>
+      setTimeout(() => reject(new Error('Biometric prompt timed out')), 10000),
+    );
+    await Promise.race([verifyPromise, timeoutPromise]);
+
     const credentials = await NativeBiometric.getCredentials({ server: BIOMETRIC_SERVER_KEY });
     return credentials.password; // We store the session token as the "password"
   } catch {

@@ -39,7 +39,15 @@ async function captureNative(): Promise<CaptureResult | undefined> {
     });
 
     if (!photo.path) return undefined;
-    return { uri: photo.path, type: 'file' };
+
+    // Strip EXIF metadata (including GPS) by drawing the image to a canvas.
+    try {
+      const strippedUri = await stripExif(photo.path);
+      return { uri: strippedUri, type: 'file' };
+    } catch {
+      // If stripping fails, fall back to the original file.
+      return { uri: photo.path, type: 'file' };
+    }
   } catch (err: unknown) {
     // User cancelled — Camera throws with message 'User cancelled photos app'
     if (err instanceof Error && err.message.toLowerCase().includes('cancel')) {
@@ -47,6 +55,27 @@ async function captureNative(): Promise<CaptureResult | undefined> {
     }
     throw err;
   }
+}
+
+/** Strips EXIF metadata by re-encoding the image through a canvas. */
+async function stripExif(fileUri: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('Canvas context unavailable')); return; }
+      ctx.drawImage(img, 0, 0);
+      // Use JPEG to guarantee a clean metadata-free encoding.
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      resolve(dataUrl);
+    };
+    img.onerror = () => reject(new Error('Failed to load image for EXIF strip'));
+    img.src = fileUri;
+  });
 }
 
 function captureWeb(): Promise<CaptureResult | undefined> {

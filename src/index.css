@@ -424,7 +424,8 @@ body {
   }
 
   .app-content {
-    height: calc(100dvh - 56px - env(safe-area-inset-bottom));
+    /* 48px mobile header + 56px bottom nav + safe areas */
+    height: calc(100dvh - 48px - 56px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;

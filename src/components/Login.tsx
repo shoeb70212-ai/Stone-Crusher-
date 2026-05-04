@@ -3,6 +3,7 @@ import { Lock, User, AlertCircle, Fingerprint } from 'lucide-react';
 import { useErp } from '../context/ErpContext';
 import { loginSchema, type LoginInput } from '../lib/validation';
 import { supabase } from '../lib/supabase';
+import { ForgotPasswordScreen } from './ForgotPasswordScreen';
 import {
   isBiometricAvailable,
   isBiometricEnabled,
@@ -23,6 +24,7 @@ export function Login({ onLogin }: LoginProps) {
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
   const [canUseBiometric, setCanUseBiometric] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const { companySettings, isLoading, recordAuditEvent, session, userRole } = useErp();
 
@@ -140,6 +142,10 @@ export function Login({ onLogin }: LoginProps) {
 
   const appName = companySettings.name?.trim() || 'CrushTrack';
 
+  if (showForgotPassword) {
+    return <ForgotPasswordScreen onBack={() => setShowForgotPassword(false)} />;
+  }
+
   // Biometric enrollment prompt shown after a successful password login
   if (showBiometricPrompt) {
     return (
@@ -241,6 +247,16 @@ export function Login({ onLogin }: LoginProps) {
             {fieldErrors.password && (
               <p id="password-error" className="text-xs text-rose-500 ml-1" role="alert">{fieldErrors.password}</p>
             )}
+          </div>
+
+          <div className="flex justify-end -mt-1">
+            <button
+              type="button"
+              onClick={() => setShowForgotPassword(true)}
+              className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+            >
+              Forgot password?
+            </button>
           </div>
 
           <button

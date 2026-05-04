@@ -20,7 +20,10 @@ export function Header({ onMenuClick }: HeaderProps) {
   const ThemeIcon = theme === "dark" ? Moon : theme === "light" ? Sun : Monitor;
 
   return (
-    <header className="flex h-12 md:h-16 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-2 md:px-8 items-center justify-between shrink-0 transition-colors z-20 mobile-header">
+    <header
+      className="flex h-12 md:h-16 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-2 md:px-8 items-center justify-between shrink-0 transition-colors z-20 mobile-header"
+      style={{ paddingTop: 'env(safe-area-inset-top)' }}
+    >
       {/* Left: date (desktop) / app name (mobile) */}
       <div className="flex items-center gap-2 flex-1 min-w-0">
         <span className="text-xs md:text-sm font-medium text-zinc-500 dark:text-zinc-400 hidden sm:block truncate">

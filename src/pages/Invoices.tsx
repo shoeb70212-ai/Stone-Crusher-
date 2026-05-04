@@ -495,9 +495,8 @@ function InvoicesContent() {
           if (invoiceToCancel) {
             const inv = invoices.find((i: Invoice) => i.id === invoiceToCancel);
 
-            // Unlink slips — use null (not undefined) so JSON.stringify
-            // includes the key and the server clears the field.
-            inv?.slipIds?.forEach((id: string) => updateSlip(id, { invoiceId: null as unknown as undefined }));
+            // Unlink slips — pass undefined so the server normalizes to NULL.
+            inv?.slipIds?.forEach((id: string) => updateSlip(id, { invoiceId: undefined }));
 
             // Reverse any auto-generated Income transactions that were
             // created when a slip was dispatched with a cash payment and
@@ -505,7 +504,7 @@ function InvoicesContent() {
             if (inv?.slipIds) {
               inv.slipIds.forEach((slipId) => {
                 const linked = transactions.filter(
-                  (t) => (t as any).slipId === slipId && t.type === "Income",
+                  (t) => t.slipId === slipId && t.type === "Income" && t.category === "Slip Payment",
                 );
                 linked.forEach((t) => deleteTransaction(t.id));
               });

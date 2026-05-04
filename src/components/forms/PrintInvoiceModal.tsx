@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Invoice, Customer } from "../../types";
 import { X, Printer, Download, Share2, Loader2, MessageCircle } from "lucide-react";
 import { useErp } from "../../context/ErpContext";
-import { createInvoicePdfBlob, downloadInvoicePdf, printHtml, sharePdf, sharePdfBlob, PRIMARY_COLORS, DEFAULT_PAYMENT_TERM_MS } from "../../lib/print-utils";
+import { createInvoicePdfBlob, downloadInvoicePdf, printHtml, sharePdfBlob, PRIMARY_COLORS, DEFAULT_PAYMENT_TERM_MS } from "../../lib/print-utils";
 import { buildInvoiceWhatsAppMessage, openWhatsAppMessage } from "../../lib/whatsapp-share";
 import { isNative } from "../../lib/capacitor";
 import { toWords } from "../../lib/utils";
@@ -792,11 +792,10 @@ export function PrintInvoiceModal({
               <button
                 disabled={isPrinting}
                 onClick={async () => {
-                  const element = document.getElementById('print-invoice-area');
-                  if (!element) return;
                   setIsPrinting(true);
                   try {
-                    await sharePdf(element, `Invoice-${invoice.invoiceNo}.pdf`, `Invoice ${invoice.invoiceNo}`);
+                    const blob = await createInvoicePdfBlob(invoice, customer, companySettings);
+                    await sharePdfBlob(blob, `Invoice-${invoice.invoiceNo}.pdf`, `Invoice ${invoice.invoiceNo}`);
                   } finally {
                     setIsPrinting(false);
                   }
@@ -831,16 +830,19 @@ export function PrintInvoiceModal({
             <button
               disabled={isPrinting}
               onClick={async () => {
-                const element = document.getElementById('print-invoice-area');
-                if (!element) return;
                 if (isNative()) {
+                  // Android WebView cannot use window.print() or html2canvas.
+                  // Generate via jsPDF and open the native share sheet instead.
                   setIsPrinting(true);
                   try {
-                    await sharePdf(element, `Invoice-${invoice.invoiceNo}.pdf`, `Invoice ${invoice.invoiceNo}`);
+                    const blob = await createInvoicePdfBlob(invoice, customer, companySettings);
+                    await sharePdfBlob(blob, `Invoice-${invoice.invoiceNo}.pdf`, `Invoice ${invoice.invoiceNo}`);
                   } finally {
                     setIsPrinting(false);
                   }
                 } else {
+                  const element = document.getElementById('print-invoice-area');
+                  if (!element) return;
                   // Use iframe print in the current tab — opening a new tab
                   // causes a freeze when the user cancels the print dialog.
                   printHtml(element.outerHTML);

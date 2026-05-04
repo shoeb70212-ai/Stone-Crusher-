@@ -5,9 +5,8 @@ import { AppPage } from './pages/AppPage';
  * P0 — Role-based access control.
  *
  * Verifies that:
- *  - Admin can access all pages including Settings and Ledger
- *  - Manager is redirected away from Ledger and Settings
- *  - Partner is redirected away from Settings
+ *  - Admin can access all pages including Settings, Ledger, and Audit Log
+ *  - Unauthenticated users are always redirected to the login form
  *
  * The SPA enforces role protection in Layout.tsx via a useEffect that resets
  * currentView to "dashboard" when a restricted view is accessed.
@@ -18,7 +17,7 @@ test.describe('Admin role — full access', () => {
 
   test.beforeEach(async ({ page }) => {
     app = new AppPage(page);
-    await app.gotoAuthenticated('admin_session');
+    await app.gotoAuthenticated('Admin');
   });
 
   test('Admin sees Ledger nav item', async ({ page }) => {
@@ -53,52 +52,24 @@ test.describe('Admin role — full access', () => {
   });
 });
 
-test.describe('Manager role — restricted access', () => {
-  let app: AppPage;
-
-  test.beforeEach(async ({ page }) => {
-    app = new AppPage(page);
-    // Inject Manager role session — the app reads role from context not localStorage directly,
-    // but we can test with the real login flow using a Manager user if one exists,
-    // OR we set the role via a Manager-role token. Since the ERP derives role from
-    // companySettings.users at login, we simulate the restriction check by:
-    // 1. Log in as admin
-    // 2. Manually set the userRole in the page context via localStorage + eval
-    // The Layout.tsx useEffect reads userRole from ErpContext which sets it at login.
-    // For isolated role tests we navigate post-auth and manipulate state.
-    await page.goto('/');
-    await page.evaluate(() => {
-      localStorage.setItem('erp_auth_token', 'admin_session');
-    });
-    await page.reload();
-    await page.locator('aside').waitFor({ state: 'visible', timeout: 15_000 });
-  });
-
-  test('Admin sees both Ledger and Settings in sidebar (confirming base access)', async ({ page }) => {
-    await expect(page.locator('aside button', { hasText: 'Ledger' }).first()).toBeVisible();
-    await expect(page.locator('aside button', { hasText: 'Settings' }).first()).toBeVisible();
-  });
-});
-
 test.describe('Session protection — unauthenticated access', () => {
-  test('visiting app without token shows login form', async ({ page }) => {
+  test('visiting app without session shows login form', async ({ page }) => {
+    // Navigate without injecting any session
     await page.goto('/');
-    await page.evaluate(() => localStorage.removeItem('erp_auth_token'));
-    await page.reload();
-    // Should land on login screen
+    // Should land on login screen (no Supabase session = not authenticated)
     await expect(page.locator('#login-username')).toBeVisible({ timeout: 15_000 });
     // Sidebar (app layout) should NOT be visible
     await expect(page.locator('aside')).not.toBeVisible();
   });
 
-  test('clearing token mid-session forces re-login', async ({ page }) => {
+  test('clearing session mid-session forces re-login', async ({ page }) => {
     // Start authenticated
     const app = new AppPage(page);
-    await app.gotoAuthenticated('admin_session');
+    await app.gotoAuthenticated();
     await expect(app.sidebar).toBeVisible();
 
-    // Clear the token and reload (simulates tab refresh after logout elsewhere)
-    await page.evaluate(() => localStorage.removeItem('erp_auth_token'));
+    // Clear the Supabase session and reload (simulates tab refresh after logout elsewhere)
+    await page.evaluate(() => localStorage.removeItem('crushtrack-auth'));
     await page.reload();
 
     // Should return to login screen
