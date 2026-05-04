@@ -279,7 +279,7 @@ export function Layout() {
               {isLoading ? (
                 <PageSkeleton />
               ) : (
-                <div key={currentView} className="animate-page-in h-full">
+                <div key={currentView} className="animate-page-in">
                   {content}
                 </div>
               )}

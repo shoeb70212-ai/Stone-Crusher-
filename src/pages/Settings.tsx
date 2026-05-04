@@ -351,7 +351,7 @@ export function Settings() {
 
   return (
     <>
-      <div className="space-y-6 max-w-5xl">
+      <div className="space-y-6 max-w-5xl pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-0">
         <div>
           <h2 className="text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">Settings</h2>
           <p className="text-zinc-500 dark:text-zinc-400 mt-1">Manage system configurations, users, and masters.</p>
