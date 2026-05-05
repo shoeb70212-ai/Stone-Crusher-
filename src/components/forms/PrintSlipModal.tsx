@@ -382,23 +382,31 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
             <button
               disabled={isPrinting}
               onClick={async () => {
+                // ─────────────────────────────────────────────────────────
+                // Web (Chrome Android, desktop, etc.): trigger the browser's
+                // native print preview directly on the rendered #print-area.
+                // This is the most reliable path on mobile Chrome and matches
+                // the original "print preview" behaviour. We rely on the
+                // global @media print CSS in index.css to isolate the slip.
+                //
+                // Native Android (Capacitor): jsPDF + system share sheet so
+                // the user can pick a print target, save, or send to WhatsApp.
+                // ─────────────────────────────────────────────────────────
+                if (!isNative()) {
+                  // Defer to next frame so any open mobile menus close first
+                  // and Chrome's print pipeline can capture the final layout.
+                  requestAnimationFrame(() => window.print());
+                  return;
+                }
+
                 setIsPrinting(true);
                 try {
-                  // Always generate via jsPDF — same output on web + native and
-                  // bypasses html2canvas hangs / preview transform leakage.
                   const blob = await createSlipPdfBlob(slip, customerName, companySettings);
                   const filename = `Slip-${slip.id.slice(0, 8).toUpperCase()}.pdf`;
                   const title = `Slip ${slip.id.slice(0, 8).toUpperCase()}`;
-
-                  if (isNative()) {
-                    const result = await sharePdfBlob(blob, filename, title);
-                    if (result === 'downloaded') {
-                      addToast('info', 'PDF saved. Open it to print.');
-                    }
-                  } else {
-                    // Web: hidden iframe + browser print dialog. Auto-falls
-                    // back to download on iOS Safari / Firefox.
-                    await printPdfBlob(blob, title);
+                  const result = await sharePdfBlob(blob, filename, title);
+                  if (result === 'downloaded') {
+                    addToast('info', 'PDF saved. Open it to print.');
                   }
                 } catch (error) {
                   console.error('Slip print failed:', error);
