@@ -329,10 +329,13 @@ h1, h2, h3, h4 {
     padding: 12px 20px;
   }
   
-  /* Prevent text selection on buttons during tap */
+  /* Prevent the default Android grey tap flash on buttons — we replace it
+     with a custom CSS ripple + active scale below for a more native feel. */
   button {
-    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+    -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
   }
   
   /* Better form field touch experience */
@@ -479,6 +482,16 @@ h1, h2, h3, h4 {
 /* Bottom sheet entrance */
 .animate-sheet-up {
   animation: sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/* Snackbar / toast slide-up — gentler ease, slight fade. Used by toasts so
+   they enter from below the bottom nav like a Material 3 Snackbar. */
+@keyframes slide-up {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.animate-slide-up {
+  animation: slide-up 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* Backdrop entrance */
@@ -800,7 +813,7 @@ h1, h2, h3, h4 {
 
   /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      SECTION HEADERS FOR MOBILE
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━��━━━━━━━━━━ */
+     ━━━━━━━━━━━━━━━━━━━━━━━━��━━━━━━━━━━━━━━━━━━━━━━━��━━━━━━━━━━ */
   .section-header {
     display: flex;
     align-items: center;

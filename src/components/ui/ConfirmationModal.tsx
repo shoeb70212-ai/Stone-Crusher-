@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from "react";
-import { AlertCircle, X } from "lucide-react";
+import { AlertTriangle, X } from "lucide-react";
+import { useBodyScrollLock } from "../../lib/use-body-scroll-lock";
+import { hapticsLight } from "../../lib/haptics";
 
 const FOCUSABLE = [
   'a[href]',
@@ -21,18 +23,30 @@ interface ConfirmationModalProps {
   isDestructive?: boolean;
 }
 
-export function ConfirmationModal({ 
-  isOpen, 
-  title, 
-  message, 
-  confirmText = "Confirm", 
-  cancelText = "Cancel", 
-  onConfirm, 
+/**
+ * A native-feeling confirmation dialog.
+ *
+ * Mobile: slides up as a bottom sheet with a drag handle and a tall hit area —
+ *   matches Android's Material 3 modal-bottom-sheet pattern.
+ * Desktop: stays a centered card.
+ *
+ * Both variants share semantic tokens, focus trap, scroll lock, and a light
+ * haptic tap on the destructive confirm so the action feels acknowledged.
+ */
+export function ConfirmationModal({
+  isOpen,
+  title,
+  message,
+  confirmText = "Confirm",
+  cancelText = "Cancel",
+  onConfirm,
   onCancel,
-  isDestructive = true
+  isDestructive = true,
 }: ConfirmationModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
+
+  useBodyScrollLock(isOpen);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -45,11 +59,9 @@ export function ConfirmationModal({
         onCancel();
         return;
       }
-
       if (event.key !== "Tab" || !panelRef.current) return;
       const focusable = Array.from(panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
       if (focusable.length === 0) return;
-
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
       if (event.shiftKey && document.activeElement === first) {
@@ -64,60 +76,107 @@ export function ConfirmationModal({
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      previouslyFocused?.focus();
+      if (previouslyFocused && document.contains(previouslyFocused)) {
+        previouslyFocused.focus();
+      }
     };
   }, [isOpen, onCancel]);
 
   if (!isOpen) return null;
 
+  const handleConfirm = () => {
+    void hapticsLight();
+    onConfirm();
+    onCancel();
+  };
+
+  const iconTone = isDestructive
+    ? "bg-danger-muted text-danger"
+    : "bg-primary-50 dark:bg-primary-500/15 text-primary-600 dark:text-primary-400";
+
+  const confirmTone = isDestructive
+    ? "bg-danger hover:opacity-90 text-white"
+    : "bg-primary-600 hover:bg-primary-700 text-white";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm sm:p-6">
+    <div
+      className="fixed inset-0 z-50 flex flex-col justify-end md:items-center md:justify-center md:p-4"
+      role="presentation"
+    >
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/55 backdrop-blur-sm animate-fade-in"
+        onClick={onCancel}
+        aria-hidden="true"
+      />
+
+      {/* Sheet on mobile / centered card on desktop */}
       <div
         ref={panelRef}
-        role="dialog"
+        role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirmation-modal-title"
         aria-describedby="confirmation-modal-message"
-        className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        className="
+          relative w-full max-w-sm bg-surface text-foreground
+          rounded-t-3xl md:rounded-2xl
+          pb-[env(safe-area-inset-bottom)]
+          shadow-elev-xl border-t border-border md:border md:border-border
+          animate-sheet-up md:animate-scale-in origin-bottom md:origin-center
+        "
       >
-        <div className="p-6">
+        {/* Drag handle — mobile only */}
+        <div className="md:hidden flex justify-center pt-3 pb-1" aria-hidden="true">
+          <div className="w-10 h-1 rounded-full bg-border-strong" />
+        </div>
+
+        <div className="px-6 pt-4 pb-5 md:p-6">
           <div className="flex items-start justify-between mb-4">
-            <div className={`p-3 rounded-full ${isDestructive ? 'bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-400' : 'bg-primary-100 text-primary-600 dark:bg-primary-500/20 dark:text-primary-400'}`}>
-              <AlertCircle size={24} />
+            <div className={`p-3 rounded-2xl ${iconTone}`} aria-hidden="true">
+              <AlertTriangle size={22} strokeWidth={2.25} />
             </div>
             <button
               onClick={onCancel}
-              className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+              className="-mr-2 p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors active:scale-95"
               aria-label="Close confirmation"
             >
               <X size={20} />
             </button>
           </div>
-          <h3 id="confirmation-modal-title" className="text-lg font-bold text-zinc-900 dark:text-white mb-2">
+
+          <h3
+            id="confirmation-modal-title"
+            className="text-lg md:text-xl font-display font-bold text-foreground tracking-tight mb-1.5"
+          >
             {title}
           </h3>
-          <p id="confirmation-modal-message" className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p
+            id="confirmation-modal-message"
+            className="text-sm text-muted-foreground leading-relaxed"
+          >
             {message}
           </p>
         </div>
-        <div className="bg-zinc-50 dark:bg-zinc-900/50 px-6 py-4 flex items-center justify-end gap-3 flex-wrap sm:flex-nowrap">
+
+        {/* Actions — stacked full-width on mobile (Material 3 bottom-dialog
+            pattern); side-by-side on desktop. */}
+        <div
+          className="
+            px-4 pb-4 md:px-6 md:pb-5
+            flex flex-col-reverse gap-2
+            md:flex-row md:justify-end md:gap-3
+          "
+        >
           <button
             ref={cancelButtonRef}
             onClick={onCancel}
-            className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-xl transition-colors"
+            className="w-full md:w-auto h-11 px-5 text-sm font-semibold text-foreground bg-surface-2 hover:bg-muted rounded-xl transition-colors active:scale-[0.99]"
           >
             {cancelText}
           </button>
           <button
-            onClick={() => {
-              onConfirm();
-              onCancel();
-            }}
-            className={`w-full sm:w-auto px-4 py-2 text-sm font-semibold text-white rounded-xl transition-colors shadow-sm ${
-              isDestructive 
-                ? 'bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600' 
-                : 'bg-primary-600 hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600'
-            }`}
+            onClick={handleConfirm}
+            className={`w-full md:w-auto h-11 px-5 text-sm font-semibold rounded-xl transition-all shadow-elev-sm active:scale-[0.99] ${confirmTone}`}
           >
             {confirmText}
           </button>
