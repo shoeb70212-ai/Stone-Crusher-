@@ -49,6 +49,9 @@ const bottomBarItems = [
   { id: "invoices", label: "Invoices", icon: Receipt },
 ];
 
+/** IDs of items already in the bottom bar - used to filter the More drawer */
+const bottomBarIds = new Set(bottomBarItems.map(item => item.id));
+
 export function Sidebar({
   currentView,
   onChangeView,
@@ -306,9 +309,9 @@ export function Sidebar({
               </button>
             </div>
 
-            {/* Nav grid */}
+            {/* Nav grid - only show items NOT in bottom bar */}
             <div className="px-4 py-4 grid grid-cols-3 gap-3">
-              {filteredNavItems.map((item) => {
+              {filteredNavItems.filter(item => !bottomBarIds.has(item.id)).map((item) => {
                 const Icon = item.icon;
                 const isActive = currentView === item.id;
                 return (

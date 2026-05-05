@@ -353,29 +353,33 @@ export function Settings() {
 
   return (
     <>
-      <div className="space-y-6 max-w-5xl pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-0">
+      <div className="space-y-4 md:space-y-6 max-w-5xl pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-0">
         <div>
           <h2 className="text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">Settings</h2>
           <p className="text-zinc-500 dark:text-zinc-400 mt-1">Manage system configurations, users, and masters.</p>
         </div>
 
-        {/* Tab bar */}
-        <div className="flex flex-wrap md:space-x-1 border-b border-zinc-200 dark:border-zinc-700">
-          {TABS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              aria-current={activeTab === id ? "page" : undefined}
-              className={`flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-0 px-2 md:px-4 py-2.5 md:py-3 text-xs md:text-sm font-medium border-b-2 transition-colors text-center md:whitespace-nowrap ${
-                activeTab === id
-                  ? "border-primary-500 text-primary-600 dark:text-primary-400"
-                  : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:border-zinc-300"
-              }`}
-            >
-              <Icon className="w-4 h-4 md:mr-2 shrink-0" />
-              <span>{label}</span>
-            </button>
-          ))}
+        {/* Tab bar - horizontally scrollable on mobile */}
+        <div className="relative -mx-2 md:mx-0">
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-zinc-50 dark:from-zinc-900 to-transparent z-10 md:hidden" />
+          <div className="flex md:flex-wrap overflow-x-auto no-scrollbar md:overflow-visible md:space-x-1 border-b border-zinc-200 dark:border-zinc-700 px-2 md:px-0">
+            {TABS.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id)}
+                aria-current={activeTab === id ? "page" : undefined}
+                className={`flex items-center gap-1.5 px-3 md:px-4 py-2.5 md:py-3 text-xs md:text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 min-h-[44px] ${
+                  activeTab === id
+                    ? "border-primary-500 text-primary-600 dark:text-primary-400"
+                    : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:border-zinc-300"
+                }`}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline">{label}</span>
+                <span className="sm:hidden">{label.split(' ')[0]}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 p-3 md:p-5">

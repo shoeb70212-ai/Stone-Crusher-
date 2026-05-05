@@ -180,7 +180,7 @@ export function Login({ onLogin }: LoginProps) {
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-white dark:bg-zinc-900">
       {/* Top section — branded gradient hero with logo */}
-      <div className="flex-2 bg-linear-to-br from-primary-600 via-primary-600 to-primary-700 flex flex-col items-center justify-center px-6 gap-4">
+      <div className="flex-[2] bg-gradient-to-br from-primary-600 via-primary-600 to-primary-700 flex flex-col items-center justify-center px-6 gap-4">
         <div className="w-24 h-24 rounded-3xl overflow-hidden shadow-xl bg-white">
           <img
             src={logoSvg}
@@ -195,7 +195,7 @@ export function Login({ onLogin }: LoginProps) {
       </div>
 
       {/* Bottom section — login form */}
-      <div className="flex-3 bg-white dark:bg-zinc-900 rounded-t-3xl -mt-4 px-6 pt-8 pb-safe flex flex-col">
+      <div className="flex-[3] bg-white dark:bg-zinc-900 rounded-t-3xl -mt-4 px-6 pt-8 pb-6 flex flex-col">
         <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-1">Welcome back</h2>
         <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6">Sign in to continue</p>
 
@@ -253,7 +253,8 @@ export function Login({ onLogin }: LoginProps) {
             <button
               type="button"
               onClick={() => setShowForgotPassword(true)}
-              className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+              className="text-xs text-primary-600 dark:text-primary-400 hover:underline min-h-[44px] flex items-center"
+              aria-label="Reset your password"
             >
               Forgot password?
             </button>

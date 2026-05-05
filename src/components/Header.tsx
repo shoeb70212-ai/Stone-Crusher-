@@ -71,7 +71,11 @@ export function Header({ onMenuClick }: HeaderProps) {
         </button>
 
         {/* Notifications */}
-        <button className="relative p-2 rounded-xl text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors active:scale-95">
+        <button 
+          className="relative p-2 rounded-xl text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors active:scale-95"
+          aria-label="View notifications"
+          title="Notifications"
+        >
           <Bell className="w-5 h-5" />
         </button>
 

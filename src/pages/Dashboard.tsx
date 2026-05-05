@@ -264,7 +264,7 @@ export function Dashboard() {
   );
 
   return (
-    <div className="space-y-3 md:space-y-5">
+    <div className="space-y-4 md:space-y-5">
       {/* Date range pills — no page title on mobile (bottom nav shows context) */}
       <div className="flex flex-col gap-2">
         {/* Desktop-only heading */}
@@ -274,13 +274,15 @@ export function Dashboard() {
 
         {/* Date range pills - Horizontally scrollable on mobile with edge fade hint */}
         <div className="relative">
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-linear-to-l from-zinc-50 dark:from-zinc-900 to-transparent z-10 md:hidden" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-zinc-50 dark:from-zinc-900 to-transparent z-10 md:hidden" />
           <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
             {(["today", "week", "month", "year", "custom"] as const).map((type) => (
               <button
                 key={type}
                 onClick={() => setDateRangeType(type)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all active:scale-95 ${
+                aria-label={`Filter by ${type === "today" ? "today" : type === "week" ? "this week" : type === "month" ? "this month" : type === "year" ? "this year" : "custom date range"}`}
+                aria-pressed={dateRangeType === type}
+                className={`px-4 py-2.5 min-h-[44px] rounded-full text-xs font-medium whitespace-nowrap transition-all active:scale-95 ${
                   dateRangeType === type
                     ? "bg-primary-600 text-white shadow-sm"
                     : "bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700"
@@ -316,7 +318,7 @@ export function Dashboard() {
         <div className="flex gap-2 overflow-x-auto no-scrollbar px-1 pb-1">
           {[
             { label: "Slip", icon: FileText, target: "dispatch", color: "bg-blue-600 text-white" },
-            { label: "Invoice", icon: Receipt, target: "invoices", color: "bg-violet-600 text-white" },
+            { label: "Invoice", icon: Receipt, target: "invoices", color: "bg-primary-600 text-white" },
             { label: "Income", icon: TrendingUp, target: "daybook", color: "bg-emerald-600 text-white" },
             { label: "Expense", icon: TrendingDown, target: "daybook", color: "bg-rose-600 text-white" },
           ].map((action) => (
@@ -328,9 +330,10 @@ export function Dashboard() {
                 }
                 navigateTo(action.target);
               }}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl whitespace-nowrap text-[11px] font-semibold active:scale-95 transition-transform ${action.color}`}
+              aria-label={`Create new ${action.label.toLowerCase()}`}
+              className={`flex items-center gap-2 px-4 py-3 min-h-[44px] rounded-xl whitespace-nowrap text-xs font-semibold active:scale-95 transition-transform shadow-sm ${action.color}`}
             >
-              <action.icon className="w-3.5 h-3.5" />
+              <action.icon className="w-4 h-4" />
               {action.label}
             </button>
           ))}

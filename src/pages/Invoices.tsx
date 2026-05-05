@@ -120,7 +120,7 @@ function InvoicesContent() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 md:space-y-5">
       {/* Page header */}
       <div className="flex items-center justify-between gap-3">
         <div>

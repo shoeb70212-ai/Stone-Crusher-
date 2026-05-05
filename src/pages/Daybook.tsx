@@ -193,7 +193,7 @@ export function Daybook() {
   };
 
   return (
-    <div className="space-y-4 h-full">
+    <div className="space-y-4 md:space-y-5 h-full">
       {/* Header — single compact row on mobile, no title (bottom nav provides context) */}
       <div className="flex items-center gap-1.5 md:gap-2 pb-2 md:pb-3 border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto no-scrollbar">
         {/* Desktop-only title */}
@@ -472,7 +472,7 @@ export function Daybook() {
                   }
                 }} className="space-y-4">
                   <div>
-                    <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1 block">Amount (₹)</label>
+                    <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1 block">Amount (���)</label>
                     <input
                       required
                       type="number"
