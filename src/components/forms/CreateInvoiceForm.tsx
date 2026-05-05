@@ -4,6 +4,7 @@ import { Invoice, InvoiceItem, Slip } from "../../types";
 import { Combobox } from "../ui/Combobox";
 import { Plus, Trash2 } from "lucide-react";
 import { useActive } from "../../hooks/useActive";
+import { generateId } from "../../lib/utils";
 
 export function CreateInvoiceForm({ onSuccess }: { onSuccess: (invoice?: Invoice) => void }) {
   const { invoices, customers, addInvoice, addCustomer, slips, updateSlip, companySettings } = useErp();
@@ -191,7 +192,7 @@ export function CreateInvoiceForm({ onSuccess }: { onSuccess: (invoice?: Invoice
     // Check if new customer
     if (finalCustomerId !== "CASH" && !customers.find(c => c.id === finalCustomerId)) {
       const newCust = {
-        id: "cust_" + crypto.randomUUID(),
+        id: "cust_" + generateId(),
         name: finalCustomerId, // The combobox passed the new name directly
         phone: "",
         openingBalance: 0
@@ -244,7 +245,7 @@ export function CreateInvoiceForm({ onSuccess }: { onSuccess: (invoice?: Invoice
     const total = Math.round(subTotal + cgst + sgst);
 
     const invoice: Invoice = {
-      id: "inv_" + crypto.randomUUID(),
+      id: "inv_" + generateId(),
       invoiceNo: newInvoice.invoiceNo as string,
       date: newInvoice.date as string,
       customerId: finalCustomerId,

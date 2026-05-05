@@ -3,7 +3,7 @@ import { useErp } from "../../context/ErpContext";
 import { MaterialType, DeliveryMode, MeasurementType, Slip } from "../../types";
 import { Plus, Truck, StickyNote, Camera, QrCode, Nfc } from "lucide-react";
 import { Combobox } from "../ui/Combobox";
-import { parseFeetInches } from "../../lib/utils";
+import { parseFeetInches, generateId } from "../../lib/utils";
 import { useActive } from "../../hooks/useActive";
 import { useToast } from "../ui/Toast";
 import { useKeepAwake } from "../../lib/use-keep-awake";
@@ -160,7 +160,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
       } else if (!creatingVehicleRef.current) {
         creatingVehicleRef.current = true;
         addVehicle({
-          id: crypto.randomUUID(),
+          id: generateId(),
           vehicleNo: formData.vehicleNo.toUpperCase(),
           ownerName: formData.driverName || '',
           driverName: formData.driverName,
@@ -182,13 +182,13 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
     const resolvedCustomerName = rawCustomerId.startsWith("NEW:") ? rawCustomerId.slice(4).trim() : rawCustomerId;
     let finalCustomerId = resolvedCustomerName;
     if (finalCustomerId !== "CASH" && !customers.find(c => c.id === finalCustomerId)) {
-      const nc = { id: "cust_" + crypto.randomUUID(), name: finalCustomerId, phone: "", openingBalance: 0 };
+      const nc = { id: "cust_" + generateId(), name: finalCustomerId, phone: "", openingBalance: 0 };
       addCustomer(nc);
       finalCustomerId = nc.id;
     }
 
     const newSlip: Slip = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       date: new Date().toISOString(),
       vehicleNo: formData.vehicleNo.toUpperCase(),
       driverName: formData.driverName,
@@ -218,7 +218,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
 
     if (finalAmountPaid > 0) {
       addTransaction({
-        id: "tx_" + crypto.randomUUID(),
+        id: "tx_" + generateId(),
         date: new Date().toISOString(),
         type: "Income",
         category: "Slip Payment",

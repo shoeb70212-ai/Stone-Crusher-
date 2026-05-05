@@ -223,7 +223,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // -------------------------------------------------------------------------
   if (req.method === 'GET') {
     try {
-      const caller = await resolveCaller(req);
       if (!caller) {
         const settings = await readSettings();
         return res.status(200).json(publicBootstrapPayload(settings));
@@ -321,7 +320,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // PATCH — Delta sync: apply updates then deletions inside one transaction
   // -------------------------------------------------------------------------
   if (req.method === 'PATCH') {
-    const caller = await resolveCaller(req);
     if (!caller || !canWriteData(caller.role)) {
       return res.status(403).json({ error: 'You are not allowed to sync data.' });
     }
@@ -417,12 +415,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // POST — Full overwrite (admin backup restore only)
   // -------------------------------------------------------------------------
   if (req.method === 'POST') {
-    const csrfToken = req.headers['x-csrf-token'];
-    const expectedCsrf = process.env.CSRF_SECRET;
-    if (!expectedCsrf || csrfToken !== expectedCsrf) {
-      return res.status(403).json({ error: 'Invalid or missing CSRF token.' });
-    }
-
     const caller = await resolveCaller(req);
     if (!caller || caller.role !== 'Admin') {
       return res.status(403).json({ error: 'Only Admins can restore backups.' });

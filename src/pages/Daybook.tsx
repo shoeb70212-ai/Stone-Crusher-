@@ -3,6 +3,7 @@ import { useErp } from "../context/ErpContext";
 import { Slip, Transaction } from "../types";
 import { transactionSchema } from "../lib/validation";
 import { useToast } from "../components/ui/Toast";
+import { generateId } from "../lib/utils";
 import {
   Calendar as CalendarIcon,
   ArrowUpRight,
@@ -76,7 +77,7 @@ export function Daybook() {
     txDate.setHours(new Date().getHours(), new Date().getMinutes(), new Date().getSeconds());
 
     const newTx: Transaction = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       date: txDate.toISOString(),
       type: txType,
       amount: Math.round(validation.data.amount),

@@ -26,6 +26,7 @@ import { supabase } from "../lib/supabase";
 import { isNative } from "../lib/capacitor";
 import { getEmployeeTransactionImpact } from "../lib/employee-ledger";
 import { clearBiometricCredentials } from "../lib/biometrics";
+import { generateId } from "../lib/utils";
 
 // ---------------------------------------------------------------------------
 // API helpers
@@ -410,6 +411,9 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     const hasDeletions = Object.keys(payload.deletions).length > 0;
     if (!hasUpdates && !hasDeletions) return true;
 
+    // Capture any concurrent edits that arrived before we reset the queue.
+    const preflightQueue = { ...syncQueueRef.current };
+
     // Reset queue before the async call so concurrent mutations that arrive
     // while this request is in-flight go into the next batch.
     syncQueueRef.current = { updates: {}, deletions: {} };
@@ -434,7 +438,10 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       return true;
     } catch {
       setSyncStatus('error');
+      // Merge the failed payload back, then also merge any edits that arrived
+      // during the failed request so nothing is lost.
       requeueFailedPayload(payload);
+      requeueFailedPayload(preflightQueue);
       return false;
     } finally {
       syncInProgressRef.current = false;
@@ -465,7 +472,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
    */
   const queueUpdate = useCallback((table: string, item: any) => {
     const stamped = syncQueueV2Enabled
-      ? { ...item, _updatedAt: Date.now(), clientOpId: item.id ? undefined : crypto.randomUUID() }
+      ? { ...item, _updatedAt: Date.now(), clientOpId: item.id ? undefined : generateId() }
       : item;
     if (table === "companySettings") {
       syncQueueRef.current.updates.companySettings = stamped;
@@ -547,7 +554,11 @@ export function ErpProvider({ children }: { children: ReactNode }) {
 
     import('@capacitor/network').then(({ Network }) => {
       Network.addListener('networkStatusChange', (status) => {
-        if (status.connected) triggerSync();
+        if (status.connected) {
+          // Reset retry count so a recovered connection can sync immediately
+          retryCountRef.current = 0;
+          triggerSync();
+        }
       }).then((handle) => {
         removeListener = () => handle.remove();
       });
@@ -653,9 +664,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   const recordAudit = useCallback((entry: AuditLogInput) => {
     const actor = getCurrentActor();
     const log: AuditLog = {
-      id: typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : `audit_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      id: generateId(),
       timestamp: new Date().toISOString(),
       ...actor,
       ...entry,
@@ -1197,57 +1206,55 @@ export function ErpProvider({ children }: { children: ReactNode }) {
    * editing a slip's totalAmount (which replaces the slips array) always
    * produces a fresh balance, unlike the old array-length-keyed cache.
    */
-  const customerBalanceById = useMemo(() => {
-    const balances = new Map<string, number>();
-
-    customers.forEach((customer) => {
-      const unbilledSlipTotal = slips
-        .filter(
-          (s) =>
-            s.customerId === customer.id &&
-            (s.status === "Tallied" || s.status === "Pending" || s.status === "Loaded") &&
-            !s.invoiceId,
-        )
-        .reduce((sum, s) => sum + (s.totalAmount - (s.amountPaid ?? 0)), 0);
-
-      const invoiceTotal = invoices
-        .filter((inv) => inv.customerId === customer.id && inv.status !== "Cancelled")
-        .reduce((sum, inv) => sum + inv.total, 0);
-
-      const custTxs = transactions.filter((t) => t.customerId === customer.id);
-      const incomeTotal = custTxs.filter((t) => t.type === "Income").reduce((sum, t) => sum + t.amount, 0);
-      const expenseTotal = custTxs.filter((t) => t.type === "Expense").reduce((sum, t) => sum + t.amount, 0);
-
-      balances.set(
-        customer.id,
-        customer.openingBalance + unbilledSlipTotal + invoiceTotal + expenseTotal - incomeTotal,
-      );
-    });
-
-    return balances;
-  }, [customers, slips, invoices, transactions]);
-
-  const getCustomerBalance = useCallback((customerId: string): number => {
-    if (customerId === "CASH") return 0;
-    return customerBalanceById.get(customerId) || 0;
-  }, [customerBalanceById]);
+   const customerBalanceById = useMemo(() => {
+     const balances: Record<string, number> = {};
+ 
+     customers.forEach((customer) => {
+       const unbilledSlipTotal = slips
+         .filter(
+           (s) =>
+             s.customerId === customer.id &&
+             (s.status === "Tallied" || s.status === "Pending" || s.status === "Loaded") &&
+             !s.invoiceId,
+         )
+         .reduce((sum, s) => sum + (s.totalAmount - (s.amountPaid ?? 0)), 0);
+ 
+       const invoiceTotal = invoices
+         .filter((inv) => inv.customerId === customer.id && inv.status !== "Cancelled")
+         .reduce((sum, inv) => sum + inv.total, 0);
+ 
+       const custTxs = transactions.filter((t) => t.customerId === customer.id);
+       const incomeTotal = custTxs.filter((t) => t.type === "Income").reduce((sum, t) => sum + t.amount, 0);
+       const expenseTotal = custTxs.filter((t) => t.type === "Expense").reduce((sum, t) => sum + t.amount, 0);
+ 
+       balances[customer.id] =
+         customer.openingBalance + unbilledSlipTotal + invoiceTotal + expenseTotal - incomeTotal;
+     });
+ 
+     return balances;
+   }, [customers, slips, invoices, transactions]);
+ 
+   const getCustomerBalance = useCallback((customerId: string): number => {
+     if (customerId === "CASH") return 0;
+     return customerBalanceById[customerId] ?? 0;
+   }, [customerBalanceById]);
 
   // -----------------------------------------------------------------------
   // Derived: Employee Balance
   // -----------------------------------------------------------------------
 
   const employeeBalanceById = useMemo(() => {
-    const balances = new Map<string, number>();
-    employees.forEach((employee) => balances.set(employee.id, employee.openingBalance));
+    const balances: Record<string, number> = {};
+    employees.forEach((employee) => { balances[employee.id] = employee.openingBalance; });
     employeeTransactions.forEach((tx) => {
-      if (!balances.has(tx.employeeId)) return;
-      balances.set(tx.employeeId, (balances.get(tx.employeeId) || 0) + getEmployeeTransactionImpact(tx));
+      if (!(tx.employeeId in balances)) return;
+      balances[tx.employeeId] = (balances[tx.employeeId] ?? 0) + getEmployeeTransactionImpact(tx);
     });
     return balances;
   }, [employees, employeeTransactions]);
 
   const getEmployeeBalance = useCallback((employeeId: string): number => {
-    return employeeBalanceById.get(employeeId) || 0;
+    return employeeBalanceById[employeeId] ?? 0;
   }, [employeeBalanceById]);
 
   // -----------------------------------------------------------------------

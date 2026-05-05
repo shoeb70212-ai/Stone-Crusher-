@@ -83,10 +83,17 @@ export default function App() {
     localStorage.removeItem('erp_auth_token');
 
     // Read the current session on mount — covers page reload with a live session.
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) setIsAuthenticated(true);
-      setAuthChecked(true);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (data.session) setIsAuthenticated(true);
+      })
+      .catch(() => {
+        // ignore session read errors — user stays unauthenticated
+      })
+      .finally(() => {
+        setAuthChecked(true);
+      });
 
     // Keep isAuthenticated in sync with Supabase's auth state changes
     // (sign-in from Login, sign-out from Sidebar, token refresh, etc.).

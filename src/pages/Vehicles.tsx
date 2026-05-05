@@ -3,7 +3,7 @@ import { useErp } from "../context/ErpContext";
 import { Truck, Plus, X, FileText, Edit2, Printer } from "lucide-react";
 import { MeasurementType, Slip, Vehicle } from "../types";
 import { format, parseISO } from "date-fns";
-import { parseFeetInches } from "../lib/utils";
+import { parseFeetInches, generateId } from "../lib/utils";
 import { PrintSlipModal } from "../components/forms/PrintSlipModal";
 
 export function Vehicles() {
@@ -68,7 +68,7 @@ export function Vehicles() {
       const existing = vehicles.find(v => v.id === editingVehicleId);
       if (existing) updateVehicle({ ...existing, ...vehicleData });
     } else {
-      addVehicle({ id: crypto.randomUUID(), ...vehicleData });
+      addVehicle({ id: generateId(), ...vehicleData });
     }
     resetForm();
   };

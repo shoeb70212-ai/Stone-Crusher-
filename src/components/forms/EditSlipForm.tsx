@@ -4,7 +4,7 @@ import { Slip, MaterialType, DeliveryMode, MeasurementType } from "../../types";
 import { Plus, Truck, StickyNote } from "lucide-react";
 import { Combobox } from "../ui/Combobox";
 import { MobileStickyFooter } from "../ui/MobilePrimitives";
-import { parseFeetInches } from "../../lib/utils";
+import { parseFeetInches, generateId } from "../../lib/utils";
 import { useActive } from "../../hooks/useActive";
 import { useToast } from "../ui/Toast";
 import { useKeepAwake } from "../../lib/use-keep-awake";
@@ -130,7 +130,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
       } else if (!creatingVehicleRef.current) {
         creatingVehicleRef.current = true;
         addVehicle({
-          id: crypto.randomUUID(),
+          id: generateId(),
           vehicleNo: formData.vehicleNo.toUpperCase(),
           ownerName: formData.driverName || '',
           driverName: formData.driverName,
@@ -205,7 +205,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
         if (finalAmountPaid > 0) {
           if (addTransaction) {
             addTransaction({
-              id: "tx_" + crypto.randomUUID(),
+              id: "tx_" + generateId(),
               date: new Date().toISOString(),
               type: "Income",
               category: "Slip Payment",

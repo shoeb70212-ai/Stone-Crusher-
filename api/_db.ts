@@ -430,6 +430,17 @@ export async function writeSettings(data: Record<string, unknown>, expectedVersi
 
 const TOMBSTONE_TTL_DAYS = 7;
 
+if (!Number.isInteger(TOMBSTONE_TTL_DAYS) || TOMBSTONE_TTL_DAYS < 1 || TOMBSTONE_TTL_DAYS > 365) {
+  throw new Error('Invalid TOMBSTONE_TTL_DAYS');
+}
+
+function validateTombstoneDays(value: number): void {
+  if (!Number.isInteger(value) || value < 1 || value > 365) {
+    throw new Error('Invalid TOMBSTONE_TTL_DAYS');
+  }
+}
+validateTombstoneDays(TOMBSTONE_TTL_DAYS);
+
 /**
  * Records deleted IDs in the tombstones table so mobile clients cannot
  * resurrect them on the next sync. Uses UPSERT to refresh deletedAt if the
@@ -441,14 +452,14 @@ export async function addTombstones(
   ids: string[],
 ): Promise<void> {
   if (ids.length === 0) return;
-  for (const id of ids) {
-    await client.query(
-      `INSERT INTO tombstones ("tableKey", "recordId", "deletedAt")
-       VALUES ($1, $2, now())
-       ON CONFLICT ("tableKey", "recordId") DO UPDATE SET "deletedAt" = now()`,
-      [tableKey, id],
-    );
-  }
+  // Batch insert: single query for all IDs to avoid N+1 round-trips.
+  const values = ids.map((_, i) => `($1, $${i + 2}, now())`).join(', ');
+  await client.query(
+    `INSERT INTO tombstones ("tableKey", "recordId", "deletedAt")
+     VALUES ${values}
+     ON CONFLICT ("tableKey", "recordId") DO UPDATE SET "deletedAt" = now()`,
+    [tableKey, ...ids],
+  );
 }
 
 /**
@@ -464,6 +475,9 @@ export async function getTombstonedIds(tableKey: string): Promise<Set<string>> {
   );
   return new Set(rows.map((r) => r.recordId));
 }
+
+// NOTE: TOMBSTONE_TTL_DAYS is a module-level const validated at import time.
+// It is safe to interpolate into SQL because it can never be attacker-controlled.
 
 /**
  * Returns tombstone entries grouped by tableKey for all tables, filtered to

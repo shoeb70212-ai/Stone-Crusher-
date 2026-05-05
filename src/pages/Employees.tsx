@@ -33,6 +33,7 @@ import { useToast } from "../components/ui/Toast";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { EmptyState } from "../components/ui/EmptyState";
 import { downloadCSV } from "../lib/export-utils";
+import { generateId } from "../lib/utils";
 
 const salaryTypes: Employee["salaryType"][] = ["Weekly", "Monthly"];
 const paymentModes: NonNullable<EmployeeTransaction["paymentMode"]>[] = ["Cash", "Bank", "UPI", "Cheque", "Adjustment"];
@@ -285,7 +286,7 @@ export function Employees() {
 
     const existing = editingEmployeeId ? employees.find((employee) => employee.id === editingEmployeeId) : null;
     const payload: Employee = {
-      id: editingEmployeeId || crypto.randomUUID(),
+      id: editingEmployeeId || generateId(),
       name: validation.data.name,
       phone: validation.data.phone || undefined,
       role: validation.data.role || undefined,
@@ -338,7 +339,7 @@ export function Employees() {
     let linkedTransactionId: string | undefined;
 
     if (entryForm.syncDaybook && isEmployeeCashMovement(validation.data.type)) {
-      linkedTransactionId = crypto.randomUUID();
+      linkedTransactionId = generateId();
       const daybookTransaction: Transaction = {
         id: linkedTransactionId,
         date: entryDate.toISOString(),
@@ -351,7 +352,7 @@ export function Employees() {
     }
 
     addEmployeeTransaction({
-      id: crypto.randomUUID(),
+      id: generateId(),
       employeeId: validation.data.employeeId,
       date: entryDate.toISOString(),
       type: validation.data.type,

@@ -1,6 +1,7 @@
 import React from "react";
 import { Save, Check } from "lucide-react";
 import { CompanySettings } from "../../types";
+import { generateId } from "../../lib/utils";
 
 interface Props {
   localSettings: CompanySettings;
@@ -20,7 +21,7 @@ export function SettingsMaterials({ localSettings, setLocalSettings, isSaved, on
         <button
           onClick={() => {
             const newMats = [...(localSettings.materials || [])];
-            newMats.push({ id: crypto.randomUUID(), name: "New Material", defaultPrice: 0, unit: "Ton", hsnCode: "", gstRate: 5 });
+            newMats.push({ id: generateId(), name: "New Material", defaultPrice: 0, unit: "Ton", hsnCode: "", gstRate: 5 });
             upd(newMats);
           }}
           className="text-sm font-medium text-primary-600 hover:text-primary-700 bg-primary-50 dark:bg-primary-900/30 dark:text-primary-400 px-4 py-2 rounded-lg transition-colors"

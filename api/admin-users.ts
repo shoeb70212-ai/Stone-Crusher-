@@ -15,6 +15,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin, verifyBearerToken } from './_supabase-admin.js';
 import { initDb, readSettings, writeSettings } from './_db.js';
 import type { UserAccount } from './_types.js';
+import { getRatelimit } from './_ratelimit.js';
+import * as Sentry from '@sentry/node';
 
 const ALLOWED_ORIGINS = new Set([
   'https://stone-crusher.vercel.app',
@@ -80,6 +82,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'Database init failed', details: String(err) });
   }
 
+  try {
+    const ratelimit = getRatelimit();
+    if (ratelimit) {
+      const ip =
+        (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+        (req.headers['client-ip'] as string) ||
+        'unknown';
+      const { success, reset } = await ratelimit.limit(`admin-users:${ip}`);
+      if (!success) {
+        const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
+        res.setHeader('Retry-After', String(retryAfter));
+        return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+      }
+    }
+  } catch (err) {
+    Sentry.captureException(err);
+    // fail open
+  }
+
   // -----------------------------------------------------------------------
   // POST — Create a new user (or bootstrap the very first admin)
   // -----------------------------------------------------------------------
@@ -98,6 +119,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (bootstrap) {
       // Bootstrap is only allowed when there are no users yet.
+      // Additional rate-limiting: only 5 bootstrap attempts per IP per hour.
+      try {
+        const ratelimit = getRatelimit();
+        if (ratelimit) {
+          const ip =
+            (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+            (req.headers['client-ip'] as string) ||
+            'unknown';
+          const { success, reset } = await ratelimit.limit(`bootstrap:${ip}`);
+          if (!success) {
+            const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
+            res.setHeader('Retry-After', String(retryAfter));
+            return res.status(429).json({ error: 'Too many bootstrap attempts. Please try again later.' });
+          }
+        }
+      } catch (err) {
+        Sentry.captureException(err);
+        // fail open
+      }
       if (existingUsers.length > 0) {
         return res.status(403).json({ error: 'Bootstrap is not allowed after users exist.' });
       }

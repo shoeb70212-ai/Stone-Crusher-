@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { X, CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import { hapticsSuccess, hapticsError, hapticsWarning } from '../../lib/haptics';
+import { generateId } from '../../lib/utils';
 
 type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -31,7 +32,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const addToast = useCallback((type: ToastType, message: string, duration = 5000) => {
-    const id = crypto.randomUUID();
+    const id = generateId();
     setToasts((prev) => [...prev, { id, type, message, duration }]);
     // Fire matching haptic feedback on native devices
     if (type === 'success') hapticsSuccess();

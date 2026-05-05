@@ -20,6 +20,7 @@ import { format, parseISO } from "date-fns";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { customerSchema } from "../lib/validation";
 import { useToast } from "../components/ui/Toast";
+import { generateId } from "../lib/utils";
 
 export function Customers() {
   const { customers, addCustomer, updateCustomer, deleteCustomer, slips, transactions, getCustomerBalance, invoices } = useErp();
@@ -93,7 +94,7 @@ export function Customers() {
       });
     } else {
       addCustomer({
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: validation.data.name,
         phone: validation.data.phone ?? "",
         address: validation.data.address,

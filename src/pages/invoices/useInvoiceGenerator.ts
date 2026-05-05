@@ -4,6 +4,7 @@ import { Invoice, InvoiceItem, Slip } from "../../types";
 import { useToast } from "../../components/ui/Toast";
 import { downloadCSV } from "../../lib/export-utils";
 import { invoiceSchema } from "../../lib/validation";
+import { generateId } from "../../lib/utils";
 
 export function useInvoiceGenerator() {
   const { invoices, customers, slips, addInvoice, updateInvoice, updateSlip, companySettings, addCustomer } = useErp();
@@ -171,7 +172,7 @@ export function useInvoiceGenerator() {
     let finalCustomerId = newInvoice.customerId!;
     if (finalCustomerId.startsWith("NEW:")) {
       const newName = finalCustomerId.slice("NEW:".length).trim();
-      const newCust = { id: crypto.randomUUID(), name: newName, phone: "", openingBalance: 0 };
+      const newCust = { id: generateId(), name: newName, phone: "", openingBalance: 0 };
       if (addCustomer) addCustomer(newCust);
       finalCustomerId = newCust.id;
     }
@@ -239,7 +240,7 @@ export function useInvoiceGenerator() {
       }
       selectedSlipIds.forEach((id) => updateSlip(id, { invoiceId: editingInvoiceId }));
     } else {
-      const newInvoiceId = crypto.randomUUID();
+      const newInvoiceId = generateId();
       const invoice: Invoice = {
         id: newInvoiceId,
         invoiceNo: newInvoice.invoiceNo,

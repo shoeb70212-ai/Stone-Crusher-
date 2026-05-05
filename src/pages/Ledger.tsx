@@ -21,6 +21,7 @@ import { downloadCSV, downloadLedgerStatementPdf } from "../lib/export-utils";
 import { printHtml } from "../lib/print-utils";
 import { buildLedgerWhatsAppMessage, openWhatsAppMessage } from "../lib/whatsapp-share";
 import { useToast } from "../components/ui/Toast";
+import { generateId } from "../lib/utils";
 
 export function Ledger() {
   const { transactions, customers, slips, invoices, companySettings, addTransaction, addCustomer, getCustomerBalance } =
@@ -74,7 +75,7 @@ export function Ledger() {
       return; // silently ignore — form validation should prevent this
     }
     const newTx: Transaction = {
-      id: "tx_" + crypto.randomUUID(),
+      id: "tx_" + generateId(),
       date: new Date().toISOString(),
       type: txFormData.type,
       amount: Math.round(amount),
@@ -96,7 +97,7 @@ export function Ledger() {
   const handleCreateCustomer = (e: React.FormEvent) => {
     e.preventDefault();
     const newCust: Customer = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       name: custFormData.name,
       phone: custFormData.phone,
       address: custFormData.address || undefined,
