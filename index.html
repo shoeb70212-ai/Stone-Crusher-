@@ -1,8 +1,26 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="bg-background">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+
+    <!-- Status bar / browser-chrome tinting. The values are kept in sync with
+         the app's primary palette and will be re-tinted at runtime by the
+         Capacitor StatusBar plugin when the user toggles dark mode. -->
+    <meta name="theme-color" content="#059669" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+
+    <!-- Treat as an installed app, not a webpage -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CrushTrack" />
+    <meta name="application-name" content="CrushTrack" />
+    <meta name="format-detection" content="telephone=no" />
+
     <title>CrushTrack ERP</title>
   </head>
   <body>

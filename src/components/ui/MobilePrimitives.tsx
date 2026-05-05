@@ -43,17 +43,17 @@ export function MobileActionSheet({
             className={cn(
               "w-full min-h-12 rounded-xl px-3 py-2.5 text-left flex items-center gap-3 border transition-colors active:scale-[0.98]",
               action.selected
-                ? "border-primary-200 bg-primary-50 text-primary-700 dark:border-primary-500/30 dark:bg-primary-500/15 dark:text-primary-300"
-                : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800",
+                ? "border-primary-200 dark:border-primary-500/30 bg-primary-50 dark:bg-primary-500/15 text-primary-700 dark:text-primary-300"
+                : "border-border bg-surface text-foreground hover:bg-surface-2",
               action.tone === "danger" &&
-                "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300",
+                "border-danger/30 bg-danger-muted text-danger-foreground",
             )}
           >
             {action.icon && <span className="shrink-0 text-current">{action.icon}</span>}
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-semibold leading-tight">{action.label}</span>
               {action.description && (
-                <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
+                <span className="mt-0.5 block text-xs text-muted-foreground">
                   {action.description}
                 </span>
               )}
@@ -61,11 +61,11 @@ export function MobileActionSheet({
             {action.selected && <Check className="h-4 w-4 shrink-0" />}
           </button>
         ))}
-        {/* iOS-style Cancel at bottom */}
+        {/* Cancel at the bottom — Material 3 dismissable bottom sheet */}
         <button
           type="button"
           onClick={onClose}
-          className="w-full min-h-12 rounded-xl px-3 py-2.5 text-center text-sm font-semibold text-zinc-600 dark:text-zinc-300 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors active:scale-[0.98] mt-2"
+          className="w-full min-h-12 rounded-xl px-3 py-2.5 text-center text-sm font-semibold text-foreground bg-surface-2 border border-border hover:bg-muted transition-colors active:scale-[0.98] mt-2"
         >
           Cancel
         </button>
@@ -102,14 +102,14 @@ export function MobileFilterSheet({
             type="button"
             onClick={onClear}
             disabled={clearDisabled || !onClear}
-            className="min-h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+            className="min-h-11 rounded-xl border border-border bg-surface px-3 text-sm font-semibold text-foreground hover:bg-surface-2 disabled:opacity-40 transition-colors active:scale-[0.99]"
           >
             Clear
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="min-h-11 rounded-xl bg-primary-600 px-3 text-sm font-semibold text-white"
+            className="min-h-11 rounded-xl bg-primary-600 hover:bg-primary-700 px-3 text-sm font-semibold text-white shadow-elev-sm transition-colors active:scale-[0.99]"
           >
             Apply
           </button>
@@ -123,7 +123,7 @@ export function MobileFilterSheet({
 
 export function MobileStickyFooter({ children }: { children: React.ReactNode }) {
   return (
-    <div className="sticky bottom-0 z-10 -mx-1 border-t border-zinc-100 bg-white/95 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 md:hidden">
+    <div className="sticky bottom-0 z-10 -mx-1 border-t border-border bg-surface/95 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur md:hidden">
       {children}
     </div>
   );
@@ -137,13 +137,13 @@ export function MobileChip({
   onRemove?: () => void;
 }) {
   return (
-    <span className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-primary-100 bg-primary-50 px-2.5 text-xs font-semibold text-primary-700 dark:border-primary-500/20 dark:bg-primary-500/10 dark:text-primary-300">
+    <span className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-primary-200 dark:border-primary-500/20 bg-primary-50 dark:bg-primary-500/10 px-2.5 text-xs font-semibold text-primary-700 dark:text-primary-300">
       {children}
       {onRemove && (
         <button
           type="button"
           onClick={onRemove}
-          className="-mr-1 flex h-6 w-6 items-center justify-center rounded-full text-primary-500"
+          className="-mr-1 flex h-6 w-6 items-center justify-center rounded-full text-primary-500 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
           aria-label="Remove filter"
         >
           <X className="h-3 w-3" />

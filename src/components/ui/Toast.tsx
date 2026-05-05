@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { X, CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react';
+import { CheckCircle2, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import { hapticsSuccess, hapticsError, hapticsWarning } from '../../lib/haptics';
 import { generateId } from '../../lib/utils';
 
@@ -31,7 +31,7 @@ export function useToast() {
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const addToast = useCallback((type: ToastType, message: string, duration = 5000) => {
+  const addToast = useCallback((type: ToastType, message: string, duration = 4000) => {
     const id = generateId();
     setToasts((prev) => [...prev, { id, type, message, duration }]);
     // Fire matching haptic feedback on native devices
@@ -52,12 +52,33 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast: (id: string) => void }) {
+/**
+ * Toast container styled as a Material-style snackbar:
+ * - Mobile: bottom-centered, sits above the bottom nav + safe area, full-bleed
+ *   with margin so it reads as a transient surface (like Android Snackbar).
+ * - Desktop: bottom-right, stacked.
+ *
+ * Pointer-events are scoped to each toast so the container itself never
+ * blocks the FAB or bottom-nav even when toasts are stacked.
+ */
+function ToastContainer({
+  toasts,
+  removeToast,
+}: {
+  toasts: Toast[];
+  removeToast: (id: string) => void;
+}) {
   if (toasts.length === 0) return null;
 
   return (
-    <div 
-      className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 z-[60] flex flex-col gap-2 max-w-sm"
+    <div
+      className="
+        pointer-events-none fixed z-[60] flex flex-col gap-2
+        left-1/2 -translate-x-1/2
+        bottom-[calc(72px+env(safe-area-inset-bottom))]
+        w-[calc(100vw-1.5rem)] max-w-md px-3
+        md:left-auto md:right-4 md:translate-x-0 md:bottom-[calc(1rem+env(safe-area-inset-bottom))] md:w-auto md:px-0
+      "
       role="status"
       aria-label="Notifications"
       aria-live="polite"
@@ -69,20 +90,19 @@ function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast:
   );
 }
 
-function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
-  const icons = {
-    success: <CheckCircle className="w-5 h-5 text-emerald-500" />,
-    error: <AlertCircle className="w-5 h-5 text-rose-500" />,
-    warning: <AlertTriangle className="w-5 h-5 text-amber-500" />,
-    info: <Info className="w-5 h-5 text-blue-500" />,
-  };
+/** Visual config per toast type — semantic tokens only. */
+const TOAST_CONFIG: Record<
+  ToastType,
+  { Icon: React.ElementType; iconClass: string; ring: string }
+> = {
+  success: { Icon: CheckCircle2, iconClass: 'text-success', ring: 'ring-success/20' },
+  error:   { Icon: AlertCircle,  iconClass: 'text-danger',  ring: 'ring-danger/20'  },
+  warning: { Icon: AlertTriangle, iconClass: 'text-warning', ring: 'ring-warning/20' },
+  info:    { Icon: Info,         iconClass: 'text-primary-600 dark:text-primary-400', ring: 'ring-primary-500/20' },
+};
 
-  const bgColors = {
-    success: 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800',
-    error: 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800',
-    warning: 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800',
-    info: 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800',
-  };
+function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
+  const { Icon, iconClass, ring } = TOAST_CONFIG[toast.type];
 
   React.useEffect(() => {
     if (toast.duration) {
@@ -94,18 +114,19 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
 
   return (
     <div
-      className={`flex items-start gap-3 p-4 rounded-lg border shadow-lg ${bgColors[toast.type]} animate-slide-in`}
+      className={`
+        pointer-events-auto flex items-start gap-3 px-4 py-3
+        rounded-2xl border border-border bg-surface
+        shadow-elev-lg ring-1 ${ring}
+        animate-slide-up
+      `}
       role="alert"
+      onClick={onClose}
     >
-      {icons[toast.type]}
-      <p className="flex-1 text-sm text-zinc-700 dark:text-zinc-200">{toast.message}</p>
-      <button
-        onClick={onClose}
-        className="p-1 hover:bg-black/5 dark:hover:bg-white/10 rounded transition-colors"
-        aria-label="Dismiss notification"
-      >
-        <X className="w-4 h-4 text-zinc-500" />
-      </button>
+      <Icon className={`w-5 h-5 shrink-0 mt-0.5 ${iconClass}`} aria-hidden="true" />
+      <p className="flex-1 text-sm text-foreground leading-snug min-w-0 break-words">
+        {toast.message}
+      </p>
     </div>
   );
 }

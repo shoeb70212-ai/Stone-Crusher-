@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import { X } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useBodyScrollLock } from "../../lib/use-body-scroll-lock";
@@ -114,21 +114,60 @@ export function MobileModal({
     };
   }, [isOpen]);
 
+  // ────────────────────────────────────────────────────────────────────────
+  // Drag-to-dismiss gesture (mobile only).
+  //
+  // Native Android/iOS bottom sheets can be flicked closed. We wire a simple
+  // pointer-based gesture here on the drag handle area: track vertical delta,
+  // translate the sheet, snap back if the user releases below threshold,
+  // call onClose() with a slide-out animation if past it.
+  // ────────────────────────────────────────────────────────────────────────
+  const [dragY, setDragY] = useState(0);
+  const dragStartY = useRef<number | null>(null);
+
+  const onDragStart = useCallback((e: React.PointerEvent) => {
+    // Don't start drag on desktop or for fullscreen-style sheets
+    if (window.matchMedia('(min-width: 768px)').matches) return;
+    if (mobileMode === 'previewSheet') return;
+    dragStartY.current = e.clientY;
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+  }, [mobileMode]);
+
+  const onDragMove = useCallback((e: React.PointerEvent) => {
+    if (dragStartY.current === null) return;
+    const delta = e.clientY - dragStartY.current;
+    // Only allow downward drag, with some rubber-banding past 0
+    setDragY(delta > 0 ? delta : delta / 4);
+  }, []);
+
+  const onDragEnd = useCallback((e: React.PointerEvent) => {
+    if (dragStartY.current === null) return;
+    const delta = e.clientY - dragStartY.current;
+    dragStartY.current = null;
+    (e.target as Element).releasePointerCapture?.(e.pointerId);
+    // Threshold: 25% of viewport height closes
+    if (delta > window.innerHeight * 0.25) {
+      onCloseRef.current();
+    }
+    setDragY(0);
+  }, []);
+
   if (!isOpen) return null;
 
   const mobilePanelClass =
     mobileMode === "compactSheet"
-      ? "w-full rounded-t-2xl max-h-[76dvh]"
+      ? "w-full rounded-t-3xl max-h-[76dvh]"
       : mobileMode === "previewSheet"
         ? "w-full h-[100dvh] max-h-[100dvh] rounded-none"
-        : "w-full rounded-t-2xl max-h-[92dvh]";
+        : "w-full rounded-t-3xl max-h-[92dvh]";
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col justify-end md:justify-center md:items-center md:p-4 overflow-hidden">
-      {/* Backdrop */}
+      {/* Backdrop — fades on enter */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/55 backdrop-blur-sm animate-fade-in"
         onClick={onClose}
+        aria-hidden="true"
       />
 
       {/* Sheet / Modal */}
@@ -137,27 +176,41 @@ export function MobileModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="mobile-modal-title"
+        style={{
+          // Apply live drag offset only while the user is dragging.
+          transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
+          transition: dragStartY.current === null ? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
+        }}
         className={cn(
-          "relative flex flex-col bg-white dark:bg-zinc-900 shadow-2xl",
+          "relative flex flex-col bg-surface text-foreground shadow-elev-xl",
           mobilePanelClass,
+          // Mobile entrance animation (only if not a fullscreen preview sheet)
+          mobileMode !== 'previewSheet' && 'animate-sheet-up md:animate-scale-in',
           // Desktop: centred modal
-          `md:rounded-2xl md:max-h-[90vh] md:w-auto ${mdMaxWidth}`,
+          `md:rounded-2xl md:max-h-[90vh] md:w-auto md:border md:border-border ${mdMaxWidth}`,
           panelClassName,
         )}
       >
-        {/* Drag handle – mobile only */}
-        <div className="md:hidden flex justify-center pt-3 pb-1 shrink-0">
-          <div className="w-10 h-1 bg-zinc-300 dark:bg-zinc-600 rounded-full" />
+        {/* Drag handle — mobile only, doubles as the gesture target */}
+        <div
+          className="md:hidden flex justify-center pt-3 pb-2 shrink-0 cursor-grab active:cursor-grabbing touch-none"
+          onPointerDown={onDragStart}
+          onPointerMove={onDragMove}
+          onPointerUp={onDragEnd}
+          onPointerCancel={onDragEnd}
+          aria-hidden="true"
+        >
+          <div className="w-10 h-1 bg-border-strong rounded-full" />
         </div>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 md:px-6 md:py-4 border-b border-zinc-100 dark:border-zinc-700/70 bg-zinc-50/80 dark:bg-zinc-900/80 shrink-0 md:rounded-t-2xl">
+        <div className="flex items-center justify-between px-4 py-3 md:px-6 md:py-4 border-b border-border bg-surface-2/60 shrink-0 md:rounded-t-2xl">
           <div className="flex-1 min-w-0 pr-3">
-            <h3 id="mobile-modal-title" className="text-base md:text-lg font-bold text-zinc-900 dark:text-white truncate">
+            <h3 id="mobile-modal-title" className="text-base md:text-lg font-display font-bold text-foreground tracking-tight truncate">
               {title}
             </h3>
             {subtitle && (
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 wrap-break-word">
+              <p className="text-xs text-muted-foreground mt-0.5 break-words">
                 {subtitle}
               </p>
             )}
@@ -166,7 +219,7 @@ export function MobileModal({
             {headerRight}
             <button
               onClick={onClose}
-              className="p-3 rounded-xl text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors active:scale-95"
+              className="w-10 h-10 inline-flex items-center justify-center rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors active:scale-95"
               aria-label="Close"
             >
               <X className="w-5 h-5" />
@@ -182,7 +235,7 @@ export function MobileModal({
           {children}
         </div>
         {footer && (
-          <div className="shrink-0 border-t border-zinc-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:p-4 md:pb-4">
+          <div className="shrink-0 border-t border-border bg-surface/95 backdrop-blur p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:p-4 md:pb-4">
             {footer}
           </div>
         )}

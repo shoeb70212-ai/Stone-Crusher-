@@ -158,24 +158,25 @@ export function Layout() {
     return () => cleanup?.();
   }, [setLocation]);
 
-  // Apply visual theme to HTML root
+  // Apply visual theme to HTML root + sync the native status-bar tint and the
+  // browser <meta theme-color>. Wiring all theme effects into a single hook
+  // keeps the source of truth in one place and avoids out-of-sync chrome
+  // colors when the user toggles light/dark.
   useEffect(() => {
     const root = document.documentElement;
-    // Handle dark mode
-    if (companySettings.theme === "dark") {
-      root.classList.add("dark");
-    } else if (companySettings.theme === "light") {
-      root.classList.remove("dark");
-    } else {
-      // System
-      if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-        root.classList.add("dark");
-      } else {
-        root.classList.remove("dark");
-      }
-    }
 
-    // Handle primary color theme
+    // 1. Resolve the effective dark/light mode (handle "system" preference).
+    let isDark: boolean;
+    if (companySettings.theme === "dark") {
+      isDark = true;
+    } else if (companySettings.theme === "light") {
+      isDark = false;
+    } else {
+      isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    }
+    root.classList.toggle("dark", isDark);
+
+    // 2. Apply primary brand color class.
     root.classList.remove(
       "theme-emerald",
       "theme-blue",
@@ -183,10 +184,32 @@ export function Layout() {
       "theme-rose",
       "theme-amber"
     );
-    if (companySettings.primaryColor) {
-      root.classList.add(`theme-${companySettings.primaryColor}`);
-    } else {
-      root.classList.add("theme-emerald");
+    root.classList.add(`theme-${companySettings.primaryColor || "emerald"}`);
+
+    // 3. Read the resolved background color from CSS variables and push it
+    //    to (a) the <meta theme-color> tag (web/PWA chrome) and (b) the native
+    //    StatusBar plugin (Android/iOS shell). This keeps the system status
+    //    bar exactly the same color as the app's surface — the single biggest
+    //    "feels native" win on Android.
+    const cs = getComputedStyle(root);
+    const bg = cs.getPropertyValue("--background").trim() || (isDark ? "#0a0a0a" : "#ffffff");
+
+    document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((m) => {
+      m.setAttribute("content", bg);
+    });
+
+    if (isNative()) {
+      import("@capacitor/status-bar")
+        .then(({ StatusBar, Style }) => {
+          // Match status bar foreground to the app's foreground (icons readable on bg).
+          StatusBar.setStyle({ style: isDark ? Style.Dark : Style.Light }).catch(() => {});
+          StatusBar.setBackgroundColor({ color: bg }).catch(() => {});
+          // Don't overlay — status bar gets its own band, like a normal app.
+          StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
+        })
+        .catch(() => {
+          /* status-bar plugin not available — non-critical */
+        });
     }
   }, [companySettings.theme, companySettings.primaryColor]);
 
