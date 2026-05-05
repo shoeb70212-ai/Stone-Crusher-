@@ -336,6 +336,7 @@ export function safeNumber(value: unknown): number {
 }
 
 function sanitizePdfFilename(filename: string): string {
+  // eslint-disable-next-line no-control-regex
   return filename.replace(/[<>:"/\\|?*\x00-\x1f]/g, '-');
 }
 
