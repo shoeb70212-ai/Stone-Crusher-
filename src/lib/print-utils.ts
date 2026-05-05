@@ -191,66 +191,118 @@ async function generatePdfBlob(htmlContent: string, filename: string): Promise<B
 
 /**
  * Opens a browser print dialog for the given HTML content using a hidden iframe.
- * Used as a fallback when html2pdf.js fails.
+ * Used as a fallback when jsPDF-based printing is unavailable.
+ *
+ * Waits for all linked stylesheets in the iframe to finish loading before
+ * triggering print() — otherwise Tailwind styles may not be applied yet and
+ * the printed output is unstyled.
  *
  * @param htmlContent - Raw innerHTML to print.
+ * @returns Promise that resolves when the print dialog is dismissed (or after
+ *          a 90s timeout for WebViews that never fire afterprint).
  */
-export function printHtml(htmlContent: string): void {
-  const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'position:absolute;width:0;height:0;border:none;';
-  document.body.appendChild(iframe);
+export function printHtml(htmlContent: string): Promise<void> {
+  return new Promise((resolve) => {
+    const iframe = document.createElement('iframe');
+    // Off-screen but visible to the rendering engine so html/css applies.
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    document.body.appendChild(iframe);
 
-  const removeIframe = () => {
-    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-  };
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    };
 
-  const doc = iframe.contentWindow?.document;
-  if (!doc) {
-    removeIframe();
-    return;
-  }
-
-  doc.open();
-  doc.write('<html><head><title>Print</title>');
-  document.querySelectorAll('style, link[rel="stylesheet"]').forEach(node => {
-    doc.write(node.outerHTML);
-  });
-  doc.write(`<style>
-    @media print {
-      @page { size: A4; margin: 8mm; }
-      body { margin:0; padding:0; -webkit-print-color-adjust:exact; color-adjust:exact; background:white!important; }
-      .shadow-2xl { box-shadow:none!important; }
-      .rounded-xl { border-radius:0!important; }
-      .m-4 { margin:0!important; }
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      cleanup();
+      resolve();
+      return;
     }
-  </style>`);
-  doc.write('</head><body class="bg-white text-black p-2 md:p-4">');
-  doc.write(htmlContent);
-  doc.write('</body></html>');
-  doc.close();
 
-  iframe.onload = () => {
-    requestAnimationFrame(() => {
+    // Collect existing stylesheet hrefs and inline <style> contents so the
+    // iframe inherits the host page's styling (Tailwind, design tokens, etc.).
+    const styleNodes = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map(node => node.outerHTML)
+      .join('\n');
+
+    doc.open();
+    doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Print</title>${styleNodes}<style>
+      @media print {
+        @page { size: A4; margin: 8mm; }
+        html, body { margin:0; padding:0; }
+        body { -webkit-print-color-adjust:exact; print-color-adjust:exact; background:white!important; color:black!important; }
+        .shadow-2xl { box-shadow:none!important; }
+        .rounded-xl, .rounded-2xl { border-radius:0!important; }
+        .m-4 { margin:0!important; }
+        /* Strip preview transforms — the modal preview applies scale() that
+           would otherwise carry over into print output. */
+        [id="print-area"], [id="print-invoice-area"] {
+          transform: none !important;
+          width: auto !important;
+        }
+      }
+    </style></head><body class="bg-white text-black p-2 md:p-4">${htmlContent}</body></html>`);
+    doc.close();
+
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+
+    const triggerPrint = () => {
       try {
         iframe.contentWindow?.focus();
         iframe.contentWindow?.print();
       } catch {
-        // print() can throw or block on some WebViews — ignore and clean up
-      } finally {
-        // afterprint fires when the dialog is dismissed; the 2 s timeout is a
-        // fallback for browsers/WebViews that never fire afterprint.
-        // The `cleaned` guard prevents double-removal if both paths fire.
-        let cleaned = false;
-        const cleanup = () => {
-          if (cleaned) return;
-          cleaned = true;
-          removeIframe();
-        };
-        iframe.contentWindow?.addEventListener('afterprint', cleanup, { once: true });
-        setTimeout(cleanup, 2000);
+        // print() can throw on some WebViews — fall through to cleanup.
+        cleanup();
+        finish();
+        return;
       }
-    });
-  };
+      // afterprint fires whether the user prints OR cancels. Keep iframe alive
+      // until then so the print job can flush to the printer.
+      iframe.contentWindow?.addEventListener('afterprint', () => {
+        finish();
+        setTimeout(cleanup, 500);
+      }, { once: true });
+      // Long fallback for WebViews that never fire afterprint.
+      setTimeout(() => {
+        if (!settled) {
+          finish();
+          cleanup();
+        }
+      }, 90_000);
+    };
+
+    // Wait for stylesheets in the iframe to finish loading before printing.
+    // Without this, Tailwind utilities haven't been applied yet on first paint.
+    const waitForStyles = async () => {
+      const idoc = iframe.contentWindow?.document;
+      if (!idoc) { triggerPrint(); return; }
+      const links = Array.from(idoc.querySelectorAll('link[rel="stylesheet"]')) as HTMLLinkElement[];
+      await Promise.all(links.map(link => {
+        if ((link as any).sheet) return Promise.resolve();
+        return new Promise<void>((res) => {
+          const done = () => res();
+          const t = window.setTimeout(done, 3000);
+          link.addEventListener('load', () => { window.clearTimeout(t); done(); }, { once: true });
+          link.addEventListener('error', () => { window.clearTimeout(t); done(); }, { once: true });
+        });
+      }));
+      // One extra paint frame so layout settles after style application.
+      await yieldToMain();
+      triggerPrint();
+    };
+
+    iframe.onload = () => { void waitForStyles(); };
+    // Some browsers don't fire onload for document.write content — fall back.
+    setTimeout(() => { if (!settled && !cleaned) void waitForStyles(); }, 200);
+  });
 }
 
 /**
@@ -362,10 +414,39 @@ export function downloadPdfBlob(blob: Blob, filename: string): void {
   triggerBlobDownload(blob, filename);
 }
 
+/**
+ * Detects browsers/WebViews where `iframe.contentWindow.print()` does NOT
+ * reliably print PDF blob contents (it either prints the host page or
+ * silently does nothing). When detected, callers should download instead.
+ */
+function isIframePrintUnsupported(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  // iOS Safari / iOS WebView — iframe.print() does not print the PDF blob.
+  const isIOS = /iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream;
+  // Firefox — printing a PDF blob from a hidden iframe shows the PDF viewer's
+  // own print, which prints the iframe's host document instead.
+  const isFirefox = /Firefox\//.test(ua);
+  return isIOS || isFirefox;
+}
+
 export function printPdfBlob(blob: Blob, title = 'Print Document'): Promise<void> {
   return new Promise((resolve, reject) => {
     if (typeof document === 'undefined') {
       reject(new Error('Printing is only available in a browser.'));
+      return;
+    }
+
+    // Browsers where iframe-based PDF printing is unreliable: download instead.
+    // Caller can chain a toast informing the user.
+    if (isIframePrintUnsupported()) {
+      try {
+        const filename = sanitizePdfFilename(`${title}.pdf`);
+        triggerBlobDownload(blob, filename);
+        resolve();
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error('Print fallback failed.'));
+      }
       return;
     }
 
@@ -374,8 +455,11 @@ export function printPdfBlob(blob: Blob, title = 'Print Document'): Promise<void
     iframe.title = title;
     iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
 
+    let cleaned = false;
     let settled = false;
     const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
       if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
       URL.revokeObjectURL(url);
     };
@@ -383,23 +467,53 @@ export function printPdfBlob(blob: Blob, title = 'Print Document'): Promise<void
       if (settled) return;
       settled = true;
       resolve();
-      setTimeout(cleanup, 2000);
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
     };
 
     iframe.onload = () => {
-      try {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-        iframe.contentWindow?.addEventListener('afterprint', cleanup, { once: true });
-        finish();
-      } catch (error) {
-        cleanup();
-        reject(error instanceof Error ? error : new Error('Print failed.'));
-      }
+      // Two RAFs to ensure the embedded PDF viewer has rendered its first frame
+      // before we trigger print(). Otherwise some browsers print a blank page.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          try {
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+          } catch (error) {
+            fail(error instanceof Error ? error : new Error('Print failed.'));
+            return;
+          }
+
+          // Resolve once afterprint fires (user dismissed the print dialog).
+          // Do NOT remove the iframe before this — Chrome cancels the print
+          // job if the iframe is detached while the dialog is still open.
+          iframe.contentWindow?.addEventListener(
+            'afterprint',
+            () => {
+              finish();
+              // Delay cleanup so the print job actually flushes to the printer.
+              setTimeout(cleanup, 500);
+            },
+            { once: true },
+          );
+
+          // Long-running fallback for WebViews that never fire afterprint.
+          // 90s is generous enough for the user to interact with the dialog.
+          setTimeout(() => {
+            if (!settled) {
+              finish();
+              cleanup();
+            }
+          }, 90_000);
+        });
+      });
     };
     iframe.onerror = () => {
-      cleanup();
-      reject(new Error('Could not load PDF for printing.'));
+      fail(new Error('Could not load PDF for printing.'));
     };
 
     document.body.appendChild(iframe);

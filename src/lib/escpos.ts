@@ -31,6 +31,13 @@ const LF  = 0x0a;
 /** ESC @ — Initialize printer (clears buffer, resets modes) */
 const CMD_INIT = Uint8Array.from([ESC, 0x40]);
 
+/**
+ * ESC t 0 — Select character code page 0 (PC437 — USA Standard).
+ * Most thermal printers default to this. Sending it explicitly avoids
+ * surprises when the printer was previously left in a different code page.
+ */
+const CMD_CODEPAGE_PC437 = Uint8Array.from([ESC, 0x74, 0x00]);
+
 /** ESC ! 0 — Normal text mode */
 const CMD_NORMAL = Uint8Array.from([ESC, 0x21, 0x00]);
 
@@ -49,8 +56,23 @@ const CMD_CUT = Uint8Array.from([GS, 0x56, 0x42, 0x03]);
 /** Feed N lines */
 const feed = (n: number) => new Uint8Array(n).fill(LF);
 
-/** Encode a UTF-8 string to bytes */
-const text = (str: string) => new TextEncoder().encode(str + '\n');
+/**
+ * Transliterates a string to printable ASCII characters that thermal printers
+ * can render in PC437 / CP850. Strips diacritics and replaces unsupported
+ * code points with '?'. Without this, Hindi / Marathi / non-Latin customer
+ * names print as garbage on standard ESC/POS thermal printers.
+ */
+function toThermalAscii(str: string): string {
+  // NFD decomposition splits accented chars into base + combining marks.
+  // Then we drop the combining marks (\u0300-\u036f).
+  const normalized = str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  // Replace any remaining non-ASCII characters with '?' so the printer
+  // doesn't drop them silently or print mojibake.
+  return normalized.replace(/[^\x20-\x7e\n]/g, '?');
+}
+
+/** Encode an ASCII-safe string to bytes for ESC/POS output. */
+const text = (str: string) => new TextEncoder().encode(toThermalAscii(str) + '\n');
 
 /** Concatenate multiple Uint8Arrays */
 function concat(...parts: Uint8Array[]): Uint8Array {
@@ -63,9 +85,6 @@ function concat(...parts: Uint8Array[]): Uint8Array {
   }
   return out;
 }
-
-/** Left-pad a string to a fixed width */
-const pad = (s: string, w: number) => s.padEnd(w).slice(0, w);
 
 /** Right-align a value within a field of width `total` given a left label */
 const twoCol = (label: string, value: string, width = 32) => {
@@ -232,14 +251,48 @@ export function getConnectedPrinterId(): string | null {
 /**
  * Prints a dispatch slip to the connected BLE thermal printer.
  * Caller must have called `connectPrinter` first.
+ *
+ * Throws a user-friendly Error when the printer isn't connected, the BLE
+ * connection has dropped, or the write fails. Callers should surface
+ * `error.message` to the user via a toast.
  */
 export async function printSlip(data: SlipPrintData): Promise<void> {
-  if (!isNative() || !connectedDeviceId || !connectedProfile) {
-    throw new Error('No printer connected');
+  if (!isNative()) {
+    throw new Error('Bluetooth printing is only available in the mobile app.');
+  }
+  if (!connectedDeviceId || !connectedProfile) {
+    throw new Error('No printer connected. Tap Scan and Connect first.');
+  }
+
+  // Verify the connection is still alive — Android can silently drop the BLE
+  // link if the printer goes out of range or powers down.
+  try {
+    const { BleClient } = await import('@capacitor-community/bluetooth-le');
+    const isConnected = await BleClient.isConnected(connectedDeviceId);
+    if (!isConnected) {
+      // Reset state so the UI prompts the user to reconnect.
+      const lostId = connectedDeviceId;
+      connectedDeviceId = null;
+      connectedProfile = null;
+      // Best-effort attempt to auto-reconnect once.
+      const reconnected = await connectPrinter(lostId);
+      if (!reconnected) {
+        throw new Error('Printer disconnected. Reconnect to print.');
+      }
+    }
+  } catch (error) {
+    if (error instanceof Error && /disconnect/i.test(error.message)) throw error;
+    // Propagate underlying BLE errors with a clearer message.
+    throw new Error('Could not reach the printer. Make sure it is on and in range.');
   }
 
   const bytes = buildSlipBytes(data);
-  await writeChunked(connectedDeviceId, connectedProfile, bytes);
+  try {
+    await writeChunked(connectedDeviceId!, connectedProfile!, bytes);
+  } catch (error) {
+    console.error('BLE write failed:', error);
+    throw new Error('Print failed. The printer may be out of paper or busy.');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -251,6 +304,7 @@ function buildSlipBytes(d: SlipPrintData): Uint8Array {
 
   const parts: Uint8Array[] = [
     CMD_INIT,
+    CMD_CODEPAGE_PC437,
     CMD_CENTER,
     CMD_BOLD_WIDE,
     text(d.companyName.slice(0, 16).toUpperCase()),
