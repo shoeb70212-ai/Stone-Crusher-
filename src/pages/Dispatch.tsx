@@ -418,85 +418,84 @@ export function Dispatch() {
       </div>
 
       {/* Mobile expandable search */}
-      <div className="md:hidden">
-        {!searchOpen ? (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setSearchOpen(true)}
-              className="flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300"
-              aria-label="Search"
-            >
-              <Search className="h-4 w-4" />
-            </button>
-          </div>
-        ) : (
-          <div className="animate-fade-in relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-            <input
-              type="text"
-              autoFocus
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search slips..."
-              className="w-full h-11 pl-9 pr-8 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors"
-            />
-            <button
-              onClick={() => { setSearchQuery(""); setSearchOpen(false); }}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-zinc-400 hover:text-zinc-600"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-      </div>
+
 
       {/* Tab bar + filter button - Compact */}
       <div className="bg-white dark:bg-zinc-900 rounded-xl md:rounded-2xl border border-zinc-200 dark:border-zinc-700 shadow-sm overflow-hidden">
-        <div className="flex items-center border-b border-zinc-100 dark:border-zinc-700 px-3 md:px-4">
-          {(["all", "pending"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                "py-2.5 md:py-3 px-2 mr-3 md:mr-5 text-sm font-medium border-b-2 transition-colors",
-                activeTab === tab
-                  ? "border-primary-600 text-primary-600 dark:text-primary-400"
-                  : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200",
-              )}
-            >
-              {tab === "all" ? "All" : "Pending"}
-              <span className="ml-1.5 text-[10px] bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-full">
-                {tab === "all" ? filteredSlips.length : filteredSlips.filter(s => s.status === "Pending").length}
-              </span>
-            </button>
-          ))}
-          <div className="ml-auto flex items-center gap-1">
-            {hasActiveFilters && (
+        <div className="flex items-center border-b border-zinc-100 dark:border-zinc-700 px-3 md:px-4 min-h-[56px]">
+          {!searchOpen ? (
+            <>
+              {(["all", "pending"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={cn(
+                    "py-2.5 md:py-3 px-2 mr-3 md:mr-5 text-sm font-medium border-b-2 transition-colors shrink-0",
+                    activeTab === tab
+                      ? "border-primary-600 text-primary-600 dark:text-primary-400"
+                      : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200",
+                  )}
+                >
+                  {tab === "all" ? "All" : "Pending"}
+                  <span className="ml-1.5 text-[10px] bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-full">
+                    {tab === "all" ? filteredSlips.length : filteredSlips.filter(s => s.status === "Pending").length}
+                  </span>
+                </button>
+              ))}
+              <div className="ml-auto flex items-center gap-1">
+                {hasActiveFilters && (
+                  <button
+                    onClick={clearFilters}
+                    className="text-xs text-rose-500 font-medium flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+                <button
+                  onClick={() => setSearchOpen(true)}
+                  className="flex items-center gap-1.5 text-sm font-medium px-2.5 py-2 rounded-lg transition-colors md:hidden text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  aria-label="Search"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setIsFilterOpen(true)}
+                  aria-label="Filter slips"
+                  className={cn(
+                    "flex items-center gap-1.5 text-sm font-medium px-2.5 py-2 rounded-lg transition-colors relative",
+                    hasActiveFilters
+                      ? "bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400"
+                      : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800",
+                  )}
+                >
+                  <Filter className="w-4 h-4" />
+                  {getActiveFilterCount() > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-primary-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
+                      {getActiveFilterCount()}
+                    </span>
+                  )}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="w-full flex items-center animate-fade-in relative py-2">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+              <input
+                type="text"
+                autoFocus
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search slips..."
+                className="w-full h-10 pl-9 pr-8 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors"
+              />
               <button
-                onClick={clearFilters}
-                className="text-xs text-rose-500 font-medium flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+                onClick={() => { setSearchQuery(""); setSearchOpen(false); }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-zinc-400 hover:text-zinc-600"
               >
-                <X className="w-3 h-3" />
+                <X className="w-4 h-4" />
               </button>
-            )}
-            <button
-              onClick={() => setIsFilterOpen(true)}
-              aria-label="Filter slips"
-              className={cn(
-                "flex items-center gap-1.5 text-sm font-medium px-2.5 py-2 rounded-lg transition-colors relative",
-                hasActiveFilters
-                  ? "bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400"
-                  : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800",
-              )}
-            >
-              <Filter className="w-4 h-4" />
-              {getActiveFilterCount() > 0 && (
-                <span className="absolute -top-1 -right-1 bg-primary-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
-                  {getActiveFilterCount()}
-                </span>
-              )}
-            </button>
-          </div>
+            </div>
+          )}
         </div>
 
         {hasActiveFilters && (
@@ -725,7 +724,7 @@ export function Dispatch() {
                               </button>
                               <button
                                 onClick={() => { tap(); setSlipToCancel(slip.id); }}
-                                className="p-2 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 active:scale-95 transition-all"
+                                className="p-2.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 active:scale-95 transition-all"
                                 title="Cancel"
                                 aria-label={`Cancel slip ${slip.id}`}
                               >
@@ -744,7 +743,7 @@ export function Dispatch() {
                           )}
                           <button
                             onClick={() => setEditingSlip(slip)}
-                            className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
+                            className="p-2.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
                             title="Edit"
                             aria-label={`Edit slip ${slip.id}`}
                           >
@@ -752,14 +751,14 @@ export function Dispatch() {
                           </button>
                           <button
                             onClick={() => void handleSlipDocumentAction(slip, "download")}
-                            className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
+                            className="p-2.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
                             title="Download"
                           >
                             <Download className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => void handleSlipDocumentAction(slip, "print")}
-                            className="p-2 text-zinc-400 hover:text-primary-600 dark:hover:text-primary-400 rounded-lg hover:bg-primary-50 active:scale-95 transition-all"
+                            className="p-2.5 text-zinc-400 hover:text-primary-600 dark:hover:text-primary-400 rounded-lg hover:bg-primary-50 active:scale-95 transition-all"
                             title="Print"
                           >
                             <Printer className="w-4 h-4" />

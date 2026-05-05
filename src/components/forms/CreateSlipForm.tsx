@@ -292,9 +292,14 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={lbl}>Driver Name</label>
-            <input type="text" value={formData.driverName}
-              onChange={(e) => setFormData({ ...formData, driverName: e.target.value })}
-              className={inp} placeholder="Driver name" />
+            <Combobox
+              options={activeEmployees.filter(e => /driver/i.test(e.role || "")).map(e => ({ label: e.name, value: e.name }))}
+              value={formData.driverName}
+              allowCreate
+              onChange={(val) => setFormData({ ...formData, driverName: val || "" })}
+              placeholder="Driver name"
+              mobileTitle="Select Driver"
+            />
           </div>
           <div>
             <label className={lbl}>Driver Phone</label>

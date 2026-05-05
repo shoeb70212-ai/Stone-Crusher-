@@ -281,9 +281,14 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
       <div className="grid grid-cols-2 gap-x-3">
         <div>
           <label className={lbl}>Driver Name</label>
-          <input type="text" value={formData.driverName}
-            onChange={(e) => setFormData({ ...formData, driverName: e.target.value })}
-            className={inp} placeholder="Driver name" />
+          <Combobox
+            options={activeEmployees.filter(e => /driver/i.test(e.role || "")).map(e => ({ label: e.name, value: e.name }))}
+            value={formData.driverName}
+            allowCreate
+            onChange={(val) => setFormData({ ...formData, driverName: val || "" })}
+            placeholder="Driver name"
+            mobileTitle="Select Driver"
+          />
         </div>
 
         <div>
@@ -379,11 +384,15 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
         <div>
           <label className={lbl}>Operator</label>
           <Combobox
-            options={Array.from(new Set(slips.map(s => s.operatorName).filter(Boolean))).map(name => ({ label: name as string, value: name as string }))}
+            options={Array.from(new Set([
+              ...slips.map(s => s.operatorName).filter(Boolean) as string[],
+              ...activeEmployees.filter(e => /operator/i.test(e.role || "")).map(e => e.name)
+            ])).map(name => ({ label: name, value: name }))}
             value={formData.operatorName}
             allowCreate
-            onChange={(val) => setFormData({ ...formData, operatorName: val })}
+            onChange={(val) => setFormData({ ...formData, operatorName: val || "" })}
             placeholder="Operator name"
+            mobileTitle="Select Operator"
           />
         </div>
         <div>

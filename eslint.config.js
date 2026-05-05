@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint';
 import prettier from 'eslint-config-prettier';
 
 export default tseslint.config(
-  { ignores: ['dist', 'build', '**/build/**', 'node_modules', 'playwright-report', 'test-results'] },
+  { ignores: ['.kilo', 'dist', 'build', '**/build/**', 'node_modules', 'playwright-report', 'test-results'] },
   {
     extends: [
       js.configs.recommended,

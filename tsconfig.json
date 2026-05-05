@@ -36,6 +36,6 @@
     "noUncheckedIndexedAccess": false,
     "exactOptionalPropertyTypes": false
   },
-  "include": ["src"],
+  "include": ["src", "tests", "api", "scripts", "vite.config.ts", "server.ts", "capacitor.config.ts", "playwright.config.ts", "eslint.config.js"],
   "exclude": ["node_modules", "dist"]
 }

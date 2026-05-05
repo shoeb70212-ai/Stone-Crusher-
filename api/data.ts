@@ -21,6 +21,7 @@ import {
   addTombstones,
   getTombstonedIds,
   getTombstonesSince,
+  pruneTombstones,
   type DataRecord,
 } from './_db.js';
 import { verifyBearerToken } from './_supabase-admin.js';
@@ -28,6 +29,22 @@ import { getCorsOrigin } from './_cors.js';
 import type { UserRole, UserAccount } from './_types.js';
 import * as Sentry from '@sentry/node';
 import { getRatelimit } from './_ratelimit.js';
+
+// ---------------------------------------------------------------------------
+// Opportunistic tombstone pruning — fire-and-forget after GET, max once/hour
+// ---------------------------------------------------------------------------
+let _lastPruneMs = 0;
+const PRUNE_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+
+function maybePruneTombstones(): void {
+  const now = Date.now();
+  if (now - _lastPruneMs < PRUNE_COOLDOWN_MS) return;
+  _lastPruneMs = now;
+  // Fire-and-forget — errors are logged to Sentry but never block the response.
+  pruneTombstones().catch((err) => {
+    Sentry.captureException(err, { extra: { context: 'tombstone-prune' } });
+  });
+}
 
 function getRateLimitKey(req: VercelRequest): string {
   const fwd = req.headers['x-forwarded-for'];
@@ -177,7 +194,7 @@ async function checkOrphanSafety(
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const corsOrigin = getCorsOrigin(req);
+  const corsOrigin = getCorsOrigin(req.headers.origin as string | undefined);
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', corsOrigin);
   res.setHeader('Vary', 'Origin');
@@ -271,6 +288,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Include tombstones for the delta window so clients can drop deleted records.
       const tombstones = sinceDate ? await getTombstonesSince(sinceDate) : {};
+
+      // Background: prune expired tombstones (max once per hour per process).
+      // This is fire-and-forget — the DELETE runs asynchronously after the
+      // response is already being sent, so it never adds latency to GET.
+      maybePruneTombstones();
 
       return res.status(200).json({
         bootstrapRequired: false,
@@ -415,7 +437,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // POST — Full overwrite (admin backup restore only)
   // -------------------------------------------------------------------------
   if (req.method === 'POST') {
-    const caller = await resolveCaller(req);
     if (!caller || caller.role !== 'Admin') {
       return res.status(403).json({ error: 'Only Admins can restore backups.' });
     }

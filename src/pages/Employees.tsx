@@ -89,6 +89,7 @@ export function Employees() {
     addTransaction,
     deleteTransaction,
     getEmployeeBalance,
+    companySettings,
   } = useErp();
   const { addToast } = useToast();
 
@@ -677,12 +678,16 @@ export function Employees() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Role</label>
-                  <input
+                  <select
                     value={employeeForm.role}
                     onChange={(event) => setEmployeeForm({ ...employeeForm, role: event.target.value })}
                     className="w-full rounded-lg border border-zinc-300 px-3 py-2 outline-none focus:ring-2 focus:ring-primary-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white"
-                    placeholder="Loader, Operator, Driver"
-                  />
+                  >
+                    <option value="">Select role...</option>
+                    {(companySettings.employeeRoles || []).map((r, idx) => (
+                      <option key={idx} value={r}>{r}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Joining Date</label>

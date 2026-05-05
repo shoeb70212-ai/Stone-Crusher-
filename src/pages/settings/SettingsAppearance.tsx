@@ -75,7 +75,7 @@ export function SettingsAppearance({ localSettings, setLocalSettings, isSaved, o
             return (
               <button
                 key={color.id}
-                onClick={() => upd({ primaryColor: color.id as any })}
+                onClick={() => upd({ primaryColor: color.id as CompanySettings["primaryColor"] })}
                 aria-pressed={isActive}
                 className={`relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl border transition-colors ${
                   isActive

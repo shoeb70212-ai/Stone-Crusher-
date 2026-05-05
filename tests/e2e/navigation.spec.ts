@@ -16,13 +16,13 @@ test.describe('Sidebar navigation', () => {
     await app.gotoAuthenticated('Admin');
   });
 
-  test('app layout renders sidebar and header', async ({ page }) => {
+  test('app layout renders sidebar and header', async ({ page: _page }) => {
     await expect(app.sidebar).toBeVisible();
     await expect(app.header).toBeVisible();
     await expect(app.mainContent).toBeVisible();
   });
 
-  test('default view is Dashboard', async ({ page }) => {
+  test('default view is Dashboard', async ({ page: _page }) => {
     // After initial load the dashboard is the default view
     await expect(app.mainContent).toContainText(/Dashboard|Today|slips|revenue/i, { timeout: 10_000 });
   });
@@ -69,13 +69,13 @@ test.describe('Sidebar navigation', () => {
     await expect(page.locator('h1, h2', { hasText: /Audit Log/i }).first()).toBeVisible({ timeout: 8_000 });
   });
 
-  test('can navigate back to Dashboard after visiting another page', async ({ page }) => {
+  test('can navigate back to Dashboard after visiting another page', async ({ page: _page }) => {
     await app.navigateTo('Dispatch (Slips)');
     await app.navigateTo('Dashboard');
     await expect(app.mainContent).toContainText(/Dashboard|Today|slips|revenue/i, { timeout: 10_000 });
   });
 
-  test('sidebar shows current role label', async ({ page }) => {
+  test('sidebar shows current role label', async ({ page: _page }) => {
     // The sidebar bottom section shows "Role: Admin"
     await expect(app.sidebar).toContainText(/Admin/i);
   });

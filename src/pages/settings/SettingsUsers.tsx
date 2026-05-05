@@ -81,7 +81,7 @@ export function SettingsUsers({
                   </td>
                   <td className="py-3 px-4">
                     <select value={user.role}
-                      onChange={(e) => updUsers({ role: e.target.value as any })}
+                      onChange={(e) => updUsers({ role: e.target.value as "Admin" | "Manager" | "Partner" })}
                       className="border border-zinc-300 dark:border-zinc-600 rounded px-2 py-1 text-sm bg-white dark:bg-zinc-800 outline-none focus:border-primary-500 dark:text-white"
                     >
                       <option value="Admin">Admin</option>
@@ -91,7 +91,7 @@ export function SettingsUsers({
                   </td>
                   <td className="py-3 px-4">
                     <select value={user.status}
-                      onChange={(e) => updUsers({ status: e.target.value as any })}
+                      onChange={(e) => updUsers({ status: e.target.value as "Active" | "Inactive" })}
                       className={`inline-flex items-center border border-transparent rounded px-2 py-1 text-xs font-medium outline-none focus:border-primary-500 ${user.status === "Active" ? "bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-300" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200"}`}
                     >
                       <option value="Active">Active</option>
@@ -162,7 +162,7 @@ export function SettingsUsers({
                 <div>
                   <label className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500 block mb-1">Role</label>
                   <select value={user.role}
-                    onChange={(e) => updUsers({ role: e.target.value as any })}
+                    onChange={(e) => updUsers({ role: e.target.value as "Admin" | "Manager" | "Partner" })}
                     className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-zinc-800 outline-none focus:border-primary-500 dark:text-white"
                   >
                     <option value="Admin">Admin</option>
@@ -173,7 +173,7 @@ export function SettingsUsers({
                 <div>
                   <label className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500 block mb-1">Status</label>
                   <select value={user.status}
-                    onChange={(e) => updUsers({ status: e.target.value as any })}
+                    onChange={(e) => updUsers({ status: e.target.value as "Active" | "Inactive" })}
                     className={`w-full border border-transparent rounded-lg px-2 py-1.5 text-xs font-medium outline-none focus:border-primary-500 ${user.status === "Active" ? "bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-300" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200"}`}
                   >
                     <option value="Active">Active</option>

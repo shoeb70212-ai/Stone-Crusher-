@@ -217,7 +217,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       }
       // Sentry breadcrumb for auth events
       if (typeof window !== 'undefined') {
-        // @ts-ignore
+        // @ts-expect-error window.Sentry is added dynamically
         const Sentry = window.Sentry;
         if (Sentry) {
           Sentry.addBreadcrumb({
@@ -933,16 +933,11 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     return true;
   }, [userRole, queueUpdate, recordAudit]);
 
-  /** Soft-deletes an employee so salary, advance, and deduction history stays intact. */
+  /** Soft-deletes (deactivates) an employee so salary, advance, and deduction history stays intact. */
   const deleteEmployee = useCallback((id: string): boolean => {
     if (!isAdmin(userRole)) return false;
     const employee = employees.find((e) => e.id === id);
     if (!employee) return false;
-    const hasLedger = employeeTransactions.some((tx) => tx.employeeId === id);
-    if (hasLedger) {
-      console.warn(`Cannot deactivate employee ${employee.name}: active ledger entries exist.`);
-      return false;
-    }
     const deactivated = { ...employee, isActive: false };
     setEmployees((prev) => prev.map((e) => (e.id === id ? deactivated : e)));
     queueUpdate("employees", deactivated);
@@ -954,7 +949,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       description: `Deactivated employee ${employee.name}.`,
     });
     return true;
-  }, [userRole, employees, employeeTransactions, queueUpdate, recordAudit]);
+  }, [userRole, employees, queueUpdate, recordAudit]);
 
   /** Adds a salary, advance, deduction, or adjustment entry for an employee. */
   const addEmployeeTransaction = useCallback((transaction: EmployeeTransaction): boolean => {
@@ -1096,6 +1091,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
 
   /** Partially updates a transaction by ID. */
   const updateTransaction = useCallback((id: string, updates: Partial<Transaction>): boolean => {
+    if (!isManagerOrAbove(userRole)) return false;
     const previous = transactions.find((t) => t.id === id);
     if (!previous) return false;
     const updated = { ...previous, ...updates };
@@ -1110,7 +1106,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       metadata: { type: updated.type, amount: updated.amount, category: updated.category },
     });
     return true;
-  }, [transactions, queueUpdate, recordAudit]);
+  }, [userRole, transactions, queueUpdate, recordAudit]);
 
   /** Hard-deletes a transaction — only transactions support true deletion. */
   const deleteTransaction = useCallback((id: string): boolean => {

@@ -41,7 +41,7 @@ export function SettingsInvoicing({ localSettings, setLocalSettings, isSaved, on
           <select
             id="inv-watermark"
             value={localSettings.invoiceWatermark || "None"}
-            onChange={(e) => upd({ invoiceWatermark: e.target.value as any })}
+            onChange={(e) => upd({ invoiceWatermark: e.target.value as CompanySettings["invoiceWatermark"] })}
             className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none transition-shadow bg-transparent dark:text-white"
           >
             <option value="None">None</option>
@@ -84,7 +84,7 @@ export function SettingsInvoicing({ localSettings, setLocalSettings, isSaved, on
           <select
             id="inv-template"
             value={localSettings.invoiceTemplate || "Classic"}
-            onChange={(e) => upd({ invoiceTemplate: e.target.value as any })}
+            onChange={(e) => upd({ invoiceTemplate: e.target.value as CompanySettings["invoiceTemplate"] })}
             className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none transition-shadow bg-transparent dark:text-white"
           >
             <option value="Classic">Classic</option>

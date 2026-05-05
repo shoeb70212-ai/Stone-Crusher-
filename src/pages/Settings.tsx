@@ -18,7 +18,7 @@ type Tab = "general" | "categories" | "users" | "materials" | "appearance" | "in
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "general",    label: "General Info",         icon: Building2 },
-  { id: "categories", label: "Expense Categories",   icon: Receipt   },
+  { id: "categories", label: "Categories & Roles",   icon: Receipt   },
   { id: "users",      label: "Users & Roles",        icon: Users     },
   { id: "materials",  label: "Materials Master",     icon: Receipt   },
   { id: "appearance", label: "Appearance",           icon: Palette   },

@@ -82,9 +82,19 @@ export const pool = new Pool({
   connectionTimeoutMillis: 20_000,
 });
 
-/** Ensures a value that might be a raw JSON string is parsed into an object. */
+/**
+ * Ensures a value that might be a raw JSON string is parsed into an object.
+ * Handles malformed JSON gracefully — logs the error to Sentry and returns
+ * the raw value rather than crashing the entire request handler.
+ */
 export function parseJsonField<T>(value: T | string): T {
-  return typeof value === 'string' ? JSON.parse(value) : value;
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch (err) {
+    Sentry.captureException(err, { extra: { rawValue: value.slice(0, 200) } });
+    return value as unknown as T;
+  }
 }
 
 /**
@@ -395,6 +405,9 @@ export async function readSettings(): Promise<Record<string, unknown>> {
 /**
  * Writes companySettings back to the settings table.
  * Strips any passwordHash fields from users before persisting.
+ *
+ * When `expectedVersion` is provided, uses an atomic UPDATE with a WHERE
+ * clause to prevent TOCTOU race conditions between concurrent writers.
  */
 export async function writeSettings(data: Record<string, unknown>, expectedVersion?: number): Promise<{ ok: boolean; currentVersion?: number }> {
   // Strip passwordHash from every user entry — passwords live in Supabase Auth only.
@@ -405,21 +418,34 @@ export async function writeSettings(data: Record<string, unknown>, expectedVersi
       : data.users,
   };
 
-  const nextVersion = (typeof cleaned.version === 'number' ? cleaned.version : 0) + 1;
+  const nextVersion = (typeof data.version === 'number' ? data.version : 0) + 1;
   const payload = { ...cleaned, version: nextVersion };
+  const payloadJson = JSON.stringify(payload);
 
   if (typeof expectedVersion === 'number') {
-    const { rows } = await pool.query('SELECT data FROM settings WHERE id = $1', ['global']);
-    const existing = parseJsonField<Record<string, unknown>>(rows[0]?.data ?? {});
-    const currentVersion = typeof existing.version === 'number' ? existing.version : 0;
-    if (currentVersion !== expectedVersion) {
+    // Atomic compare-and-swap: only updates if the current version matches.
+    // This prevents the TOCTOU race where two concurrent requests both read
+    // the same version and then both write, with the second silently overwriting
+    // the first's changes.
+    const { rowCount } = await pool.query(
+      `UPDATE settings SET data = $2
+       WHERE id = $1 AND (data->>'version')::int = $3`,
+      ['global', payloadJson, expectedVersion],
+    );
+    if (rowCount === 0) {
+      // Version mismatch — read the current version to report it back.
+      const { rows } = await pool.query('SELECT data FROM settings WHERE id = $1', ['global']);
+      const existing = parseJsonField<Record<string, unknown>>(rows[0]?.data ?? {});
+      const currentVersion = typeof existing.version === 'number' ? existing.version : 0;
       return { ok: false, currentVersion };
     }
+    return { ok: true, currentVersion: nextVersion };
   }
 
+  // No version check — unconditional upsert (used during bootstrap, restore, etc.)
   await pool.query(
     'INSERT INTO settings (id, data) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data',
-    ['global', JSON.stringify(payload)],
+    ['global', payloadJson],
   );
   return { ok: true, currentVersion: nextVersion };
 }

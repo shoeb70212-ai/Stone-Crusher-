@@ -216,6 +216,7 @@ export interface CompanySettings {
 
   // Master lists
   expenseCategories?: string[];
+  employeeRoles?: string[];
   termsAndConditions?: string;
   materials?: Material[];
   users?: UserAccount[];

@@ -20,15 +20,15 @@ test.describe('Admin role — full access', () => {
     await app.gotoAuthenticated('Admin');
   });
 
-  test('Admin sees Ledger nav item', async ({ page }) => {
+  test('Admin sees Ledger nav item', async ({ page: _page }) => {
     await app.assertSidebarContains('Ledger');
   });
 
-  test('Admin sees Settings nav item', async ({ page }) => {
+  test('Admin sees Settings nav item', async ({ page: _page }) => {
     await app.assertSidebarContains('Settings');
   });
 
-  test('Admin sees Audit Log nav item', async ({ page }) => {
+  test('Admin sees Audit Log nav item', async ({ page: _page }) => {
     await app.assertSidebarContains('Audit Log');
   });
 

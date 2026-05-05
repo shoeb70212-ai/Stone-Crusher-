@@ -74,8 +74,8 @@ export function SettingsGeneral({
             <input
               id={`settings-${key}`}
               type={type}
-              value={(localSettings as any)[key] ?? ""}
-              onChange={(e) => upd({ [key]: e.target.value } as any)}
+              value={(localSettings[key] as string) ?? ""}
+              onChange={(e) => upd({ [key]: e.target.value } as Partial<CompanySettings>)}
               className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-shadow bg-transparent dark:text-white"
             />
           </div>
@@ -101,8 +101,8 @@ export function SettingsGeneral({
             <input
               id={`settings-${key}`}
               type="text"
-              value={(localSettings as any)[key] ?? ""}
-              onChange={(e) => upd({ [key]: e.target.value } as any)}
+              value={(localSettings[key] as string) ?? ""}
+              onChange={(e) => upd({ [key]: e.target.value } as Partial<CompanySettings>)}
               className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-shadow bg-transparent dark:text-white"
             />
           </div>
@@ -113,7 +113,7 @@ export function SettingsGeneral({
           <select
             id="settings-invoiceFormat"
             value={localSettings.invoiceFormat || "A4"}
-            onChange={(e) => upd({ invoiceFormat: e.target.value as any })}
+            onChange={(e) => upd({ invoiceFormat: e.target.value as CompanySettings["invoiceFormat"] })}
             className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none transition-shadow bg-transparent dark:text-white"
           >
             <option value="A4">A4 Size (Standard)</option>
@@ -136,8 +136,8 @@ export function SettingsGeneral({
             <input
               id={`settings-${key}`}
               type="text"
-              value={(localSettings as any)[key] ?? ""}
-              onChange={(e) => upd({ [key]: e.target.value } as any)}
+              value={(localSettings[key] as string) ?? ""}
+              onChange={(e) => upd({ [key]: e.target.value } as Partial<CompanySettings>)}
               className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none transition-shadow bg-transparent dark:text-white"
             />
           </div>
@@ -151,7 +151,7 @@ export function SettingsGeneral({
           <select
             id="settings-slipFormat"
             value={localSettings.slipFormat || "A4"}
-            onChange={(e) => upd({ slipFormat: e.target.value as any })}
+            onChange={(e) => upd({ slipFormat: e.target.value as CompanySettings["slipFormat"] })}
             className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none transition-shadow bg-white dark:bg-zinc-800 dark:text-white"
           >
             <option value="A4">A4 Size</option>

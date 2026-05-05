@@ -267,31 +267,26 @@ export async function printSlip(data: SlipPrintData): Promise<void> {
   // Verify the connection is still alive — Android can silently drop the BLE
   // link if the printer goes out of range or powers down.
   try {
-    const { BleClient } = await import('@capacitor-community/bluetooth-le');
-    const isConnected = await BleClient.isConnected(connectedDeviceId);
-    if (!isConnected) {
-      // Reset state so the UI prompts the user to reconnect.
-      const lostId = connectedDeviceId;
-      connectedDeviceId = null;
-      connectedProfile = null;
-      // Best-effort attempt to auto-reconnect once.
-      const reconnected = await connectPrinter(lostId);
-      if (!reconnected) {
-        throw new Error('Printer disconnected. Reconnect to print.');
-      }
+    const bytes = buildSlipBytes(data);
+    await writeChunked(connectedDeviceId, connectedProfile, bytes);
+  } catch (error) {
+    console.error('BLE write failed, attempting reconnect:', error);
+    // Best-effort attempt to auto-reconnect once.
+    const lostId = connectedDeviceId;
+    connectedDeviceId = null;
+    connectedProfile = null;
+    const reconnected = await connectPrinter(lostId);
+    if (!reconnected) {
+      throw new Error('Printer disconnected. Reconnect to print.', { cause: error });
     }
-  } catch (error) {
-    if (error instanceof Error && /disconnect/i.test(error.message)) throw error;
-    // Propagate underlying BLE errors with a clearer message.
-    throw new Error('Could not reach the printer. Make sure it is on and in range.');
-  }
-
-  const bytes = buildSlipBytes(data);
-  try {
-    await writeChunked(connectedDeviceId!, connectedProfile!, bytes);
-  } catch (error) {
-    console.error('BLE write failed:', error);
-    throw new Error('Print failed. The printer may be out of paper or busy.');
+    // Try one more time after reconnecting
+    try {
+      const bytes = buildSlipBytes(data);
+      await writeChunked(connectedDeviceId!, connectedProfile!, bytes);
+    } catch (retryError) {
+      console.error('BLE write retry failed:', retryError);
+      throw new Error('Print failed. The printer may be out of paper or busy.', { cause: retryError });
+    }
   }
 }
 

@@ -14,25 +14,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin, verifyBearerToken } from './_supabase-admin.js';
 import { initDb, readSettings, writeSettings } from './_db.js';
+import { getCorsOrigin } from './_cors.js';
 import type { UserAccount } from './_types.js';
 import { getRatelimit } from './_ratelimit.js';
 import * as Sentry from '@sentry/node';
 
-const ALLOWED_ORIGINS = new Set([
-  'https://stone-crusher.vercel.app',
-  'http://localhost:5173',
-  'http://localhost:8081',
-  'http://localhost:8083',
-  // Capacitor Android WebView origin
-  'https://localhost',
-  'capacitor://localhost',
-]);
-
-function getCorsOrigin(req: VercelRequest): string {
-  const origin = req.headers['origin'] as string | undefined;
-  if (!origin) return '*';
-  return ALLOWED_ORIGINS.has(origin) ? origin : 'null';
-}
+// CORS origin allowlist is centralised in _cors.ts
 
 function isValidRole(value: unknown): value is UserAccount['role'] {
   return value === 'Admin' || value === 'Manager' || value === 'Partner';
@@ -64,7 +51,7 @@ async function resolveCallerRole(
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const corsOrigin = getCorsOrigin(req);
+  const corsOrigin = getCorsOrigin(req.headers.origin as string | undefined);
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', corsOrigin);
   res.setHeader('Vary', 'Origin');
@@ -184,7 +171,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ...settings,
       users: [...existingUsers, newUser],
     };
-    await writeSettings(updatedSettings);
+
+    // Atomic safety: if writeSettings fails, roll back the Supabase Auth user
+    // so we don't end up with an orphaned Auth entry that can never log in
+    // (because resolveCaller requires the user to exist in companySettings).
+    try {
+      await writeSettings(updatedSettings);
+    } catch (settingsError) {
+      Sentry.captureException(settingsError, {
+        extra: { context: 'writeSettings rollback', userId: authData.user.id },
+      });
+      // Best-effort rollback — delete the Auth user we just created.
+      try {
+        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+      } catch (rollbackError) {
+        Sentry.captureException(rollbackError, {
+          extra: { context: 'Auth user rollback failed', userId: authData.user.id },
+        });
+      }
+      return res.status(500).json({
+        error: 'Failed to save user to settings. The account was not created. Please try again.',
+      });
+    }
 
     return res.status(201).json({ user: newUser });
   }

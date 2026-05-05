@@ -59,7 +59,7 @@ test.describe('Customers page', () => {
 
   test('customer list is not empty', async ({ page }) => {
     // At least one customer row should be present (Rahul from local-data.json)
-    const listItems = page.locator('main .customer-row, main table tbody tr, main li').first();
+
     // Use a text match instead of a structural query since we know "Rahul" exists
     await expect(page.locator('main')).toContainText('Rahul');
   });

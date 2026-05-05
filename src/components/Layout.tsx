@@ -331,7 +331,7 @@ export function Layout() {
         <button
           key={`fab-${currentView}`}
           onClick={() => window.dispatchEvent(new CustomEvent(CREATE_EVENT))}
-          className="md:hidden fixed right-4 bottom-[calc(80px+env(safe-area-inset-bottom))] w-14 h-14 bg-primary-600 text-white hover:bg-primary-700 active:scale-90 shadow-lg shadow-primary-600/25 ring-4 ring-background flex items-center justify-center rounded-full z-[50] transition-transform animate-fab-pop"
+          className="mobile-fab md:hidden bg-primary-600 text-white hover:bg-primary-700 active:scale-90 shadow-primary-600/25 ring-4 ring-background transition-transform animate-fab-pop"
           aria-label={currentView === "dispatch" ? "Create new dispatch slip" : "Create new invoice"}
         >
           <Plus className="w-7 h-7" strokeWidth={2.5} />

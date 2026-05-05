@@ -179,7 +179,7 @@ export function MobileModal({
         style={{
           // Apply live drag offset only while the user is dragging.
           transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
-          transition: dragStartY.current === null ? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
+          transition: dragY === 0 ? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
         }}
         className={cn(
           "relative flex flex-col bg-surface text-foreground shadow-elev-xl",

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { LoginPage } from './pages/LoginPage';
-import { AppPage } from './pages/AppPage';
+
 
 const TEST_ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@admin.com';
 const TEST_ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'CrushTrack@123';
@@ -27,7 +27,7 @@ test.describe('Login flow', () => {
     await loginPage.usernameInput.waitFor({ state: 'visible', timeout: 15_000 });
   });
 
-  test('renders the login form with required fields', async ({ page }) => {
+  test('renders the login form with required fields', async ({ page: _page }) => {
     await expect(loginPage.usernameInput).toBeVisible();
     await expect(loginPage.passwordInput).toBeVisible();
     await expect(loginPage.submitButton).toBeVisible();
@@ -43,19 +43,19 @@ test.describe('Login flow', () => {
     expect(token).toBeTruthy();
   });
 
-  test('invalid password shows error alert', async ({ page }) => {
+  test('invalid password shows error alert', async ({ page: _page }) => {
     await loginPage.login(TEST_ADMIN_EMAIL, 'wrongpassword');
     await loginPage.assertError('Invalid username or password');
     // Must stay on login page
     await expect(loginPage.usernameInput).toBeVisible();
   });
 
-  test('invalid email shows error alert', async ({ page }) => {
+  test('invalid email shows error alert', async ({ page: _page }) => {
     await loginPage.login('notauser@example.com', TEST_ADMIN_PASSWORD);
     await loginPage.assertError('Invalid username or password');
   });
 
-  test('empty form shows validation errors', async ({ page }) => {
+  test('empty form shows validation errors', async ({ page: _page }) => {
     // Submit without filling any fields
     await loginPage.submitButton.click();
     // HTML5 required validation or Zod field errors should appear

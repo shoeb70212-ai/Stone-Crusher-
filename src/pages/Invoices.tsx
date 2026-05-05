@@ -143,15 +143,15 @@ function InvoicesContent() {
       </div>
 
       <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 overflow-hidden">
-        {/* Type tabs */}
-        <div className="border-b border-zinc-100 dark:border-zinc-700 px-4 py-3 bg-zinc-50 dark:bg-zinc-900/50 flex flex-wrap gap-2 text-sm font-medium">
+        {/* Type tabs (Desktop only) */}
+        <div className="hidden md:flex border-b border-zinc-100 dark:border-zinc-700 px-4 py-3 bg-zinc-50 dark:bg-zinc-900/50 overflow-x-auto no-scrollbar gap-2 text-sm font-medium whitespace-nowrap">
           {(["All", "GST", "Cash"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${
+              className={`px-4 py-1.5 rounded-lg transition-colors shrink-0 ${
                 activeTab === tab
-                  ? "bg-white dark:bg-zinc-800 text-primary-700 shadow-sm border border-zinc-200 dark:border-zinc-700"
+                  ? "bg-white dark:bg-zinc-800 text-primary-700 dark:text-primary-400 shadow-sm border border-zinc-200 dark:border-zinc-700"
                   : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
               }`}
             >
@@ -160,13 +160,13 @@ function InvoicesContent() {
           ))}
         </div>
 
-        {/* Mobile search + filter bar */}
+        {/* Mobile search + filter + type tabs bar */}
         <div className="md:hidden border-b border-zinc-100 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2">
           <div className="flex items-center gap-2">
             {!searchExpanded ? (
               <button
                 onClick={() => setSearchExpanded(true)}
-                className="flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+                className="flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
                 aria-label="Search"
               >
                 <Search className="h-4 w-4" />
@@ -190,7 +190,7 @@ function InvoicesContent() {
             {!searchExpanded && (
               <button
                 onClick={() => setIsFilterOpen(true)}
-                className={`flex min-h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold ${
+                className={`flex min-h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-semibold ${
                   hasInvoiceFilters
                     ? "border-primary-200 bg-primary-50 text-primary-700 dark:border-primary-500/30 dark:bg-primary-500/15 dark:text-primary-300"
                     : "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
@@ -200,21 +200,41 @@ function InvoicesContent() {
                 Filter
               </button>
             )}
-            {hasInvoiceFilters && !searchExpanded && (
-              <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto no-scrollbar">
-                {filterCustomerId !== "All" && (
-                  <MobileChip onRemove={() => setFilterCustomerId("All")}>
-                    {filterCustomerId === "CASH" ? "Cash" : customers.find((c) => c.id === filterCustomerId)?.name || "Customer"}
-                  </MobileChip>
-                )}
-                {(startDate || endDate) && (
-                  <MobileChip onRemove={() => { setStartDate(""); setEndDate(""); }}>
-                    Date
-                  </MobileChip>
-                )}
+            
+            {/* Invoices Type Tabs (visible on mobile beside search/filter) */}
+            {!searchExpanded && (
+              <div className="flex-1 flex overflow-x-auto no-scrollbar gap-2 items-center pl-1">
+                {(["All", "GST", "Cash"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
+                      activeTab === tab
+                        ? "bg-zinc-100 dark:bg-zinc-800 text-primary-700 dark:text-primary-400 border border-zinc-200 dark:border-zinc-700 shadow-sm"
+                        : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
               </div>
             )}
           </div>
+          {/* Active Filter Chips */}
+          {hasInvoiceFilters && !searchExpanded && (
+            <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto no-scrollbar mt-2">
+              {filterCustomerId !== "All" && (
+                <MobileChip onRemove={() => setFilterCustomerId("All")}>
+                  {filterCustomerId === "CASH" ? "Cash" : customers.find((c) => c.id === filterCustomerId)?.name || "Customer"}
+                </MobileChip>
+              )}
+              {(startDate || endDate) && (
+                <MobileChip onRemove={() => { setStartDate(""); setEndDate(""); }}>
+                  Date
+                </MobileChip>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Desktop filter bar */}
@@ -322,21 +342,21 @@ function InvoicesContent() {
                     </button>
                     <button
                       onClick={() => void handleInvoiceDocumentAction(inv, "download")}
-                      className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
+                      className="p-2.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
                       title="Download"
                     >
                       <Download className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => void handleInvoiceDocumentAction(inv, "print")}
-                      className="p-2 text-zinc-400 hover:text-primary-600 dark:hover:text-primary-400 rounded-lg hover:bg-primary-50 active:scale-95 transition-all"
+                      className="p-2.5 text-zinc-400 hover:text-primary-600 dark:hover:text-primary-400 rounded-lg hover:bg-primary-50 active:scale-95 transition-all"
                       title="Print"
                     >
                       <Printer className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => void handleInvoiceDocumentAction(inv, "whatsapp")}
-                      className="p-2 text-emerald-600 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 active:scale-95 transition-all"
+                      className="p-2.5 text-emerald-600 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 active:scale-95 transition-all"
                       title="WhatsApp"
                     >
                       <MessageCircle className="w-4 h-4" />

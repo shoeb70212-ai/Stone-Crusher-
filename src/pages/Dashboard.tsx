@@ -342,7 +342,7 @@ export function Dashboard() {
                 navigateTo(action.target);
               }}
               aria-label={`Create ${action.label.toLowerCase()}`}
-              className="flex items-center gap-2.5 pl-2.5 pr-4 py-2 min-h-[44px] rounded-full whitespace-nowrap text-xs font-semibold bg-surface border border-border hover:border-border-strong text-foreground active:scale-95 transition-colors"
+              className="flex items-center gap-2.5 pl-2.5 pr-5 py-2 min-h-[44px] shrink-0 rounded-full whitespace-nowrap text-xs font-semibold bg-surface border border-border hover:border-border-strong text-foreground active:scale-95 transition-colors"
             >
               <span className={`w-7 h-7 rounded-full flex items-center justify-center ${action.iconClass}`}>
                 <action.icon className="w-3.5 h-3.5" strokeWidth={2.5} />
