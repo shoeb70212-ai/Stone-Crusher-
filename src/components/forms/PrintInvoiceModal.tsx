@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Invoice, Customer } from "../../types";
 import { X, Printer, Download, Share2, Loader2, MessageCircle } from "lucide-react";
 import { useErp } from "../../context/ErpContext";
-import { createInvoicePdfBlob, downloadInvoicePdf, printHtml, sharePdfBlob, PRIMARY_COLORS, DEFAULT_PAYMENT_TERM_MS } from "../../lib/print-utils";
+import { createInvoicePdfBlob, downloadInvoicePdf, printPdfBlob, sharePdfBlob, PRIMARY_COLORS, DEFAULT_PAYMENT_TERM_MS } from "../../lib/print-utils";
 import { buildInvoiceWhatsAppMessage, openWhatsAppMessage } from "../../lib/whatsapp-share";
 import { isNative } from "../../lib/capacitor";
 import { toWords } from "../../lib/utils";
@@ -830,23 +830,31 @@ export function PrintInvoiceModal({
             <button
               disabled={isPrinting}
               onClick={async () => {
-                if (isNative()) {
-                  // Android WebView cannot use window.print() or html2canvas.
-                  // Generate via jsPDF and open the native share sheet instead.
-                  setIsPrinting(true);
-                  try {
-                    const blob = await createInvoicePdfBlob(invoice, customer, companySettings);
-                    await sharePdfBlob(blob, `Invoice-${invoice.invoiceNo}.pdf`, `Invoice ${invoice.invoiceNo}`);
-                  } finally {
-                    setIsPrinting(false);
+                setIsPrinting(true);
+                try {
+                  // Always generate the PDF via jsPDF (reliable, no html2canvas
+                  // hangs, identical output across native + web).
+                  const blob = await createInvoicePdfBlob(invoice, customer, companySettings);
+                  const filename = `Invoice-${invoice.invoiceNo}.pdf`;
+
+                  if (isNative()) {
+                    // Android/iOS WebView: route through native share sheet
+                    // which lets the user pick "Print" via system print service.
+                    const result = await sharePdfBlob(blob, filename, `Invoice ${invoice.invoiceNo}`);
+                    if (result === 'downloaded') {
+                      addToast('info', 'PDF saved. Open it to print.');
+                    }
+                  } else {
+                    // Web: print via hidden iframe + browser print dialog.
+                    // printPdfBlob auto-falls back to download on iOS Safari /
+                    // Firefox where iframe-based PDF print is unreliable.
+                    await printPdfBlob(blob, `Invoice ${invoice.invoiceNo}`);
                   }
-                } else {
-                  const element = document.getElementById('print-invoice-area');
-                  if (!element) return;
-                  // Use iframe print in the current tab — opening a new tab
-                  // causes a freeze when the user cancels the print dialog.
-                  printHtml(element.outerHTML);
-                  onClose();
+                } catch (error) {
+                  console.error('Invoice print failed:', error);
+                  addToast('error', 'Could not print the invoice. Please try again.');
+                } finally {
+                  setIsPrinting(false);
                 }
               }}
               className="min-h-11 flex-1 py-3 md:py-2 bg-primary-600 hover:bg-primary-700 active:bg-primary-800 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-1.5 text-sm active:scale-95 disabled:opacity-50"

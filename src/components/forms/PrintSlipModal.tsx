@@ -2,14 +2,13 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Slip } from "../../types";
 import { X, Printer, Share2, Bluetooth, Loader2, MessageCircle } from "lucide-react";
 import { useErp } from "../../context/ErpContext";
-import { createSlipPdfBlob, printHtml, sharePdfBlob, PRIMARY_COLORS } from "../../lib/print-utils";
+import { createSlipPdfBlob, printPdfBlob, sharePdfBlob, PRIMARY_COLORS } from "../../lib/print-utils";
 import { buildSlipWhatsAppMessage, openWhatsAppMessage } from "../../lib/whatsapp-share";
 import { isNative } from "../../lib/capacitor";
 import { useBodyScrollLock } from "../../lib/use-body-scroll-lock";
 import {
   scanForPrinters,
   connectPrinter,
-  disconnectPrinter,
   printSlip,
   getConnectedPrinterId,
   type BluetoothDevice,
@@ -383,22 +382,29 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
             <button
               disabled={isPrinting}
               onClick={async () => {
-                const el = document.getElementById('print-area');
-                if (!el) return;
-                if (isNative()) {
+                setIsPrinting(true);
+                try {
+                  // Always generate via jsPDF — same output on web + native and
+                  // bypasses html2canvas hangs / preview transform leakage.
+                  const blob = await createSlipPdfBlob(slip, customerName, companySettings);
                   const filename = `Slip-${slip.id.slice(0, 8).toUpperCase()}.pdf`;
-                  setIsPrinting(true);
-                  try {
-                    const blob = await createSlipPdfBlob(slip, customerName, companySettings);
-                    await sharePdfBlob(blob, filename, 'Share Loading Token');
-                  } finally {
-                    setIsPrinting(false);
+                  const title = `Slip ${slip.id.slice(0, 8).toUpperCase()}`;
+
+                  if (isNative()) {
+                    const result = await sharePdfBlob(blob, filename, title);
+                    if (result === 'downloaded') {
+                      addToast('info', 'PDF saved. Open it to print.');
+                    }
+                  } else {
+                    // Web: hidden iframe + browser print dialog. Auto-falls
+                    // back to download on iOS Safari / Firefox.
+                    await printPdfBlob(blob, title);
                   }
-                } else {
-                  // Use iframe print in the current tab — opening a new tab
-                  // causes a freeze when the user cancels the print dialog.
-                  printHtml(el.innerHTML);
-                  onClose();
+                } catch (error) {
+                  console.error('Slip print failed:', error);
+                  addToast('error', 'Could not print the slip. Please try again.');
+                } finally {
+                  setIsPrinting(false);
                 }
               }}
               className="min-h-11 flex-1 bg-primary-600 hover:bg-primary-700 active:bg-primary-800 text-white px-3 py-3 md:py-2 rounded-xl font-semibold text-sm flex items-center justify-center gap-1.5 transition-colors active:scale-95 disabled:opacity-50"

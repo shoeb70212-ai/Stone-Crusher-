@@ -13,12 +13,21 @@ interface EmptyStateProps {
 export function EmptyState({ icon: Icon, title, description, action, className = "" }: EmptyStateProps) {
   return (
     <div className={`flex flex-col items-center justify-center py-12 px-4 text-center ${className}`}>
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200 dark:from-zinc-800 dark:to-zinc-700 flex items-center justify-center mb-4 shadow-sm">
-        <Icon className="w-8 h-8 text-zinc-400 dark:text-zinc-500" />
+      {/* Soft halo + crisp tile = a calm, dignified empty state. */}
+      <div className="relative mb-5">
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 rounded-3xl bg-primary-500/10 blur-xl"
+        />
+        <div className="relative w-14 h-14 rounded-2xl bg-surface-2 border border-border flex items-center justify-center">
+          <Icon className="w-6 h-6 text-muted-foreground" strokeWidth={1.75} />
+        </div>
       </div>
-      <p className="text-base font-bold text-zinc-900 dark:text-white mb-1">{title}</p>
+      <p className="text-base font-display font-semibold text-foreground tracking-tight mb-1">
+        {title}
+      </p>
       {description && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-xs leading-relaxed">{description}</p>
+        <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">{description}</p>
       )}
       {action && <div className="mt-5">{action}</div>}
     </div>

@@ -33,80 +33,113 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   return (
     <header
-      className="flex h-14 md:h-16 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-2 md:px-8 items-center justify-between shrink-0 transition-colors z-20 mobile-header"
+      className="flex h-14 md:h-16 bg-background/85 backdrop-blur-xl border-b border-border px-3 md:px-6 items-center justify-between shrink-0 transition-colors sticky top-0 z-30 mobile-header"
       style={{ paddingTop: 'max(4px, env(safe-area-inset-top))' }}
     >
       {/* Left: date (desktop) / app name or back (mobile) */}
-      <div className="flex items-center gap-2 flex-1 min-w-0">
+      <div className="flex items-center gap-3 flex-1 min-w-0">
         {showBack ? (
           <button
             onClick={() => window.dispatchEvent(new CustomEvent(NAVIGATE_EVENT, { detail: "dashboard" }))}
-            className="sm:hidden flex items-center gap-1 text-sm font-bold text-zinc-900 dark:text-white tracking-tight active:scale-95 transition-transform"
+            className="sm:hidden flex items-center gap-1.5 text-sm font-display font-bold text-foreground tracking-tight active:scale-95 transition-transform"
             aria-label="Back to dashboard"
           >
             <ArrowLeft className="w-5 h-5" />
             <span className="mobile-header-title">CrushTrack</span>
           </button>
         ) : (
-          <span className="text-sm font-bold text-zinc-900 dark:text-white sm:hidden tracking-tight mobile-header-title">
+          <span className="text-sm font-display font-bold text-foreground sm:hidden tracking-tight mobile-header-title">
             CrushTrack
           </span>
         )}
-        <span className="text-xs md:text-sm font-medium text-zinc-500 dark:text-zinc-400 hidden sm:block truncate">
-          {format(new Date(), "EEE, dd MMM yyyy")}
-        </span>
+        {/* Desktop date — refined typography */}
+        <div className="hidden sm:flex flex-col leading-tight">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Today
+          </span>
+          <span className="text-sm font-medium text-foreground tabular-nums">
+            {format(new Date(), "EEE, dd MMM yyyy")}
+          </span>
+        </div>
       </div>
 
-      {/* Right actions */}
-      <div className="flex items-center gap-1 md:gap-3 shrink-0">
+      {/* Right actions — consistent 40×40 hit targets, semantic colors */}
+      <div className="flex items-center gap-1 shrink-0">
+
+        {/* Sync status — only renders when syncing/error so it doesn't take
+            up space when idle. Now sits inline with the icon row. */}
+        {syncStatus === 'syncing' && (
+          <span
+            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 h-8 rounded-full bg-muted text-muted-foreground text-xs font-medium"
+            aria-label="Saving changes…"
+            title="Saving changes…"
+          >
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Saving
+          </span>
+        )}
+        {syncStatus === 'error' && (
+          <span
+            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 h-8 rounded-full bg-danger-muted text-danger text-xs font-semibold"
+            aria-label="Sync failed — changes may not be saved"
+            title="Sync failed — changes may not be saved"
+            role="alert"
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Sync error
+          </span>
+        )}
+        {/* Mobile-only compact sync indicator */}
+        {syncStatus === 'syncing' && (
+          <span className="sm:hidden p-2 text-muted-foreground" aria-label="Saving" title="Saving…">
+            <Loader2 className="w-4 h-4 animate-spin" />
+          </span>
+        )}
+        {syncStatus === 'error' && (
+          <span className="sm:hidden p-2 text-danger" aria-label="Sync error" title="Sync error" role="alert">
+            <AlertTriangle className="w-4 h-4" />
+          </span>
+        )}
 
         {/* Theme toggle — cycles light → dark → system */}
         <button
           onClick={cycleTheme}
           title={`Theme: ${theme}. Click to cycle.`}
-          className="p-2 rounded-xl text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors active:scale-95"
+          className="w-10 h-10 inline-flex items-center justify-center rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors active:scale-95"
           aria-label={`Switch theme (current: ${theme})`}
         >
-          <ThemeIcon className="w-5 h-5" />
+          <ThemeIcon className="w-[18px] h-[18px]" />
         </button>
 
         {/* Notifications */}
-        <button className="relative p-2 rounded-xl text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors active:scale-95">
-          <Bell className="w-5 h-5" />
+        <button
+          className="relative w-10 h-10 inline-flex items-center justify-center rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors active:scale-95"
+          aria-label="View notifications"
+          title="Notifications"
+        >
+          <Bell className="w-[18px] h-[18px]" />
         </button>
 
-        {/* Sync status indicator */}
-        {syncStatus === 'syncing' && (
-          <span
-            className="p-2 text-zinc-400 dark:text-zinc-500"
-            aria-label="Saving changes…"
-            title="Saving changes…"
-          >
-            <Loader2 className="w-4 h-4 animate-spin" />
-          </span>
-        )}
-        {syncStatus === 'error' && (
-          <span
-            className="p-2 text-rose-500"
-            aria-label="Sync failed — changes may not be saved"
-            title="Sync failed — changes may not be saved"
-            role="alert"
-          >
-            <AlertTriangle className="w-4 h-4" />
-          </span>
-        )}
+        {/* Subtle vertical divider before role pill */}
+        <div className="w-px h-6 bg-border mx-1.5 hidden sm:block" aria-hidden="true" />
 
-        {/* Role badge + Sign Out */}
+        {/* Role badge — refined, dignified, less visually loud */}
         <div className="relative">
           <button
             onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
-            className="h-9 pl-2.5 pr-2 rounded-xl bg-primary-50 dark:bg-primary-500/10 flex items-center gap-1.5 text-primary-700 dark:text-primary-300 font-semibold text-sm border border-primary-100 dark:border-primary-500/20 hover:bg-primary-100 dark:hover:bg-primary-500/20 transition-colors active:scale-95"
+            aria-haspopup="menu"
+            aria-expanded={isRoleDropdownOpen}
+            className="h-10 sm:h-9 pl-1 pr-1 sm:pl-1 sm:pr-2.5 rounded-full sm:rounded-xl flex items-center gap-2 text-sm font-medium text-foreground hover:bg-muted transition-colors active:scale-95"
           >
-            <Shield className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden sm:inline">{userRole ?? '—'}</span>
-            <div className="w-6 h-6 rounded-lg bg-primary-200 dark:bg-primary-500/30 flex items-center justify-center text-primary-800 dark:text-primary-200 text-xs font-bold">
+            <span
+              className="w-8 h-8 sm:w-7 sm:h-7 rounded-full sm:rounded-lg bg-primary-600 text-white flex items-center justify-center text-xs font-bold tracking-wide shadow-elev-xs"
+              aria-hidden="true"
+            >
               {userRole?.charAt(0) ?? '?'}
-            </div>
+            </span>
+            <span className="hidden sm:inline-flex items-center gap-1 text-foreground">
+              <span className="font-medium">{userRole ?? '—'}</span>
+            </span>
           </button>
 
           {isRoleDropdownOpen && (
@@ -115,16 +148,26 @@ export function Header({ onMenuClick }: HeaderProps) {
                 className="fixed inset-0 z-40"
                 onClick={() => setIsRoleDropdownOpen(false)}
               />
-              <div className="absolute top-11 right-0 z-50 w-48 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg overflow-hidden">
-                <div className="px-4 py-2.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-900/50 border-b border-zinc-100 dark:border-zinc-700 uppercase tracking-wider">
-                  Signed in as {userRole}
+              <div
+                role="menu"
+                className="absolute top-12 right-0 z-50 w-56 card-surface shadow-elev-lg overflow-hidden animate-scale-in origin-top-right"
+              >
+                <div className="px-4 pt-3 pb-2 border-b border-border">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.1em]">
+                    Signed in as
+                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Shield className="w-3.5 h-3.5 text-primary-600" />
+                    <p className="text-sm font-semibold text-foreground">{userRole}</p>
+                  </div>
                 </div>
                 <button
+                  role="menuitem"
                   onClick={async () => {
                     await clearAuthSession();
                     window.location.reload();
                   }}
-                  className="w-full text-left px-4 py-2.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+                  className="w-full text-left px-4 py-2.5 text-sm font-medium text-danger hover:bg-danger-muted transition-colors"
                 >
                   Sign Out
                 </button>

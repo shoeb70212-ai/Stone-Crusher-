@@ -149,25 +149,25 @@ export function Login({ onLogin }: LoginProps) {
   // Biometric enrollment prompt shown after a successful password login
   if (showBiometricPrompt) {
     return (
-      <div className="h-screen bg-zinc-50 dark:bg-zinc-900 flex items-center justify-center p-6">
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <div className="w-full max-w-sm text-center">
-          <div className="w-20 h-20 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center mx-auto mb-5">
-            <Fingerprint className="w-10 h-10 text-primary-600 dark:text-primary-400" />
+          <div className="w-16 h-16 bg-primary-50 dark:bg-primary-500/10 ring-1 ring-primary-200 dark:ring-primary-500/20 rounded-2xl flex items-center justify-center mx-auto mb-5">
+            <Fingerprint className="w-8 h-8 text-primary-600 dark:text-primary-400" />
           </div>
-          <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-2">Enable Biometric Login?</h2>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-8">
+          <h2 className="text-xl font-display font-bold text-foreground mb-2 tracking-tight">Enable Biometric Login?</h2>
+          <p className="text-sm text-muted-foreground mb-8 leading-relaxed">
             Sign in faster next time with your fingerprint or face ID instead of your password.
           </p>
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2.5">
             <button
               onClick={() => handleBiometricEnrollment(true)}
-              className="w-full h-12 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-2xl transition-colors"
+              className="w-full h-12 bg-primary-600 hover:bg-primary-700 active:scale-[0.98] text-white font-semibold rounded-xl transition-all shadow-elev-sm"
             >
               Enable Biometric Login
             </button>
             <button
               onClick={() => handleBiometricEnrollment(false)}
-              className="w-full h-12 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 font-medium rounded-2xl transition-colors"
+              className="w-full h-12 bg-muted hover:bg-surface-2 text-foreground font-medium rounded-xl transition-colors"
             >
               Skip for now
             </button>
@@ -178,106 +178,161 @@ export function Login({ onLogin }: LoginProps) {
   }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-white dark:bg-zinc-900">
-      {/* Top section — branded gradient hero with logo */}
-      <div className="flex-2 bg-linear-to-br from-primary-600 via-primary-600 to-primary-700 flex flex-col items-center justify-center px-6 gap-4">
-        <div className="w-24 h-24 rounded-3xl overflow-hidden shadow-xl bg-white">
-          <img
-            src={logoSvg}
-            alt={`${appName} logo`}
-            className="w-full h-full object-cover"
-          />
-        </div>
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-white tracking-tight">{appName}</h1>
-          <p className="text-primary-100 mt-1 text-sm">Stone Crusher ERP</p>
+    <div className="min-h-screen flex flex-col md:flex-row bg-background">
+      {/* ── Brand panel ────────────────────────────────────────────
+          Mobile: compact top hero (1/3 of viewport).
+          Desktop: full-height left column with editorial typography. */}
+      <div className="md:flex-1 md:min-h-screen relative bg-primary-600 dark:bg-primary-700 flex flex-col items-center md:items-start justify-center px-6 md:px-12 lg:px-16 py-10 md:py-12">
+        {/* Subtle decorative grid for desktop hero */}
+        <div
+          aria-hidden="true"
+          className="hidden md:block absolute inset-0 opacity-[0.07] pointer-events-none"
+          style={{
+            backgroundImage:
+              "linear-gradient(to right, white 1px, transparent 1px), linear-gradient(to bottom, white 1px, transparent 1px)",
+            backgroundSize: "32px 32px",
+          }}
+        />
+
+        <div className="relative flex flex-col items-center md:items-start gap-4 md:gap-6 max-w-md">
+          <div className="w-16 h-16 md:w-14 md:h-14 rounded-2xl overflow-hidden shadow-elev-md bg-white">
+            <img
+              src={logoSvg}
+              alt={`${appName} logo`}
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <div className="text-center md:text-left">
+            <h1 className="text-3xl md:text-5xl font-display font-bold text-white tracking-tight leading-[1.05]">
+              {appName}
+            </h1>
+            <p className="text-primary-100 mt-1.5 md:mt-3 text-sm md:text-base">
+              Stone Crusher ERP
+            </p>
+          </div>
+          {/* Desktop tagline — adds confidence without being marketing-loud */}
+          <p className="hidden md:block text-sm text-primary-100/90 leading-relaxed mt-4 max-w-xs">
+            Dispatch slips, invoicing, daybook and ledger — built for the modern crusher operation.
+          </p>
         </div>
       </div>
 
-      {/* Bottom section — login form */}
-      <div className="flex-3 bg-white dark:bg-zinc-900 rounded-t-3xl -mt-4 px-6 pt-8 pb-safe flex flex-col">
-        <h2 className="text-xl font-bold text-zinc-900 dark:text-white mb-1">Welcome back</h2>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6">Sign in to continue</p>
+      {/* ── Form panel ─────────────────────────────────────────────
+          Mobile: rounded-top card overlapping hero.
+          Desktop: clean right column. */}
+      <div className="flex-1 bg-surface md:bg-background rounded-t-3xl md:rounded-none -mt-5 md:mt-0 px-6 pt-8 md:pt-0 pb-6 md:px-12 lg:px-16 flex flex-col justify-center">
+        <div className="w-full max-w-sm md:max-w-md mx-auto">
+          <h2 className="text-2xl md:text-3xl font-display font-bold text-foreground tracking-tight">
+            Welcome back
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1.5 mb-7">
+            Sign in to continue to your account.
+          </p>
 
-        <form onSubmit={handleLogin} className="flex flex-col gap-4 flex-1">
-          {error && (
-            <div className="bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 p-3 rounded-xl text-sm flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              {error}
-            </div>
-          )}
-
-          <div className="space-y-1">
-            <div className="relative">
-              <User className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
-              <input
-                id="login-username"
-                type="text"
-                required
-                autoCapitalize="none"
-                autoCorrect="off"
-                aria-invalid={!!fieldErrors.email}
-                aria-describedby={fieldErrors.email ? 'username-error' : undefined}
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className={`w-full pl-11 pr-4 py-3 text-sm bg-zinc-100 dark:bg-zinc-800 border-0 rounded-2xl focus:ring-2 focus:ring-primary-500 outline-none transition-all text-zinc-900 dark:text-white placeholder:text-zinc-400 ${fieldErrors.email ? 'ring-2 ring-rose-500' : ''}`}
-                placeholder="Email address"
-              />
-            </div>
-            {fieldErrors.email && (
-              <p id="username-error" className="text-xs text-rose-500 ml-1" role="alert">{fieldErrors.email}</p>
+          <form onSubmit={handleLogin} className="flex flex-col gap-4">
+            {error && (
+              <div
+                className="bg-danger-muted text-danger-foreground p-3 rounded-xl text-sm flex items-center gap-2"
+                role="alert"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{error}</span>
+              </div>
             )}
-          </div>
 
-          <div className="space-y-1">
-            <div className="relative">
-              <Lock className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
-              <input
-                id="login-password"
-                type="password"
-                required
-                aria-invalid={!!fieldErrors.password}
-                aria-describedby={fieldErrors.password ? 'password-error' : undefined}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={`w-full pl-11 pr-4 py-3 text-sm bg-zinc-100 dark:bg-zinc-800 border-0 rounded-2xl focus:ring-2 focus:ring-primary-500 outline-none transition-all text-zinc-900 dark:text-white placeholder:text-zinc-400 ${fieldErrors.password ? 'ring-2 ring-rose-500' : ''}`}
-                placeholder="Password"
-              />
+            <div className="space-y-1.5">
+              <label
+                htmlFor="login-username"
+                className="block text-xs font-semibold text-foreground tracking-wide"
+              >
+                Email address
+              </label>
+              <div className="relative">
+                <User className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  id="login-username"
+                  type="text"
+                  required
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  aria-invalid={!!fieldErrors.email}
+                  aria-describedby={fieldErrors.email ? 'username-error' : undefined}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className={`w-full h-12 pl-10 pr-4 text-sm bg-surface md:bg-surface-2 border border-border rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-colors text-foreground placeholder:text-muted-foreground ${fieldErrors.email ? 'border-danger ring-2 ring-danger/20' : ''}`}
+                  placeholder="you@company.com"
+                />
+              </div>
+              {fieldErrors.email && (
+                <p id="username-error" className="text-xs text-danger ml-0.5" role="alert">{fieldErrors.email}</p>
+              )}
             </div>
-            {fieldErrors.password && (
-              <p id="password-error" className="text-xs text-rose-500 ml-1" role="alert">{fieldErrors.password}</p>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label
+                  htmlFor="login-password"
+                  className="block text-xs font-semibold text-foreground tracking-wide"
+                >
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPassword(true)}
+                  className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline"
+                  aria-label="Reset your password"
+                >
+                  Forgot password?
+                </button>
+              </div>
+              <div className="relative">
+                <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  id="login-password"
+                  type="password"
+                  required
+                  aria-invalid={!!fieldErrors.password}
+                  aria-describedby={fieldErrors.password ? 'password-error' : undefined}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={`w-full h-12 pl-10 pr-4 text-sm bg-surface md:bg-surface-2 border border-border rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-colors text-foreground placeholder:text-muted-foreground ${fieldErrors.password ? 'border-danger ring-2 ring-danger/20' : ''}`}
+                  placeholder="Enter your password"
+                />
+              </div>
+              {fieldErrors.password && (
+                <p id="password-error" className="text-xs text-danger ml-0.5" role="alert">{fieldErrors.password}</p>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSubmitting || isLoading}
+              className="w-full h-12 bg-primary-600 hover:bg-primary-700 active:scale-[0.99] disabled:opacity-60 text-white text-sm font-semibold rounded-xl transition-all shadow-elev-sm mt-2"
+            >
+              {isLoading ? 'Loading accounts…' : isSubmitting ? 'Signing in…' : 'Sign In'}
+            </button>
+
+            {canUseBiometric && isBiometricEnabled() && (
+              <>
+                <div className="relative my-1 flex items-center">
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="mx-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    Or
+                  </span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleBiometricQuickLogin}
+                  className="w-full h-12 flex items-center justify-center gap-2 bg-surface-2 hover:bg-muted text-foreground font-medium rounded-xl transition-colors border border-border"
+                >
+                  <Fingerprint className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                  Use Biometrics
+                </button>
+              </>
             )}
-          </div>
-
-          <div className="flex justify-end -mt-1">
-            <button
-              type="button"
-              onClick={() => setShowForgotPassword(true)}
-              className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
-            >
-              Forgot password?
-            </button>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isSubmitting || isLoading}
-            className="w-full h-12 bg-primary-600 hover:bg-primary-700 active:scale-[0.98] disabled:opacity-60 text-white text-base font-semibold rounded-2xl transition-all shadow-sm mt-2"
-          >
-            {isLoading ? 'Loading accounts…' : isSubmitting ? 'Signing in…' : 'Sign In'}
-          </button>
-
-          {canUseBiometric && isBiometricEnabled() && (
-            <button
-              type="button"
-              onClick={handleBiometricQuickLogin}
-              className="w-full h-12 flex items-center justify-center gap-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium rounded-2xl transition-colors"
-            >
-              <Fingerprint className="w-5 h-5" />
-              Use Biometrics
-            </button>
-          )}
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   );

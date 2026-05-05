@@ -271,7 +271,7 @@ export function Customers() {
   }, [selectedCustomer, slips, transactions, invoices, ledgerStartDate, ledgerEndDate, ledgerTxType, ledgerTxCategory, ledgerSortDirection]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
@@ -402,7 +402,8 @@ export function Customers() {
               </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:text-zinc-300 p-1"
+                className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                aria-label="Close modal"
               >
                 <X className="w-5 h-5" />
               </button>
