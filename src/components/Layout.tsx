@@ -25,6 +25,27 @@ const VALID_VIEWS = new Set([
   'employees', 'daybook', 'ledger', 'vehicles', 'settings', 'audit',
 ]);
 
+/** Reusable empty/denied state. Kept inside Layout because it's only
+ *  used for in-line role guards. Consistent with the new design tokens. */
+function AccessDenied({ message }: { message: string }) {
+  return (
+    <div
+      role="alert"
+      className="flex flex-col items-center justify-center text-center h-full min-h-[60vh] px-6"
+    >
+      <div className="w-16 h-16 rounded-full bg-danger-muted flex items-center justify-center mb-5">
+        <ShieldAlert className="w-7 h-7 text-danger" />
+      </div>
+      <h2 className="text-xl font-display font-bold text-foreground tracking-tight">
+        Access Denied
+      </h2>
+      <p className="text-sm text-muted-foreground mt-1.5 max-w-xs">
+        {message}
+      </p>
+    </div>
+  );
+}
+
 /** Pages dispatch this event to trigger navigation without prop-drilling. */
 export const NAVIGATE_EVENT = "crushtrack:navigate";
 
@@ -210,52 +231,28 @@ export function Layout() {
       break;
     case "employees":
       if (!isAdmin) {
-        content = (
-          <div className="flex flex-col items-center justify-center h-full text-zinc-500">
-            <ShieldAlert className="w-12 h-12 mb-4 text-rose-400" />
-            <h2 className="text-xl font-bold text-zinc-900">Access Denied</h2>
-            <p>Only Admins can view employees.</p>
-          </div>
-        );
+        content = <AccessDenied message="Only Admins can view employees." />;
       } else {
         content = <Employees />;
       }
       break;
     case "ledger":
       if (userRole === "Manager") {
-        content = (
-          <div className="flex flex-col items-center justify-center h-full text-zinc-500">
-            <ShieldAlert className="w-12 h-12 mb-4 text-rose-400" />
-            <h2 className="text-xl font-bold text-zinc-900">Access Denied</h2>
-            <p>Managers cannot view the ledger.</p>
-          </div>
-        );
+        content = <AccessDenied message="Managers cannot view the ledger." />;
       } else {
         content = <Ledger />;
       }
       break;
     case "settings":
       if (!isAdmin) {
-        content = (
-          <div className="flex flex-col items-center justify-center h-full text-zinc-500">
-            <ShieldAlert className="w-12 h-12 mb-4 text-rose-400" />
-            <h2 className="text-xl font-bold text-zinc-900">Access Denied</h2>
-            <p>Only Admins can view settings.</p>
-          </div>
-        );
+        content = <AccessDenied message="Only Admins can view settings." />;
       } else {
         content = <Settings />;
       }
       break;
     case "audit":
       if (!isAdmin) {
-        content = (
-          <div className="flex flex-col items-center justify-center h-full text-zinc-500">
-            <ShieldAlert className="w-12 h-12 mb-4 text-rose-400" />
-            <h2 className="text-xl font-bold text-zinc-900">Access Denied</h2>
-            <p>Only Admins can view audit logs.</p>
-          </div>
-        );
+        content = <AccessDenied message="Only Admins can view audit logs." />;
       } else {
         content = <AuditLog />;
       }
@@ -268,7 +265,12 @@ export function Layout() {
 
   return (
     <>
-      <div className="flex h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-900 dark:to-zinc-950 transition-colors duration-200 font-sans overflow-hidden">
+      {/* Keyboard-accessible skip link — invisible until focused. */}
+      <a href="#main-content" className="skip-to-content">
+        Skip to main content
+      </a>
+
+      <div className="flex h-screen bg-background text-foreground transition-colors duration-200 font-sans overflow-hidden">
         <Sidebar
           currentView={currentView}
           onChangeView={(view) => setLocation(`/${view}`)}
@@ -277,29 +279,39 @@ export function Layout() {
         />
         <div className="flex-1 flex flex-col min-h-0 w-full relative min-w-0">
           <Header onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
-          <main className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-4 lg:p-6 app-content smooth-scroll has-bottom-nav">
-            <Suspense fallback={<PageSkeleton />}>
-              {isLoading ? (
-                <PageSkeleton />
-              ) : (
-                <div key={currentView} className="animate-page-in">
-                  {content}
-                </div>
-              )}
-            </Suspense>
+          <main
+            id="main-content"
+            className="flex-1 overflow-y-auto overflow-x-hidden app-content smooth-scroll has-bottom-nav"
+          >
+            {/* Constrain content width on large desktops so dense tables and
+                cards don't stretch unreadably wide. Mobile + tablet are full
+                width as before. */}
+            <div className="mx-auto w-full max-w-7xl px-3 sm:px-5 lg:px-8 py-3 sm:py-5 lg:py-7">
+              <Suspense fallback={<PageSkeleton />}>
+                {isLoading ? (
+                  <PageSkeleton />
+                ) : (
+                  <div key={currentView} className="animate-page-in">
+                    {content}
+                  </div>
+                )}
+              </Suspense>
+            </div>
           </main>
         </div>
       </div>
 
-      {/* FAB — outside overflow-hidden root so fixed positioning works */}
+      {/* FAB — outside overflow-hidden root so fixed positioning works.
+          Refined: subtler shadow tinted to the primary color, smoother
+          press feedback, ring offset for keyboard focus. */}
       {showFab && (
         <button
           key={`fab-${currentView}`}
           onClick={() => window.dispatchEvent(new CustomEvent(CREATE_EVENT))}
-          className="md:hidden fixed right-4 bottom-[calc(80px+env(safe-area-inset-bottom))] w-14 h-14 bg-primary-600 text-white hover:bg-primary-700 active:scale-90 shadow-2xl shadow-primary-500/30 flex items-center justify-center rounded-full z-[50] transition-transform animate-fab-pop"
+          className="md:hidden fixed right-4 bottom-[calc(80px+env(safe-area-inset-bottom))] w-14 h-14 bg-primary-600 text-white hover:bg-primary-700 active:scale-90 shadow-lg shadow-primary-600/25 ring-4 ring-background flex items-center justify-center rounded-full z-[50] transition-transform animate-fab-pop"
           aria-label={currentView === "dispatch" ? "Create new dispatch slip" : "Create new invoice"}
         >
-          <Plus className="w-7 h-7" />
+          <Plus className="w-7 h-7" strokeWidth={2.5} />
         </button>
       )}
     </>

@@ -197,50 +197,46 @@ export function Dashboard() {
   const stats = [
     {
       label: "Trips",
-      value: `${dateSlips.filter(s => s.status !== "Cancelled").length} Trips`,
+      value: `${dateSlips.filter(s => s.status !== "Cancelled").length}`,
+      valueSuffix: "trips",
       subValue: `${volumePercent}% vs prev period`,
       isPositive: currentVolume >= prevVolume,
       showNeutral: currentVolume === 0 && prevVolume === 0,
       icon: Truck,
-      color: "text-blue-600 dark:text-blue-400",
-      bg: "bg-blue-100 dark:bg-blue-500/20",
-      gradient: "from-blue-500/10 to-blue-600/5 dark:from-blue-500/20 dark:to-blue-600/10",
+      iconClass: "text-info bg-info-muted",
       navTarget: "dispatch",
     },
     {
       label: "Income",
       value: `₹${income.toLocaleString()}`,
+      valueSuffix: undefined as string | undefined,
       subValue: `${incomePercent}% vs prev period`,
       isPositive: income >= prevIncome,
       showNeutral: income === 0 && prevIncome === 0,
       icon: ArrowDownCircle,
-      color: "text-emerald-600 dark:text-emerald-400",
-      bg: "bg-emerald-100 dark:bg-emerald-500/20",
-      gradient: "from-emerald-500/10 to-emerald-600/5 dark:from-emerald-500/20 dark:to-emerald-600/10",
+      iconClass: "text-success bg-success-muted",
       navTarget: "daybook",
     },
     {
       label: "Expenses",
       value: `₹${expense.toLocaleString()}`,
+      valueSuffix: undefined as string | undefined,
       subValue: `${expensePercent}% vs prev period`,
       isPositive: expense <= prevExpense,
       showNeutral: expense === 0 && prevExpense === 0,
       icon: ArrowUpCircle,
-      color: "text-orange-600 dark:text-orange-400",
-      bg: "bg-orange-100 dark:bg-orange-500/20",
-      gradient: "from-orange-500/10 to-orange-600/5 dark:from-orange-500/20 dark:to-orange-600/10",
+      iconClass: "text-warning bg-warning-muted",
       navTarget: "daybook",
     },
     {
       label: "Receivables",
       value: `₹${totalReceivables.toLocaleString()}`,
+      valueSuffix: undefined as string | undefined,
       subValue: `Pending collection`,
       isPositive: true,
       showNeutral: false,
       icon: Wallet,
-      color: "text-amber-600 dark:text-amber-400",
-      bg: "bg-amber-100 dark:bg-amber-500/20",
-      gradient: "from-amber-500/10 to-amber-600/5 dark:from-amber-500/20 dark:to-amber-600/10",
+      iconClass: "text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-500/15",
       navTarget: "customers",
     },
   ];
@@ -264,28 +260,40 @@ export function Dashboard() {
   );
 
   return (
-    <div className="space-y-4 md:space-y-5">
-      {/* Date range pills — no page title on mobile (bottom nav shows context) */}
-      <div className="flex flex-col gap-2">
-        {/* Desktop-only heading */}
-        <h2 className="hidden md:block text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
-          Dashboard
-        </h2>
+    <div className="space-y-5 md:space-y-6">
+      {/* ── Page header: title + date pills, semantic tokens ── */}
+      <div className="flex flex-col gap-3">
+        {/* Desktop heading with subtle subtitle */}
+        <div className="hidden md:flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-3xl font-display font-bold text-foreground tracking-tight">
+              Dashboard
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Overview of operations, finances, and recent activity.
+            </p>
+          </div>
+        </div>
 
-        {/* Date range pills - Horizontally scrollable on mobile with edge fade hint */}
+        {/* Date range pills — horizontal scroll on mobile with edge fade */}
         <div className="relative">
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-zinc-50 dark:from-zinc-900 to-transparent z-10 md:hidden" />
-          <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent z-10 md:hidden" />
+          <div
+            role="tablist"
+            aria-label="Date range"
+            className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1"
+          >
             {(["today", "week", "month", "year", "custom"] as const).map((type) => (
               <button
                 key={type}
+                role="tab"
                 onClick={() => setDateRangeType(type)}
                 aria-label={`Filter by ${type === "today" ? "today" : type === "week" ? "this week" : type === "month" ? "this month" : type === "year" ? "this year" : "custom date range"}`}
-                aria-pressed={dateRangeType === type}
-                className={`px-4 py-2.5 min-h-[44px] rounded-full text-xs font-medium whitespace-nowrap transition-all active:scale-95 ${
+                aria-selected={dateRangeType === type}
+                className={`px-4 py-2.5 min-h-[40px] rounded-full text-xs font-medium whitespace-nowrap transition-colors active:scale-95 ${
                   dateRangeType === type
-                    ? "bg-primary-600 text-white shadow-sm"
-                    : "bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700"
+                    ? "bg-foreground text-background shadow-elev-xs"
+                    : "bg-surface text-muted-foreground border border-border hover:text-foreground hover:border-border-strong"
                 }`}
               >
                 {type === "today" ? "Today" : type === "week" ? "Week" : type === "month" ? "Month" : type === "year" ? "Year" : "Custom"}
@@ -295,53 +303,60 @@ export function Dashboard() {
         </div>
 
         {dateRangeType === "custom" && (
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1.5 sm:gap-2 bg-white dark:bg-zinc-800 px-3 py-2 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-sm w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 bg-surface px-3 py-2 border border-border rounded-xl w-full sm:w-auto">
             <input
               type="date"
               value={customStartDate}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomStartDate(e.target.value)}
-              className="text-xs text-zinc-700 dark:text-zinc-200 outline-none bg-transparent w-full sm:w-auto"
+              className="text-xs text-foreground outline-none bg-transparent w-full sm:w-auto"
             />
-            <span className="hidden sm:inline text-zinc-400 dark:text-zinc-500 font-semibold text-xs shrink-0">to</span>
+            <span className="hidden sm:inline text-muted-foreground font-semibold text-xs shrink-0">→</span>
             <input
               type="date"
               value={customEndDate}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCustomEndDate(e.target.value)}
-              className="text-xs text-zinc-700 dark:text-zinc-200 outline-none bg-transparent w-full sm:w-auto"
+              className="text-xs text-foreground outline-none bg-transparent w-full sm:w-auto"
             />
           </div>
         )}
       </div>
 
-      {/* Quick Actions Row */}
+      {/* ── Quick Actions Row (mobile) ── */}
       <div className="md:hidden -mx-1">
+        <p className="px-1 mb-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.12em]">
+          Quick actions
+        </p>
         <div className="flex gap-2 overflow-x-auto no-scrollbar px-1 pb-1">
           {[
-            { label: "Slip", icon: FileText, target: "dispatch", color: "bg-blue-600 text-white" },
-            { label: "Invoice", icon: Receipt, target: "invoices", color: "bg-primary-600 text-white" },
-            { label: "Income", icon: TrendingUp, target: "daybook", color: "bg-emerald-600 text-white" },
-            { label: "Expense", icon: TrendingDown, target: "daybook", color: "bg-rose-600 text-white" },
+            { label: "New Slip", icon: FileText, target: "dispatch", iconClass: "text-info bg-info-muted" },
+            { label: "New Invoice", icon: Receipt, target: "invoices", iconClass: "text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-500/15" },
+            { label: "Income", icon: TrendingUp, target: "daybook", iconClass: "text-success bg-success-muted" },
+            { label: "Expense", icon: TrendingDown, target: "daybook", iconClass: "text-danger bg-danger-muted" },
           ].map((action) => (
             <button
               key={action.label}
               onClick={() => {
-                if (action.label === "Slip" || action.label === "Invoice") {
+                if (action.label === "New Slip" || action.label === "New Invoice") {
                   window.dispatchEvent(new CustomEvent(CREATE_EVENT));
                 }
                 navigateTo(action.target);
               }}
-              aria-label={`Create new ${action.label.toLowerCase()}`}
-              className={`flex items-center gap-2 px-4 py-3 min-h-[44px] rounded-xl whitespace-nowrap text-xs font-semibold active:scale-95 transition-transform shadow-sm ${action.color}`}
+              aria-label={`Create ${action.label.toLowerCase()}`}
+              className="flex items-center gap-2.5 pl-2.5 pr-4 py-2 min-h-[44px] rounded-full whitespace-nowrap text-xs font-semibold bg-surface border border-border hover:border-border-strong text-foreground active:scale-95 transition-colors"
             >
-              <action.icon className="w-4 h-4" />
+              <span className={`w-7 h-7 rounded-full flex items-center justify-center ${action.iconClass}`}>
+                <action.icon className="w-3.5 h-3.5" strokeWidth={2.5} />
+              </span>
               {action.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* TOP 4 KEY METRICS - Dense 2x2 grid with touch feedback */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4 stagger-animation">
+      {/* ── KEY METRICS - clean 2x2 mobile / 4-col desktop grid ──
+          Refined: solid surface, subtle border, accent dot for icon,
+          generous numerals, dignified delta chip. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-4 stagger-animation">
         {stats.map((stat, i) => {
           const Icon = stat.icon;
           return (
@@ -349,33 +364,42 @@ export function Dashboard() {
               key={i}
               onClick={() => navigateTo(stat.navTarget)}
               aria-label={`${stat.label}: ${stat.value}. ${stat.subValue}. Open ${stat.navTarget}.`}
-              className={`bg-gradient-to-br ${stat.gradient} bg-white dark:bg-zinc-900/40 p-2 md:p-5 rounded-xl md:rounded-2xl shadow-sm border border-zinc-200/80 dark:border-zinc-800 flex flex-col gap-1 relative overflow-hidden active:scale-[0.98] active:shadow-inner transition-all cursor-pointer text-left hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-md animate-stat`}
+              className="card-surface p-3 md:p-5 flex flex-col gap-2 md:gap-3 relative overflow-hidden active:scale-[0.99] transition-[transform,border-color,box-shadow] cursor-pointer text-left hover:border-border-strong hover:shadow-elev-md animate-stat"
             >
-              <div className="flex justify-between items-start">
-                <p className="text-xs md:text-sm font-semibold text-zinc-500 dark:text-zinc-400 leading-tight line-clamp-2 uppercase tracking-wide">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] md:text-[11px] font-semibold text-muted-foreground leading-none uppercase tracking-[0.12em]">
                   {stat.label}
                 </p>
-                <div className={`p-1 rounded-lg md:rounded-xl ${stat.bg} shrink-0`}>
-                  <Icon className={`w-3 h-3 md:w-5 md:h-5 ${stat.color}`} />
+                <div className={`w-8 h-8 md:w-9 md:h-9 rounded-lg flex items-center justify-center ${stat.iconClass}`}>
+                  <Icon className="w-4 h-4 md:w-[18px] md:h-[18px]" strokeWidth={2.25} />
                 </div>
               </div>
-              <p className="text-base md:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white truncate">
+              <p className="text-xl md:text-3xl font-display font-bold tracking-tight text-foreground tabular-nums truncate leading-none">
                 {stat.value}
+                {stat.valueSuffix && (
+                  <span className="text-xs md:text-sm font-medium text-muted-foreground ml-1.5 align-middle">
+                    {stat.valueSuffix}
+                  </span>
+                )}
               </p>
               <p className="text-xs font-medium leading-tight">
                 {stat.label === "Receivables" ? (
-                  <span className="text-zinc-500 dark:text-zinc-400">{stat.subValue}</span>
+                  <span className="text-muted-foreground">{stat.subValue}</span>
                 ) : stat.showNeutral ? (
                   <span
                     title={previousPeriodLabel}
-                    className="px-1.5 py-0.5 rounded-md inline-flex items-center gap-0.5 bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                    className="px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-muted text-muted-foreground text-[11px]"
                   >
-                    - 0%
+                    — Flat
                   </span>
                 ) : (
                   <span
                     title={previousPeriodLabel}
-                    className={`px-1.5 py-0.5 rounded-md inline-flex items-center gap-0.5 ${stat.isPositive ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400"}`}
+                    className={`px-2 py-0.5 rounded-full inline-flex items-center gap-1 text-[11px] font-semibold ${
+                      stat.isPositive
+                        ? "bg-success-muted text-success-foreground"
+                        : "bg-danger-muted text-danger-foreground"
+                    }`}
                   >
                     {stat.isPositive ? "↑" : "↓"} {stat.subValue.split(" vs")[0]}%
                   </span>
@@ -386,21 +410,26 @@ export function Dashboard() {
         })}
       </div>
 
-      {/* Unified Activity Feed */}
-      <div className="bg-white dark:bg-zinc-800 rounded-xl md:rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 overflow-hidden">
-        <div className="flex items-center justify-between px-3 py-2.5 md:px-5 md:py-4 border-b border-zinc-100 dark:border-zinc-700/50">
-          <h3 className="font-semibold text-zinc-900 dark:text-white text-xs md:text-sm">
-            Activity Feed
-          </h3>
+      {/* ── Unified Activity Feed ── */}
+      <div className="card-surface overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 md:px-5 md:py-4 border-b border-border">
+          <div>
+            <h3 className="font-display font-semibold text-foreground text-sm md:text-base tracking-tight">
+              Activity Feed
+            </h3>
+            <p className="text-[11px] text-muted-foreground mt-0.5 hidden md:block">
+              Recent slips and daybook transactions
+            </p>
+          </div>
           <button
             type="button"
             onClick={() => navigateTo("dispatch")}
-            className="text-xs font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+            className="text-xs font-semibold text-primary-600 dark:text-primary-400 hover:underline"
           >
-            View all
+            View all →
           </button>
         </div>
-        <div className="divide-y divide-zinc-100 dark:divide-zinc-700/50 max-h-80 md:max-h-96 overflow-y-auto">
+        <div className="divide-y divide-border max-h-80 md:max-h-96 overflow-y-auto">
           {/* Merge and sort recent slips + transactions by date */}
           {useMemo(() => {
             const activityItems = [
@@ -412,7 +441,7 @@ export function Dashboard() {
                 subtitle: `${s.materialType} · ${s.quantity.toFixed(1)} ${s.measurementType === "Volume (Brass)" ? "Brass" : "Tons"}`,
                 amount: s.totalAmount,
                 status: s.status,
-                color: "border-l-blue-500",
+                accentClass: "bg-info-muted text-info",
                 icon: Truck,
               })),
               ...recentTransactions.map((t) => ({
@@ -423,7 +452,7 @@ export function Dashboard() {
                 subtitle: t.type,
                 amount: t.amount,
                 status: t.type,
-                color: t.type === "Income" ? "border-l-emerald-500" : "border-l-rose-500",
+                accentClass: t.type === "Income" ? "bg-success-muted text-success" : "bg-danger-muted text-danger",
                 icon: t.type === "Income" ? ArrowDownCircle : ArrowUpCircle,
               })),
             ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 8);
@@ -431,50 +460,54 @@ export function Dashboard() {
           }, [recentSlips, recentTransactions]).map((item) => (
             <div
               key={item.id + item.type}
-              className={`flex items-center gap-3 px-3 py-2.5 md:px-5 md:py-3 border-l-4 ${item.color} hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors active:bg-zinc-100 dark:active:bg-zinc-800`}
+              className="flex items-center gap-3 px-4 py-3 md:px-5 hover:bg-muted/60 transition-colors"
             >
-              <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
-                <item.icon className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${item.accentClass}`}>
+                <item.icon className="w-[18px] h-[18px]" strokeWidth={2.25} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="text-xs font-bold text-zinc-900 dark:text-white truncate uppercase">{item.title}</p>
+                  <p className="text-sm font-semibold text-foreground truncate">{item.title}</p>
                   {item.type === "slip" ? (
-                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase shrink-0 ${getStatusColor(item.status)}`}>
+                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold tracking-wide uppercase shrink-0 ${getStatusColor(item.status)}`}>
                       {item.status}
                     </span>
                   ) : (
-                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase shrink-0 ${item.status === "Income" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" : "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400"}`}>
+                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold tracking-wide uppercase shrink-0 ${item.status === "Income" ? "bg-success-muted text-success-foreground" : "bg-danger-muted text-danger-foreground"}`}>
                       {item.status}
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">{item.subtitle}</p>
+                <p className="text-xs text-muted-foreground truncate mt-0.5">{item.subtitle}</p>
               </div>
               <div className="text-right shrink-0">
-                <p className={`text-xs font-bold ${item.type === "transaction" && item.status === "Expense" ? "text-rose-600 dark:text-rose-400" : "text-zinc-900 dark:text-white"}`}>
+                <p className={`text-sm font-semibold tabular-nums ${item.type === "transaction" && item.status === "Expense" ? "text-danger" : "text-foreground"}`}>
                   {item.type === "transaction" && item.status === "Expense" ? "-" : ""}₹{item.amount.toLocaleString()}
                 </p>
-                <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                <p className="text-[10px] text-muted-foreground tabular-nums">
                   {new Date(item.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
                 </p>
               </div>
             </div>
           ))}
           {recentSlips.length === 0 && recentTransactions.length === 0 && (
-            <div className="text-center text-xs text-zinc-500 py-8">No recent activity</div>
+            <div className="text-center text-sm text-muted-foreground py-10">
+              No recent activity yet.
+            </div>
           )}
         </div>
       </div>
 
-      {/* COMPANY VEHICLES - Compact grid */}
-      <div className="bg-white dark:bg-zinc-800 rounded-xl md:rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 p-2.5 md:p-5">
-        <h3 className="font-semibold text-zinc-900 dark:text-white mb-2 flex items-center gap-2 text-xs md:text-base">
-          <Truck className="w-3 h-3 md:w-4 md:h-4 text-zinc-400" />
-          Company Vehicles
-        </h3>
+      {/* ── Company Vehicles — refined card grid ── */}
+      <div className="card-surface p-4 md:p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-display font-semibold text-foreground flex items-center gap-2 text-sm md:text-base tracking-tight">
+            <Truck className="w-4 h-4 text-muted-foreground" />
+            Company Vehicles
+          </h3>
+        </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1.5 stagger-animation">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 stagger-animation">
           {(
             Object.entries(companyVehicleTrips) as [
               string,
@@ -483,23 +516,23 @@ export function Dashboard() {
           ).map(([vehicleNo, data]) => (
             <div
               key={vehicleNo}
-              className="flex justify-between items-center p-2 bg-zinc-50 border border-zinc-100 dark:border-zinc-700/50 dark:bg-zinc-900/50 rounded-lg active:scale-[0.98] transition-transform"
+              className="flex justify-between items-center px-3 py-2.5 bg-surface-2 border border-border rounded-lg hover:border-border-strong transition-colors"
             >
-              <span className="font-bold text-zinc-900 dark:text-white text-[11px] md:text-sm">{vehicleNo}</span>
-              <div className="text-right">
-                <span className="text-[11px] md:text-xs font-bold text-primary-600 dark:text-primary-400 block">
+              <span className="font-semibold text-foreground text-xs md:text-sm tabular-nums">{vehicleNo}</span>
+              <div className="text-right leading-none">
+                <span className="text-sm md:text-base font-bold text-primary-600 dark:text-primary-400 block tabular-nums">
                   {data.trips}
                 </span>
-                <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
                   trips
                 </span>
               </div>
             </div>
           ))}
           {Object.keys(companyVehicleTrips).length === 0 && (
-            <div className="col-span-full rounded-lg border border-dashed border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/50 px-3 py-4 text-center">
-              <p className="text-sm font-semibold text-zinc-600 dark:text-zinc-300">No vehicle trips in this range</p>
-              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Company vehicle activity will appear after slips are loaded or tallied.</p>
+            <div className="col-span-full rounded-lg border border-dashed border-border bg-surface-2 px-4 py-6 text-center">
+              <p className="text-sm font-semibold text-foreground">No vehicle trips in this range</p>
+              <p className="mt-1 text-xs text-muted-foreground">Company vehicle activity will appear after slips are loaded or tallied.</p>
             </div>
           )}
         </div>

@@ -5,7 +5,8 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk", "Inter", ui-sans-serif, system-ui, sans-serif;
-  
+
+  /* Primary brand scale (driven by .theme-* class on <html>) */
   --color-primary-50: var(--primary-50);
   --color-primary-100: var(--primary-100);
   --color-primary-200: var(--primary-200);
@@ -17,10 +18,46 @@
   --color-primary-800: var(--primary-800);
   --color-primary-900: var(--primary-900);
   --color-primary-950: var(--primary-950);
+
+  /* Semantic surface + text tokens. These give us a single, consistent
+     vocabulary for backgrounds, cards, borders, and text across light/dark
+     mode and avoid the bg-zinc-50 / bg-white / bg-zinc-900 patchwork. */
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-ring: var(--ring);
+
+  /* Semantic status colors */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-muted: var(--success-muted);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-muted: var(--warning-muted);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-danger-muted: var(--danger-muted);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-muted: var(--info-muted);
+
+  /* Border radius scale for consistent rounding */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
 }
 
 :root {
-  /* Default: Emerald */
+  /* ── Primary brand: Emerald (default) ───────────────────────── */
   --primary-50: #ecfdf5;
   --primary-100: #d1fae5;
   --primary-200: #a7f3d0;
@@ -32,8 +69,36 @@
   --primary-800: #065f46;
   --primary-900: #064e3b;
   --primary-950: #022c22;
-  
-  /* Z-Index Scale for consistent layering */
+
+  /* ── Semantic surface + text tokens (light mode) ─────────────
+     Light mode uses a very subtle warm-cool neutral: page is one
+     half-step darker than card so cards have natural elevation
+     without needing heavy shadows. */
+  --background: #fafafa;        /* page bg — very soft off-white */
+  --surface: #ffffff;            /* primary card */
+  --surface-2: #f4f4f5;          /* nested surface, inputs, hover bg */
+  --foreground: #18181b;         /* primary text */
+  --muted: #f4f4f5;              /* muted bg (chips, subtle pills) */
+  --muted-foreground: #71717a;   /* secondary text */
+  --border: #e4e4e7;             /* default border */
+  --border-strong: #d4d4d8;      /* hover/active border */
+  --ring: var(--primary-500);    /* focus ring */
+
+  /* Status colors — solid + muted variants for backgrounds */
+  --success: #059669;
+  --success-foreground: #047857;
+  --success-muted: #d1fae5;
+  --warning: #d97706;
+  --warning-foreground: #b45309;
+  --warning-muted: #fef3c7;
+  --danger: #e11d48;
+  --danger-foreground: #be123c;
+  --danger-muted: #ffe4e6;
+  --info: #2563eb;
+  --info-foreground: #1d4ed8;
+  --info-muted: #dbeafe;
+
+  /* ── Z-Index Scale for consistent layering ──────────────────── */
   --z-base: 0;
   --z-dropdown: 10;
   --z-sticky: 20;
@@ -46,6 +111,47 @@
   --z-modal: 70;
   --z-toast: 80;
   --z-tooltip: 90;
+
+  /* ── Elevation: refined shadows that work in light + dark ──── */
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+  --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.04);
+  --shadow-lg: 0 10px 24px -4px rgb(0 0 0 / 0.10), 0 4px 8px -4px rgb(0 0 0 / 0.06);
+  --shadow-xl: 0 20px 40px -8px rgb(0 0 0 / 0.14), 0 8px 16px -8px rgb(0 0 0 / 0.08);
+}
+
+/* ── Dark mode semantic tokens ──────────────────────────────────
+   Slightly tinted near-black (not pure #000) to reduce eye strain.
+   Surface is one step lighter than background for elevation. */
+.dark {
+  --background: #0a0a0a;         /* page bg — true near-black */
+  --surface: #161618;            /* card bg — slightly lifted */
+  --surface-2: #1f1f23;          /* nested / hover surface */
+  --foreground: #fafafa;         /* primary text */
+  --muted: #1f1f23;              /* muted chips */
+  --muted-foreground: #a1a1aa;   /* secondary text */
+  --border: #27272a;             /* default border */
+  --border-strong: #3f3f46;      /* hover/active border */
+  --ring: var(--primary-400);
+
+  --success: #10b981;
+  --success-foreground: #6ee7b7;
+  --success-muted: rgb(16 185 129 / 0.15);
+  --warning: #f59e0b;
+  --warning-foreground: #fcd34d;
+  --warning-muted: rgb(245 158 11 / 0.15);
+  --danger: #f43f5e;
+  --danger-foreground: #fda4af;
+  --danger-muted: rgb(244 63 94 / 0.15);
+  --info: #3b82f6;
+  --info-foreground: #93c5fd;
+  --info-muted: rgb(59 130 246 / 0.15);
+
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.5), 0 1px 2px -1px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 10px 24px -4px rgb(0 0 0 / 0.6), 0 4px 8px -4px rgb(0 0 0 / 0.4);
+  --shadow-xl: 0 20px 40px -8px rgb(0 0 0 / 0.7), 0 8px 16px -8px rgb(0 0 0 / 0.5);
 }
 
 .theme-blue {
@@ -108,26 +214,61 @@ html, body {
   overflow-x: hidden;
 }
 
+html {
+  /* Drives <body> and any element that uses semantic bg via design tokens. */
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
 body {
-  @apply font-sans bg-zinc-50 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100;
+  font-family: var(--font-sans);
+  background-color: var(--background);
+  color: var(--foreground);
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
   max-width: 100vw;
+  /* Crisper antialiasing for the type-heavy ERP UI. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv11", "ss01", "ss03";
 }
 
-/* Custom scrollbar for webkit */
+/* Headings default to the display face for clearer hierarchy. Body text
+   stays Inter for legibility at small sizes (table cells, labels). */
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+/* Tabular numerals for any numeric data — keeps stat values aligned. */
+.tabular-nums,
+[data-tabular],
+.font-display {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Refined scrollbar — slimmer, semantic, less visually intrusive. */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-zinc-300 dark:bg-zinc-700 rounded-full;
+  background-color: var(--border-strong);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-zinc-400 dark:bg-zinc-600;
+  background-color: var(--muted-foreground);
+  background-clip: padding-box;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 /* Hide scrollbar utility */
@@ -216,22 +357,24 @@ body {
     transform: translateZ(0);
   }
   
-  /* Focus visible for keyboard navigation */
+  /* Focus visible for keyboard navigation — uses semantic ring token so
+     it adapts cleanly to dark mode and to whichever theme variant is on. */
   :focus-visible {
-    outline: 2px solid var(--primary-500);
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
-    border-radius: 8px;
+    border-radius: 6px;
+    transition: outline-offset 120ms ease;
   }
-  
-  /* Remove focus outline for mouse users */
+
+  /* Mouse users don't need the ring. */
   :focus:not(:focus-visible) {
     outline: none;
   }
-  
-  /* Bottom navigation focus styles */
+
+  /* Bottom navigation: inset ring keeps it inside the rounded pill. */
   nav button:focus-visible {
-    outline: 2px solid var(--primary-500);
-    outline-offset: -2px;
+    outline: 2px solid var(--ring);
+    outline-offset: -3px;
     border-radius: 12px;
   }
 }
@@ -407,10 +550,45 @@ body {
   }
 }
 
-/* Dark mode shadow visibility */
-.dark .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0,0,0,0.3); }
-.dark .shadow-md { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.4); }
-.dark .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.5); }
+/* Semantic shadow utilities — drive elevation off the design tokens so
+   dark mode automatically gets stronger shadows without per-class overrides. */
+.shadow-elev-xs { box-shadow: var(--shadow-xs); }
+.shadow-elev-sm { box-shadow: var(--shadow-sm); }
+.shadow-elev-md { box-shadow: var(--shadow-md); }
+.shadow-elev-lg { box-shadow: var(--shadow-lg); }
+.shadow-elev-xl { box-shadow: var(--shadow-xl); }
+
+/* Skip-to-content link — appears only when focused via keyboard. */
+.skip-to-content {
+  position: fixed;
+  top: -100px;
+  left: 16px;
+  z-index: 100;
+  padding: 12px 16px;
+  background: var(--surface);
+  color: var(--foreground);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  font-weight: 600;
+  box-shadow: var(--shadow-md);
+  transition: top 180ms ease;
+}
+.skip-to-content:focus {
+  top: 16px;
+}
+
+/* Card primitive — a single class that gives any element the standard
+   surface look. Used by the new design system across all pages. */
+.card-surface {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+/* Subtle divider line — replaces the patchwork of border-zinc-100/700 */
+.divider-soft {
+  border-color: var(--border);
+}
 
 /* Reduced motion for accessibility */
 @media (prefers-reduced-motion: reduce) {
@@ -1030,15 +1208,16 @@ body {
     cursor: not-allowed;
   }
   
-  /* Selected state for toggles/tabs */
+  /* Selected state for toggles/tabs — uses semantic shadow so it works
+     for any primary color theme (emerald, blue, violet, rose, amber). */
   .tab-selected {
     background: var(--primary-600);
     color: white;
-    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+    box-shadow: var(--shadow-sm);
   }
 }
 
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━��━━━━━━━━━━━━━
    HORIZONTAL SCROLL PREVENTION & SCROLL SNAPPING
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 @media (max-width: 640px) {

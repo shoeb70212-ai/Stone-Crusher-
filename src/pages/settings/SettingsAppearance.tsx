@@ -1,5 +1,5 @@
 import React from "react";
-import { Save, Check } from "lucide-react";
+import { Save, Check, Sun, Moon, Monitor } from "lucide-react";
 import { CompanySettings } from "../../types";
 
 interface Props {
@@ -9,12 +9,19 @@ interface Props {
   onSave: () => void;
 }
 
+/** Color tokens matched to the global theme-* class swatches in index.css. */
 const COLOR_OPTIONS = [
-  { id: "emerald", label: "Emerald", colorClass: "bg-[#10b981]" },
-  { id: "blue",    label: "Blue",    colorClass: "bg-[#3b82f6]" },
-  { id: "violet",  label: "Violet",  colorClass: "bg-[#8b5cf6]" },
-  { id: "rose",    label: "Rose",    colorClass: "bg-[#f43f5e]" },
-  { id: "amber",   label: "Amber",   colorClass: "bg-[#f59e0b]" },
+  { id: "emerald", label: "Emerald", swatch: "#10b981" },
+  { id: "blue",    label: "Blue",    swatch: "#3b82f6" },
+  { id: "violet",  label: "Violet",  swatch: "#8b5cf6" },
+  { id: "rose",    label: "Rose",    swatch: "#f43f5e" },
+  { id: "amber",   label: "Amber",   swatch: "#f59e0b" },
+] as const;
+
+const MODE_OPTIONS = [
+  { id: "system", label: "System", icon: Monitor },
+  { id: "light",  label: "Light",  icon: Sun },
+  { id: "dark",   label: "Dark",   icon: Moon },
 ] as const;
 
 export function SettingsAppearance({ localSettings, setLocalSettings, isSaved, onSave }: Props) {
@@ -22,73 +29,109 @@ export function SettingsAppearance({ localSettings, setLocalSettings, isSaved, o
 
   return (
     <div className="space-y-8">
-      <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">Theme & Appearance</h3>
-
       <div>
-        <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">Color Mode</label>
-        <div className="flex gap-4">
-          {(["system", "light", "dark"] as const).map((mode) => (
-            <button
-              key={mode}
-              onClick={() => upd({ theme: mode })}
-              className={`px-4 py-2 rounded-lg border-2 capitalize font-medium transition-colors ${
-                localSettings.theme === mode
-                  ? "border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
-                  : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-600"
-              }`}
-            >
-              {mode}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">Primary Brand Color</label>
-        <div className="flex gap-4 flex-wrap">
-          {COLOR_OPTIONS.map((color) => (
-            <button
-              key={color.id}
-              onClick={() => upd({ primaryColor: color.id as any })}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 font-medium transition-colors ${
-                localSettings.primaryColor === color.id
-                  ? "border-zinc-900 dark:border-white bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white"
-                  : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600"
-              }`}
-            >
-              <div className={`w-4 h-4 rounded-full ${color.colorClass}`} />
-              {color.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">Mobile Device Layout</label>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4 max-w-xl">
-          "Comfortable" uses spaced-out cards (easier to tap). "Compact" forces table views for higher data density.
+        <h3 className="text-xl font-display font-bold text-foreground tracking-tight">
+          Theme &amp; Appearance
+        </h3>
+        <p className="text-sm text-muted-foreground mt-1">
+          Customize how CrushTrack looks on this device.
         </p>
-        <div className="flex gap-4">
-          {(["Comfortable", "Compact"] as const).map((layout) => (
-            <button
-              key={layout}
-              onClick={() => upd({ mobileLayout: layout })}
-              className={`px-4 py-2 rounded-lg border-2 font-medium transition-colors ${
-                (localSettings.mobileLayout || "Comfortable") === layout
-                  ? "border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
-                  : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-600"
-              }`}
-            >
-              {layout}
-            </button>
-          ))}
+      </div>
+
+      {/* ── Color Mode ── */}
+      <div>
+        <label className="block text-sm font-semibold text-foreground mb-3">Color Mode</label>
+        <div className="grid grid-cols-3 gap-2 max-w-md">
+          {MODE_OPTIONS.map(({ id, label, icon: Icon }) => {
+            const isActive = (localSettings.theme ?? "system") === id;
+            return (
+              <button
+                key={id}
+                onClick={() => upd({ theme: id })}
+                aria-pressed={isActive}
+                className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${
+                  isActive
+                    ? "border-primary-600 bg-primary-50 dark:bg-primary-500/10 text-foreground"
+                    : "border-border bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground"
+                }`}
+              >
+                <Icon className={`w-5 h-5 ${isActive ? "text-primary-600 dark:text-primary-400" : ""}`} />
+                <span className="text-sm font-medium">{label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      <div className="flex justify-end pt-4 border-t border-zinc-100 dark:border-zinc-700">
-        <button onClick={onSave} disabled={isSaved} className="flex items-center px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors disabled:bg-primary-400">
-          {isSaved ? <Check className="w-5 h-5 mr-2" /> : <Save className="w-5 h-5 mr-2" />}
-          {isSaved ? "Saved!" : "Save Changes"}
+      {/* ── Primary Brand Color ── */}
+      <div>
+        <label className="block text-sm font-semibold text-foreground mb-3">Primary Brand Color</label>
+        <p className="text-xs text-muted-foreground mb-3">
+          Used for primary actions, focus rings, and key highlights.
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 max-w-2xl">
+          {COLOR_OPTIONS.map((color) => {
+            const isActive = localSettings.primaryColor === color.id;
+            return (
+              <button
+                key={color.id}
+                onClick={() => upd({ primaryColor: color.id as any })}
+                aria-pressed={isActive}
+                className={`relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl border transition-colors ${
+                  isActive
+                    ? "border-foreground bg-surface-2 text-foreground"
+                    : "border-border bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground"
+                }`}
+              >
+                <span
+                  aria-hidden="true"
+                  className="w-6 h-6 rounded-full ring-2 ring-surface shadow-elev-xs shrink-0"
+                  style={{ backgroundColor: color.swatch }}
+                />
+                <span className="text-sm font-medium flex-1 text-left">{color.label}</span>
+                {isActive && <Check className="w-4 h-4 text-foreground" strokeWidth={2.5} />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Mobile layout density ── */}
+      <div>
+        <label className="block text-sm font-semibold text-foreground mb-3">Mobile Device Layout</label>
+        <p className="text-xs text-muted-foreground mb-3 max-w-xl leading-relaxed">
+          <b>Comfortable</b> uses spaced cards that are easier to tap. <b>Compact</b> forces table views for
+          higher data density on small screens.
+        </p>
+        <div className="grid grid-cols-2 gap-2 max-w-md">
+          {(["Comfortable", "Compact"] as const).map((layout) => {
+            const isActive = (localSettings.mobileLayout || "Comfortable") === layout;
+            return (
+              <button
+                key={layout}
+                onClick={() => upd({ mobileLayout: layout })}
+                aria-pressed={isActive}
+                className={`px-4 py-3 rounded-xl border font-medium text-sm transition-colors ${
+                  isActive
+                    ? "border-primary-600 bg-primary-50 dark:bg-primary-500/10 text-foreground"
+                    : "border-border bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground"
+                }`}
+              >
+                {layout}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex justify-end pt-4 border-t border-border">
+        <button
+          onClick={onSave}
+          disabled={isSaved}
+          className="flex items-center px-5 h-10 bg-primary-600 hover:bg-primary-700 text-white font-semibold text-sm rounded-lg transition-colors disabled:opacity-60"
+        >
+          {isSaved ? <Check className="w-4 h-4 mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+          {isSaved ? "Saved" : "Save Changes"}
         </button>
       </div>
     </div>
