@@ -353,25 +353,31 @@ export function Settings() {
 
   return (
     <>
-      <div className="space-y-4 md:space-y-6 max-w-5xl pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-0">
+      <div className="space-y-5 md:space-y-6 max-w-5xl pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-0">
         <div>
-          <h2 className="text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">Settings</h2>
-          <p className="text-zinc-500 dark:text-zinc-400 mt-1">Manage system configurations, users, and masters.</p>
+          <h2 className="text-2xl md:text-3xl font-display font-bold text-foreground tracking-tight">Settings</h2>
+          <p className="text-sm text-muted-foreground mt-1">Manage system configurations, users, and masters.</p>
         </div>
 
-        {/* Tab bar - horizontally scrollable on mobile */}
+        {/* Tab bar — horizontally scrollable on mobile, semantic tokens */}
         <div className="relative -mx-2 md:mx-0">
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-zinc-50 dark:from-zinc-900 to-transparent z-10 md:hidden" />
-          <div className="flex md:flex-wrap overflow-x-auto no-scrollbar md:overflow-visible md:space-x-1 border-b border-zinc-200 dark:border-zinc-700 px-2 md:px-0">
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent z-10 md:hidden" />
+          <div
+            role="tablist"
+            aria-label="Settings sections"
+            className="flex md:flex-wrap overflow-x-auto no-scrollbar md:overflow-visible md:space-x-1 border-b border-border px-2 md:px-0"
+          >
             {TABS.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
+                role="tab"
                 onClick={() => setActiveTab(id)}
                 aria-current={activeTab === id ? "page" : undefined}
-                className={`flex items-center gap-1.5 px-3 md:px-4 py-2.5 md:py-3 text-xs md:text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 min-h-[44px] ${
+                aria-selected={activeTab === id}
+                className={`flex items-center gap-1.5 px-3 md:px-4 py-2.5 md:py-3 text-xs md:text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0 min-h-[44px] ${
                   activeTab === id
-                    ? "border-primary-500 text-primary-600 dark:text-primary-400"
-                    : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:border-zinc-300"
+                    ? "border-primary-600 text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-border-strong"
                 }`}
               >
                 <Icon className="w-4 h-4 shrink-0" />
@@ -382,7 +388,7 @@ export function Settings() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 p-3 md:p-5">
+        <div className="card-surface p-4 md:p-6">
           {activeTab === "general" && (
             <SettingsGeneral
               {...sharedProps}
@@ -410,17 +416,17 @@ export function Settings() {
           {activeTab === "data" && (
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-1">Data Management</h3>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400">Import and export invoice records.</p>
+                <h3 className="text-xl font-display font-bold text-foreground tracking-tight">Data Management</h3>
+                <p className="text-sm text-muted-foreground mt-1">Import and export invoice records.</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl p-4 space-y-3">
+                <div className="border border-border rounded-xl p-4 space-y-3 bg-surface">
                   <div className="flex items-center gap-2">
                     <Upload className="w-5 h-5 text-primary-600" />
-                    <h4 className="font-semibold text-zinc-900 dark:text-white">Import Invoices</h4>
+                    <h4 className="font-semibold text-foreground">Import Invoices</h4>
                   </div>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Upload a JSON file containing invoice records.</p>
+                  <p className="text-xs text-muted-foreground">Upload a JSON file containing invoice records.</p>
                   <label className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg cursor-pointer hover:bg-primary-700 transition-colors active:scale-95">
                     <Upload className="w-4 h-4" />
                     Choose JSON File
