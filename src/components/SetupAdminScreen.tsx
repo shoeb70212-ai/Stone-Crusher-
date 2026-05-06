@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
+import { AlertCircle, ArrowRight, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import logoSvg from '../assets/logo.svg';
 
@@ -16,6 +16,8 @@ export function SetupAdminScreen({ onSetupComplete }: SetupAdminScreenProps) {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,22 +148,42 @@ export function SetupAdminScreen({ onSetupComplete }: SetupAdminScreenProps) {
               onChange={(e) => setEmail(e.target.value)}
               className={inputCls}
             />
-            <input
-              required
-              type="password"
-              placeholder="Password (min 8 characters)"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={inputCls}
-            />
-            <input
-              required
-              type="password"
-              placeholder="Confirm password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              className={inputCls}
-            />
+            <div className="relative">
+              <input
+                required
+                type={showPassword ? "text" : "password"}
+                placeholder="Password (min 8 characters)"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={`${inputCls} pr-10`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <div className="relative">
+              <input
+                required
+                type={showConfirm ? "text" : "password"}
+                placeholder="Confirm password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                className={`${inputCls} pr-10`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirm(!showConfirm)}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label={showConfirm ? "Hide password" : "Show password"}
+              >
+                {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
 
             <button
               type="submit"

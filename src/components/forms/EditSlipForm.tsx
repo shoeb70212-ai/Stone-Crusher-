@@ -4,7 +4,7 @@ import { Slip, MaterialType, DeliveryMode, MeasurementType } from "../../types";
 import { Plus, Truck, StickyNote } from "lucide-react";
 import { Combobox } from "../ui/Combobox";
 import { MobileStickyFooter } from "../ui/MobilePrimitives";
-import { parseFeetInches, generateId } from "../../lib/utils";
+import { parseFeetInches, generateId, normalizeVehicleNo, formatVehicleNo } from "../../lib/utils";
 import { useActive } from "../../hooks/useActive";
 import { useToast } from "../ui/Toast";
 import { useKeepAwake } from "../../lib/use-keep-awake";
@@ -22,7 +22,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
   const creatingVehicleRef = useRef(false);
 
   const [formData, setFormData] = useState({
-    vehicleNo: slip.vehicleNo || "",
+    vehicleNo: formatVehicleNo(slip.vehicleNo || ""),
     driverName: slip.driverName || "",
     driverPhone: slip.driverPhone || "",
     materialType: slip.materialType || companySettings.materials?.[0]?.name || "20mm",
@@ -42,7 +42,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
     loaderName: slip.loaderName || "",
   });
 
-  const isExistingVehicle = !!vehicles.find((v) => v.vehicleNo === formData.vehicleNo);
+  const isExistingVehicle = !!vehicles.find((v) => normalizeVehicleNo(v.vehicleNo) === normalizeVehicleNo(formData.vehicleNo));
 
   const calculateQuantity = () => {
     if (formData.measurementType === "Volume (Brass)") {
@@ -69,12 +69,13 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
   const finalAmount = parseFloat(manualTotalAmount) || 0;
 
   const autofillVehicle = (vehicleNo: string) => {
-    const cleanVehicleNo = vehicleNo.startsWith("NEW:") ? vehicleNo.slice(4) : vehicleNo;
-    const v = vehicles.find((vehicle) => vehicle.vehicleNo === cleanVehicleNo);
+    const rawInput = vehicleNo.startsWith("NEW:") ? vehicleNo.slice(4) : vehicleNo;
+    const normalized = normalizeVehicleNo(rawInput);
+    const v = vehicles.find((vehicle) => normalizeVehicleNo(vehicle.vehicleNo) === normalized);
     if (v) {
       setFormData((prev) => ({
         ...prev,
-        vehicleNo: v.vehicleNo,
+        vehicleNo: formatVehicleNo(v.vehicleNo),
         driverName: v.driverName || "",
         driverPhone: v.driverPhone || "",
         deliveryMode: v.defaultDeliveryMode || "Third-Party Vehicle",
@@ -85,7 +86,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
         tareWeight: v.measurement.tareWeight?.toString() || "",
       }));
     } else {
-      setFormData((prev) => ({ ...prev, vehicleNo: cleanVehicleNo.toUpperCase() }));
+      setFormData((prev) => ({ ...prev, vehicleNo: formatVehicleNo(rawInput) }));
     }
   };
 
@@ -117,8 +118,9 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
     }
 
     // Auto-update or add vehicle
-    if (formData.vehicleNo) {
-      const existingVehicle = vehicles.find(v => v.vehicleNo === formData.vehicleNo);
+    const finalVehicleNo = formatVehicleNo(formData.vehicleNo);
+    if (finalVehicleNo) {
+      const existingVehicle = vehicles.find(v => normalizeVehicleNo(v.vehicleNo) === normalizeVehicleNo(finalVehicleNo));
       if (existingVehicle) {
         if (formData.driverName !== existingVehicle.driverName || formData.driverPhone !== existingVehicle.driverPhone) {
           updateVehicle({
@@ -131,7 +133,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
         creatingVehicleRef.current = true;
         addVehicle({
           id: generateId(),
-          vehicleNo: formData.vehicleNo.toUpperCase(),
+          vehicleNo: finalVehicleNo,
           ownerName: formData.driverName || '',
           driverName: formData.driverName,
           driverPhone: formData.driverPhone,
@@ -150,7 +152,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
 
     const updatedSlip: Slip = {
       ...slip,
-      vehicleNo: formData.vehicleNo.toUpperCase(),
+      vehicleNo: finalVehicleNo,
       driverName: formData.driverName,
       driverPhone: formData.driverPhone,
       materialType: formData.materialType as MaterialType,
@@ -222,22 +224,22 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
     onSuccess();
   };
 
-  // ── Shared design tokens ───────────────────────────────────────────────────
+  // -- Shared design tokens --
   const inp = [
-    "w-full h-8 rounded-lg border border-zinc-200 dark:border-zinc-700",
-    "bg-zinc-50 dark:bg-zinc-800 px-2.5 text-xs",
+    "w-full min-h-[48px] rounded-xl border border-zinc-200 dark:border-zinc-700",
+    "bg-zinc-50 dark:bg-zinc-800 px-3 text-sm",
     "text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500",
-    "focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 transition-colors",
+    "focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors",
   ].join(" ");
 
-  const lbl = "text-[10px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-0.5 block";
+  const lbl = "text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-1 block";
 
   // Segmented pill toggle
-  const seg = "flex bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg p-0.5 gap-0.5 h-8";
+  const seg = "flex bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl p-0.5 gap-0.5 min-h-[40px]";
   const segBtn = (active: boolean, onClick: () => void, label: string) => (
     <button key={label} type="button" onClick={onClick}
       className={[
-        "flex-1 rounded-md text-[10px] font-semibold transition-colors",
+        "flex-1 rounded-lg text-xs font-semibold transition-colors",
         active ? "bg-primary-600 text-white shadow-sm" : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200",
       ].join(" ")}>
       {label}
@@ -245,20 +247,20 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
   );
 
   return (
-    <form onSubmit={handleUpdate} className="p-3 pb-20 md:pb-4 space-y-2.5">
+    <form onSubmit={handleUpdate} className="p-4 pb-4 space-y-4">
 
-      {/* ── Row 1: Vehicle No (left) | Delivery Mode (right) ──────────── */}
-      <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
+      {/* Row 1: Vehicle No | Delivery Mode */}
+      <div className="grid grid-cols-2 gap-3">
         <div>
-          <div className="flex items-center justify-between mb-0.5">
+          <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-1">
-              <Truck className="w-3 h-3 text-zinc-500" />
+              <Truck className="w-3.5 h-3.5 text-zinc-500" />
               <label className={lbl + " mb-0"}>Vehicle No *</label>
             </div>
           </div>
           <Combobox
-            options={activeVehicles.map(v => ({ label: v.vehicleNo, value: v.vehicleNo }))}
-            value={formData.vehicleNo} allowCreate onChange={autofillVehicle} placeholder="Vehicle No"
+            options={activeVehicles.map(v => ({ label: formatVehicleNo(v.vehicleNo), value: formatVehicleNo(v.vehicleNo) }))}
+            value={formData.vehicleNo} allowCreate onChange={autofillVehicle} placeholder="MH 20 XX 0000"
           />
         </div>
 
@@ -277,8 +279,8 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
         </div>
       </div>
 
-      {/* ── Row 2: Driver Name (left) | Measurement toggle (right) ───── */}
-      <div className="grid grid-cols-2 gap-x-3">
+      {/* Row 2: Driver Name | Measurement toggle */}
+      <div className="grid grid-cols-2 gap-3">
         <div>
           <label className={lbl}>Driver Name</label>
           <Combobox
@@ -292,9 +294,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
         </div>
 
         <div>
-          <div className="flex items-center justify-between mb-0.5">
-            <label className={lbl + " mb-0"}>Measurement</label>
-          </div>
+          <label className={lbl}>Measurement</label>
           <div className={seg}>
             {segBtn(formData.measurementType === "Volume (Brass)", () => setFormData({ ...formData, measurementType: "Volume (Brass)" }), "Brass")}
             {segBtn(formData.measurementType === "Weight (Tonnes)", () => setFormData({ ...formData, measurementType: "Weight (Tonnes)" }), "Weight")}
@@ -302,8 +302,8 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
         </div>
       </div>
 
-      {/* ── Row 3: Driver Phone (left) | L W H / Tare+Gross (right) ──── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 items-end">
+      {/* Row 3: Driver Phone | L W H / Tare+Gross */}
+      <div className="grid grid-cols-2 gap-3 items-start">
         <div>
           <label className={lbl}>Driver Phone</label>
           <input type="tel" value={formData.driverPhone}
@@ -323,33 +323,38 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
                 </div>
               ))}
             </div>
+            <div className="flex justify-end mt-1">
+              <span className="text-[10px] font-bold text-primary-600 dark:text-primary-400">
+                {calculatedQty.toFixed(2)} Brass
+              </span>
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-1">
-            <div>
-              <label className={lbl}>Tare (T)</label>
-              <input required type="number" step="0.01" value={formData.tareWeight}
-                onChange={(e) => setFormData({ ...formData, tareWeight: e.target.value })}
-                className={inp} placeholder="0" />
+          <div>
+            <div className="grid grid-cols-2 gap-1">
+              <div>
+                <label className={lbl}>Tare (T)</label>
+                <input required type="number" step="0.01" value={formData.tareWeight}
+                  onChange={(e) => setFormData({ ...formData, tareWeight: e.target.value })}
+                  className={inp + " text-center px-1"} placeholder="0" />
+              </div>
+              <div>
+                <label className={lbl}>Gross (T)</label>
+                <input required type="number" step="0.01" value={formData.grossWeight}
+                  onChange={(e) => setFormData({ ...formData, grossWeight: e.target.value })}
+                  className={inp + " text-center px-1"} placeholder="0" />
+              </div>
             </div>
-            <div>
-              <label className={lbl}>Gross (T)</label>
-              <input required type="number" step="0.01" value={formData.grossWeight}
-                onChange={(e) => setFormData({ ...formData, grossWeight: e.target.value })}
-                className={inp} placeholder="0" />
+            <div className="flex justify-end mt-1">
+              <span className="text-[10px] font-bold text-primary-600 dark:text-primary-400">
+                {calculatedQty.toFixed(2)} T
+              </span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Qty display — right-aligned under the dimension inputs */}
-      <div className="flex justify-end -mt-1.5">
-        <span className="text-[10px] font-bold text-primary-600 dark:text-primary-400">
-          {calculatedQty.toFixed(2)} {formData.measurementType === "Volume (Brass)" ? "Brass" : "T"}
-        </span>
-      </div>
-
-      {/* ── Row 4: Customer (full width) ─────────────────────────────── */}
+      {/* Row 4: Customer (full width) */}
       <div>
         <label className={lbl}>Customer</label>
         <Combobox
@@ -360,8 +365,8 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
         />
       </div>
 
-      {/* ── Row 5: Material (left) | Rate (right) ────────────────────── */}
-      <div className="grid grid-cols-2 gap-x-3">
+      {/* Row 5: Material | Rate */}
+      <div className="grid grid-cols-2 gap-3">
         <div>
           <label className={lbl}>Material *</label>
           <Combobox
@@ -379,22 +384,8 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
         </div>
       </div>
 
-      {/* ── Row 6: Operator (left) | Loader (right) ──────────────────── */}
-      <div className="grid grid-cols-2 gap-x-3">
-        <div>
-          <label className={lbl}>Operator</label>
-          <Combobox
-            options={Array.from(new Set([
-              ...slips.map(s => s.operatorName).filter(Boolean) as string[],
-              ...activeEmployees.filter(e => /operator/i.test(e.role || "")).map(e => e.name)
-            ])).map(name => ({ label: name, value: name }))}
-            value={formData.operatorName}
-            allowCreate
-            onChange={(val) => setFormData({ ...formData, operatorName: val || "" })}
-            placeholder="Operator name"
-            mobileTitle="Select Operator"
-          />
-        </div>
+      {/* Row 6: Loader | Challan Photo */}
+      <div className="grid grid-cols-2 gap-3 items-end">
         <div>
           <label className={lbl}>Loader</label>
           <Combobox
@@ -407,73 +398,84 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
             mobileTitle="Select Loader"
           />
         </div>
-      </div>
-
-      {/* ── Row 7: Challan Photo (left) | Notes toggle (right) ───────── */}
-      <div className="grid grid-cols-2 gap-x-3">
         <div>
           <label className={lbl}>Challan Photo</label>
           {attachmentUri ? (
-            <div className="relative h-8">
-              <img src={attachmentUri} alt="Challan"
-                className="w-full h-8 object-cover rounded-lg border border-zinc-200 dark:border-zinc-700" />
+            <div className="flex items-center gap-2 min-h-[48px]">
+              <span className="text-xs text-green-600 font-medium">Attached</span>
               <button type="button" onClick={() => setAttachmentUri(undefined)}
-                className="absolute top-0 right-0 bg-rose-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold"
-                aria-label="Remove">×</button>
+                className="text-xs text-rose-500 flex items-center gap-1 hover:underline">
+                Remove
+              </button>
             </div>
           ) : (
             <button type="button"
               onClick={async () => { try { const r = await captureDocument(); if (r) setAttachmentUri(r.uri); } catch { addToast('error', 'Camera failed.'); } }}
-              className="w-full h-8 flex items-center justify-center gap-1 border border-dashed border-zinc-300 dark:border-zinc-600 rounded-lg text-[10px] text-zinc-500 hover:border-primary-500 hover:text-primary-500 transition-colors">
-              <Camera className="w-3 h-3" />Attach
+              className="w-full min-h-[48px] rounded-xl border border-dashed border-zinc-300 dark:border-zinc-600 flex items-center justify-center gap-1.5 text-xs text-zinc-400 hover:text-primary-500 hover:border-primary-500 transition-colors">
+              <Camera className="w-3.5 h-3.5" />Attach
             </button>
-          )}
-        </div>
-        <div className="flex items-end justify-end">
-          {!showNotes ? (
-            <button type="button" onClick={() => setShowNotes(true)}
-              className="flex items-center gap-1 text-[10px] text-zinc-400 hover:text-primary-500 transition-colors">
-              <StickyNote className="w-3 h-3" />Add Note
-            </button>
-          ) : (
-            <div className="w-full">
-              <div className="flex items-center justify-between mb-0.5">
-                <label className={lbl}>Notes</label>
-                <button type="button"
-                  onClick={() => { setShowNotes(false); setFormData({ ...formData, notes: "" }); }}
-                  className="text-[9px] text-zinc-400 hover:text-rose-500 transition-colors">
-                  Remove
-                </button>
-              </div>
-              <textarea autoFocus rows={2} value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                className="w-full resize-none rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-2.5 py-1.5 text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 transition-colors"
-                placeholder="Optional remarks"
-              />
-            </div>
           )}
         </div>
       </div>
 
-      {/* ── Row 8: Payment toggle (full width) ───────────────────────── */}
+      {/* Add Note button */}
+      <div className="flex justify-end">
+        {!showNotes && (
+          <button type="button" onClick={() => setShowNotes(true)}
+            className="flex items-center gap-1 text-xs text-zinc-400 hover:text-primary-500 transition-colors">
+            <StickyNote className="w-3.5 h-3.5" />Add Note
+          </button>
+        )}
+      </div>
+
+      {/* Notes Textarea */}
+      {showNotes && (
+        <div className="w-full mt-1 animate-fade-in">
+          <div className="flex items-center justify-between mb-1">
+            <label className={lbl}>Notes</label>
+            <button type="button"
+              onClick={() => { setShowNotes(false); setFormData({ ...formData, notes: "" }); }}
+              className="text-xs text-zinc-400 hover:text-rose-500 transition-colors">
+              Remove
+            </button>
+          </div>
+          <textarea autoFocus rows={2} value={formData.notes}
+            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+            className="w-full resize-none rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors"
+            placeholder="Optional remarks"
+          />
+        </div>
+      )}
+
+      {/* Payment toggle */}
       <div>
         <label className={lbl}>Payment</label>
-        <div className={seg + " h-8"}>
+        <div className={seg + " min-h-[40px]"}>
           {(["Cash (Paid)", "Credit (Unpaid)", "Partial"] as const).map((s) =>
             segBtn(formData.paymentStatus === s, () => setFormData({ ...formData, paymentStatus: s, amountPaid: "" }), s.split(" ")[0])
           )}
         </div>
       </div>
 
-      {/* ── Row 9: Total ₹ (left) | Save Changes (right) ─────────────── */}
-      <div className="grid grid-cols-2 gap-x-3 items-end">
+      {/* Partial Payment amount */}
+      {formData.paymentStatus === "Partial" && (
+        <div className="animate-fade-in mt-1">
+          <label className={lbl}>Paid ₹</label>
+          <input required type="number" step="0.01" value={formData.amountPaid}
+            onChange={(e) => setFormData({ ...formData, amountPaid: e.target.value })}
+            className={inp} placeholder="0" />
+        </div>
+      )}
+
+      {/* Total + Save button row */}
+      <div className="grid grid-cols-2 gap-3 items-end">
         <div>
-          <div className="flex items-center justify-between mb-0.5">
+          <div className="flex items-center justify-between mb-1">
             <label className={lbl + " mb-0"}>Total ₹</label>
             {hasManualOverride && (
               <button type="button"
                 onClick={() => { setHasManualOverride(false); setManualTotalAmount(calculatedTotalAmount.toString()); }}
-                className="text-[9px] text-primary-600 hover:underline">
+                className="text-xs text-primary-600 hover:underline">
                 Reset
               </button>
             )}
@@ -481,58 +483,27 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
           <input type="number" step="1" value={manualTotalAmount}
             onChange={(e) => { setHasManualOverride(true); setManualTotalAmount(e.target.value); }}
             className={[
-              "w-full h-8 rounded-lg border-2 border-primary-500 px-2.5 text-xs font-bold",
+              "w-full h-10 rounded-xl border-2 border-primary-500 px-3 text-sm font-bold",
               "bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300",
               "focus:outline-none focus:border-primary-400 transition-colors",
             ].join(" ")}
           />
           {hasManualOverride && (
-            <div className="text-[9px] text-zinc-500 mt-0.5">Auto: ₹{calculatedTotalAmount.toLocaleString()}</div>
-          )}
-          {formData.paymentStatus === "Partial" && (
-            <div className="mt-2">
-              <label className={lbl}>Paid ₹</label>
-              <input required type="number" step="0.01" value={formData.amountPaid}
-                onChange={(e) => setFormData({ ...formData, amountPaid: e.target.value })}
-                className={inp} placeholder="0" />
-            </div>
+            <div className="text-xs text-zinc-500 mt-1">Auto: ₹{calculatedTotalAmount.toLocaleString()}</div>
           )}
         </div>
 
-        <div className="hidden md:flex items-end gap-2">
+        <div className="flex justify-end gap-2">
           <button type="button" onClick={onCancel}
-            className="flex-1 h-8 bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-white text-xs font-bold rounded-lg hover:bg-zinc-300 dark:hover:bg-zinc-600 active:scale-95 transition-all flex items-center justify-center">
+            className="px-5 h-10 bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-white text-sm font-bold rounded-xl hover:bg-zinc-300 dark:hover:bg-zinc-600 active:scale-95 transition-all">
             Cancel
           </button>
           <button type="submit"
-            className="flex-1 h-8 bg-primary-600 text-white text-xs font-bold rounded-lg hover:bg-primary-700 active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-sm">
-            <Plus className="w-3.5 h-3.5" />Save
+            className="px-5 h-10 bg-primary-600 text-white text-sm font-bold rounded-xl hover:bg-primary-700 active:scale-95 transition-all flex items-center gap-1.5 shadow-sm">
+            <Plus className="w-4 h-4" />Save
           </button>
         </div>
       </div>
-
-      {/* ── Mobile sticky footer: qty summary + quick-submit ─────────── */}
-      <MobileStickyFooter>
-        <div className="flex items-center gap-2 md:hidden">
-          <div className="flex-1 min-w-0">
-            <div className="text-[9px] font-semibold uppercase tracking-wide text-zinc-500">Total · Qty</div>
-            <div className="text-sm font-bold text-zinc-900 dark:text-zinc-100 truncate">
-              ₹{finalAmount.toLocaleString()}
-              <span className="text-xs font-normal text-zinc-500 ml-1">
-                · {calculatedQty.toFixed(2)} {formData.measurementType === "Volume (Brass)" ? "Brass" : "T"}
-              </span>
-            </div>
-          </div>
-          <button type="button" onClick={onCancel}
-            className="min-h-11 rounded-xl bg-zinc-200 dark:bg-zinc-700 px-4 text-sm font-bold text-zinc-800 dark:text-white hover:bg-zinc-300 dark:hover:bg-zinc-600 active:scale-95 transition-all whitespace-nowrap">
-            Cancel
-          </button>
-          <button type="submit"
-            className="min-h-11 rounded-xl bg-primary-600 px-5 text-sm font-bold text-white hover:bg-primary-700 active:scale-95 transition-all whitespace-nowrap">
-            Save
-          </button>
-        </div>
-      </MobileStickyFooter>
     </form>
   );
 }

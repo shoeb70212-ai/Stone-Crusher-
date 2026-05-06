@@ -222,26 +222,7 @@ export async function connectPrinter(deviceId: string): Promise<boolean> {
   }
 }
 
-/** Attempts to reconnect to the last known printer, if any. */
-export async function reconnectLastPrinter(): Promise<boolean> {
-  if (!isNative()) return false;
-  let lastId: string | null = null;
-  try { lastId = localStorage.getItem(PRINTER_DEVICE_KEY); } catch { /* noop */ }
-  if (!lastId) return false;
-  return connectPrinter(lastId);
-}
 
-/** Disconnects the currently connected printer. */
-export async function disconnectPrinter(): Promise<void> {
-  if (!isNative() || !connectedDeviceId) return;
-  const { BleClient } = await import('@capacitor-community/bluetooth-le');
-  try {
-    await BleClient.disconnect(connectedDeviceId);
-  } finally {
-    connectedDeviceId = null;
-    connectedProfile = null;
-  }
-}
 
 /** Returns the currently connected device ID, or null. */
 export function getConnectedPrinterId(): string | null {

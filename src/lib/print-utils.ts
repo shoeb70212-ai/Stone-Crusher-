@@ -15,7 +15,7 @@
 
 import { isNative } from './capacitor';
 import type { CompanySettings, Customer, Invoice, Slip } from '../types';
-import { toWords } from './utils';
+import { toWords, formatVehicleNo } from './utils';
 
 // ---------------------------------------------------------------------------
 // Module-level constants
@@ -305,77 +305,7 @@ export function printHtml(htmlContent: string): Promise<void> {
   });
 }
 
-/**
- * Generates a PDF and displays it in a pre-opened browser tab.
- *
- * IMPORTANT: `targetWindow` must be opened synchronously inside the click
- * handler (before any awaits) to avoid popup blockers. If the caller cannot
- * open a window (e.g. blocked), pass `null` and we fall back to `printHtml`.
- *
- * @param htmlContent  - Raw innerHTML of the invoice area.
- * @param targetWindow - A window reference opened via `window.open('','_blank')`
- *                       in the synchronous click handler. Pass `null` to skip.
- */
-export async function openPdfInNewTab(
-  htmlContent: string,
-  targetWindow: Window | null,
-): Promise<void> {
-  if (!htmlContent) return;
 
-  try {
-    const blob = await generatePdfBlob(htmlContent, 'document.pdf');
-    const url = URL.createObjectURL(blob);
-
-    if (targetWindow) {
-      targetWindow.location.href = url;
-      // Revoke after the tab has had time to load the blob URL.
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
-    } else {
-      // Fallback: try opening (may be blocked) or use iframe print
-      const fallback = window.open(url, '_blank');
-      if (fallback) {
-        setTimeout(() => URL.revokeObjectURL(url), 10_000);
-      } else {
-        URL.revokeObjectURL(url);
-        printHtml(htmlContent);
-      }
-    }
-  } catch (error) {
-    console.error('PDF generation failed, falling back to iframe print:', error);
-    if (targetWindow) targetWindow.close();
-    printHtml(htmlContent);
-  }
-}
-
-/**
- * Generates a PDF and triggers a browser download.
- * Throws on failure — callers should handle errors and must NOT fall back to
- * printHtml, because opening a print dialog from a download button causes a
- * browser freeze when the user cancels the print dialog.
- *
- * @param source   - Either an HTMLElement (we read its innerHTML) or a raw HTML string.
- * @param filename - The download filename, e.g. "Invoice-INV001.pdf".
- */
-export async function downloadPdf(
-  source: HTMLElement | string,
-  filename: string,
-): Promise<void> {
-  const htmlContent = typeof source === 'string' ? source : source.innerHTML;
-  if (!htmlContent) return;
-
-  const blob = await generatePdfBlob(htmlContent, filename);
-  triggerBlobDownload(blob, filename);
-}
-
-export async function createPdfBlob(
-  source: HTMLElement | string,
-  filename: string,
-): Promise<Blob> {
-  const htmlContent = typeof source === 'string' ? source : source.innerHTML;
-  if (!htmlContent) throw new Error('No PDF content available.');
-
-  return generatePdfBlob(htmlContent, filename);
-}
 
 // ---------------------------------------------------------------------------
 // Native share sheet (P0 — Share Sheet Integration)
@@ -1303,12 +1233,49 @@ export async function createSlipPdfBlob(
   slip: Slip,
   customerName: string,
   companySettings: CompanySettings,
+  formatOverride?: string
 ): Promise<Blob> {
   const { jsPDF } = await import('jspdf');
 
-  const isWide = (companySettings.slipFormat ?? 'Thermal-58mm') === 'A4';
-  const pageWidth = isWide ? 210 : 58;
-  const format = isWide ? 'a4' : ([58, 297] as [number, number]);
+  const selectedFormat = formatOverride || companySettings.slipFormat || 'Thermal-58mm';
+  const isWide = selectedFormat === 'A4';
+  
+  const SLIP_PAPER_SIZES: Record<string, { width: number; autoHeight: boolean }> = {
+    'A4':            { width: 210, autoHeight: false },
+    'Thermal-58mm':  { width: 58,  autoHeight: true },
+    'Thermal-76mm':  { width: 76,  autoHeight: true },
+    'Thermal-80mm':  { width: 80,  autoHeight: true },
+    'Thermal-100mm': { width: 100, autoHeight: true },
+    'Thermal-110mm': { width: 110, autoHeight: true },
+  };
+
+  const paperSize = SLIP_PAPER_SIZES[selectedFormat] || SLIP_PAPER_SIZES['Thermal-58mm'];
+  const pageWidth = paperSize.width;
+  
+  // Calculate content height to set page format properly for thermal
+  let contentHeight = isWide ? 14 : 6;
+  
+  const badgeH = isWide ? 5.5 : 4;
+  contentHeight += isWide ? 6 : 4; // company name
+  if (companySettings.address) contentHeight += isWide ? 5 : 3.5;
+  contentHeight += badgeH + (isWide ? 4 : 2.5); // badge
+  contentHeight += isWide ? 4 : 2.5; // divider
+  
+  const rowH = isWide ? 7 : 5.5;
+  const numRows = 6 + (slip.driverName ? 1 : 0);
+  contentHeight += numRows * rowH;
+  
+  contentHeight += isWide ? 8 : 5; // spacing before sig
+  contentHeight += 3; // sig line to text
+  
+  if (companySettings.receiptFooter) {
+    contentHeight += isWide ? 8 : 10;
+  }
+  
+  contentHeight += isWide ? 14 : 10; // bottom margin
+
+  // For thermal, use calculated height. For A4, use standard A4 height (297)
+  const format = isWide ? 'a4' : ([pageWidth, Math.max(contentHeight, 50)] as [number, number]);
 
   const doc = new jsPDF({ unit: 'mm', format, orientation: 'portrait' });
 
@@ -1318,10 +1285,11 @@ export async function createSlipPdfBlob(
 
   const primary = PRIMARY_COLORS[companySettings.primaryColor || 'emerald'] || '#10b981';
 
-  const fs = isWide ? 9 : 7;
-  const titleFs = isWide ? 16 : 9;
-  const subFs = isWide ? 8 : 6;
-  const rowH = isWide ? 7 : 5.5;
+  // Base fonts on width rather than just "A4 vs not"
+  const scale = Math.min(1, pageWidth / 58); // scale slightly for larger thermal sizes
+  const fs = isWide ? 9 : 7 * scale;
+  const titleFs = isWide ? 16 : 9 * scale;
+  const subFs = isWide ? 8 : 6 * scale;
 
   // Header
   doc.setFont('helvetica', 'bold');
@@ -1344,7 +1312,6 @@ export async function createSlipPdfBlob(
   doc.setTextColor(255, 255, 255);
   const badgeText = 'GATE PASS';
   const badgeW = isWide ? 24 : 16;
-  const badgeH = isWide ? 5.5 : 4;
   doc.setFillColor(0, 0, 0);
   doc.rect(pageWidth / 2 - badgeW / 2, y, badgeW, badgeH, 'F');
   doc.text(badgeText, pageWidth / 2, y + badgeH - 1.2, { align: 'center' });
@@ -1360,7 +1327,7 @@ export async function createSlipPdfBlob(
   const rows: [string, string][] = [
     ['Token', `#${slip.id.toUpperCase().slice(0, 6)}`],
     ['Date', new Date(slip.date).toLocaleDateString('en-IN')],
-    ['Vehicle', slip.vehicleNo],
+    ['Vehicle', formatVehicleNo(slip.vehicleNo)],
     ...(slip.driverName ? [['Driver', slip.driverName + (slip.driverPhone ? ` (${slip.driverPhone.slice(-4)})` : '')] as [string, string]] : []),
     ['Customer', customerName],
     ['Material', slip.materialType],

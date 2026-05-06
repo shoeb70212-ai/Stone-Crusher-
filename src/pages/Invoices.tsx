@@ -462,7 +462,13 @@ function InvoicesContent() {
         materials={generator.materials}
         customers={customers}
         isSubmitting={generator.isSubmitting}
-        onGenerate={generator.handleGenerate}
+        submittingAction={generator.submittingAction}
+        onGenerate={async (action) => {
+          const invoice = await generator.handleGenerate(action);
+          if (invoice && action !== "create") {
+            await handleInvoiceDocumentAction(invoice, action);
+          }
+        }}
         onAddItem={generator.handleAddItem}
         generateInvoiceNoForType={generator.generateInvoiceNoForType}
       />

@@ -1,5 +1,6 @@
 import { isNative } from "./capacitor";
 import type { CompanySettings, Customer, Invoice, Slip } from "../types";
+import { formatVehicleNo } from "./utils";
 
 const moneyFormatter = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 2,
@@ -136,7 +137,7 @@ export function buildSlipWhatsAppMessage({
     companySettings.name || "CrushTrack",
     `Loading Slip: #${compactId(slip.id)}`,
     `Date: ${formatDate(slip.date)}`,
-    `Vehicle: ${slip.vehicleNo}`,
+    `Vehicle: ${formatVehicleNo(slip.vehicleNo)}`,
     `Customer: ${customerName}`,
     `Material: ${slip.materialType}`,
     `Quantity: ${slip.quantity.toFixed(2)} ${quantityUnit(slip.measurementType)}`,

@@ -31,9 +31,10 @@ import {
 } from "date-fns";
 import { PrintSlipModal } from "../components/forms/PrintSlipModal";
 import { Slip } from "../types";
+import { formatVehicleNo, normalizeVehicleNo } from "../lib/utils";
 
 export function Dashboard() {
-  const { slips, transactions, customers, invoices, getCustomerBalance } = useErp();
+  const { slips, transactions, customers, invoices, getCustomerBalance, hasPermission } = useErp();
   const [printSlip, setPrintSlip] = useState<Slip | null>(null);
 
   const navigateTo = useCallback((view: string) => {
@@ -165,13 +166,14 @@ export function Dashboard() {
     )
     .reduce(
       (acc, curr) => {
-        if (!acc[curr.vehicleNo])
-          acc[curr.vehicleNo] = { trips: 0, quantity: 0 };
-        acc[curr.vehicleNo].trips += 1;
-        acc[curr.vehicleNo].quantity += curr.quantity;
+        const key = normalizeVehicleNo(curr.vehicleNo) || curr.vehicleNo;
+        if (!acc[key])
+          acc[key] = { trips: 0, quantity: 0, displayNo: formatVehicleNo(curr.vehicleNo) };
+        acc[key].trips += 1;
+        acc[key].quantity += curr.quantity;
         return acc;
       },
-      {} as Record<string, { trips: number; quantity: number }>,
+      {} as Record<string, { trips: number; quantity: number; displayNo: string }>,
     );
 
   const totalReceivables = useMemo(() => {
@@ -195,7 +197,7 @@ export function Dashboard() {
   const expensePercent = percentChange(expense, prevExpense);
 
   const stats = [
-    {
+    ...(hasPermission("viewAllDispatches") ? [{
       label: "Trips",
       value: `${dateSlips.filter(s => s.status !== "Cancelled").length}`,
       valueSuffix: "trips",
@@ -205,8 +207,8 @@ export function Dashboard() {
       icon: Truck,
       iconClass: "text-info bg-info-muted",
       navTarget: "dispatch",
-    },
-    {
+    }] : []),
+    ...(hasPermission("viewDaybook") ? [{
       label: "Income",
       value: `₹${income.toLocaleString()}`,
       valueSuffix: undefined as string | undefined,
@@ -227,8 +229,8 @@ export function Dashboard() {
       icon: ArrowUpCircle,
       iconClass: "text-warning bg-warning-muted",
       navTarget: "daybook",
-    },
-    {
+    }] : []),
+    ...(hasPermission("viewPendingAmounts") ? [{
       label: "Receivables",
       value: `₹${totalReceivables.toLocaleString()}`,
       valueSuffix: undefined as string | undefined,
@@ -238,7 +240,7 @@ export function Dashboard() {
       icon: Wallet,
       iconClass: "text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-500/15",
       navTarget: "customers",
-    },
+    }] : []),
   ];
 
   const getRangeLabel = () => {
@@ -401,7 +403,7 @@ export function Dashboard() {
                         : "bg-danger-muted text-danger-foreground"
                     }`}
                   >
-                    {stat.isPositive ? "↑" : "↓"} {stat.subValue.split(" vs")[0]}%
+                    {stat.isPositive ? "↑" : "↓"} {stat.subValue.split(" vs")[0]}
                   </span>
                 )}
               </p>
@@ -437,7 +439,7 @@ export function Dashboard() {
                 id: s.id,
                 type: "slip" as const,
                 date: s.date,
-                title: s.vehicleNo,
+                title: formatVehicleNo(s.vehicleNo),
                 subtitle: `${s.materialType} · ${s.quantity.toFixed(1)} ${s.measurementType === "Volume (Brass)" ? "Brass" : "Tons"}`,
                 amount: s.totalAmount,
                 status: s.status,
@@ -513,12 +515,12 @@ export function Dashboard() {
               string,
               { trips: number; quantity: number },
             ][]
-          ).map(([vehicleNo, data]) => (
+          ).map(([key, data]) => (
             <div
-              key={vehicleNo}
+              key={key}
               className="flex justify-between items-center px-3 py-2.5 bg-surface-2 border border-border rounded-lg hover:border-border-strong transition-colors"
             >
-              <span className="font-semibold text-foreground text-xs md:text-sm tabular-nums">{vehicleNo}</span>
+              <span className="font-semibold text-foreground text-xs md:text-sm tabular-nums">{data.displayNo}</span>
               <div className="text-right leading-none">
                 <span className="text-sm md:text-base font-bold text-primary-600 dark:text-primary-400 block tabular-nums">
                   {data.trips}

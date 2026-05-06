@@ -5,6 +5,7 @@ import { useErp } from "../../context/ErpContext";
 import { createSlipPdfBlob, printPdfBlob, sharePdfBlob, PRIMARY_COLORS } from "../../lib/print-utils";
 import { buildSlipWhatsAppMessage, openWhatsAppMessage } from "../../lib/whatsapp-share";
 import { isNative } from "../../lib/capacitor";
+import { formatVehicleNo } from "../../lib/utils";
 import { useBodyScrollLock } from "../../lib/use-body-scroll-lock";
 import {
   scanForPrinters,
@@ -15,6 +16,24 @@ import {
   type SlipPrintData,
 } from "../../lib/escpos";
 import { useToast } from "../ui/Toast";
+
+const SLIP_SIZES = [
+  { id: 'A4', label: 'A4' },
+  { id: 'Thermal-110mm', label: '110mm' },
+  { id: 'Thermal-100mm', label: '100mm' },
+  { id: 'Thermal-80mm', label: '80mm' },
+  { id: 'Thermal-76mm', label: '76mm' },
+  { id: 'Thermal-58mm', label: '58mm' },
+];
+
+const PREVIEW_WIDTHS: Record<string, string> = {
+  'A4': '794px',
+  'Thermal-58mm': '164px',
+  'Thermal-76mm': '215px',
+  'Thermal-80mm': '227px',
+  'Thermal-100mm': '283px',
+  'Thermal-110mm': '312px',
+};
 
 export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => void }) {
   const { companySettings, customers } = useErp();
@@ -64,7 +83,7 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
     const filename = `Slip-${slip.id.slice(0, 8).toUpperCase()}.pdf`;
     setIsPrinting(true);
     try {
-      const blob = await createSlipPdfBlob(slip, customerName, companySettings);
+      const blob = await createSlipPdfBlob(slip, customerName, companySettings, format);
       const result = await sharePdfBlob(blob, filename, 'Loading Slip', message);
 
       if (result === 'downloaded') {
@@ -124,7 +143,7 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
       const data: SlipPrintData = {
         token: slip.id.toUpperCase().slice(0, 6),
         date: new Date(slip.date).toLocaleDateString('en-IN'),
-        vehicleNo: slip.vehicleNo,
+        vehicleNo: formatVehicleNo(slip.vehicleNo),
         driverName: slip.driverName,
         customerName,
         materialType: slip.materialType,
@@ -147,14 +166,33 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
   return (
     <div className="fixed inset-0 bg-zinc-900/80 flex items-center justify-center md:p-4 z-[70] overflow-hidden">
       <div className={`bg-white dark:bg-zinc-800 md:rounded-2xl w-full h-full md:h-auto shadow-xl flex flex-col md:max-h-[90vh] ${format === 'A4' ? 'md:max-w-3xl' : 'md:max-w-sm'}`}>
-        <div className="p-4 border-b flex justify-between items-center print:hidden">
-          <h3 className="font-bold text-zinc-900 dark:text-white">Print Loading Token</h3>
-          <button
-            onClick={onClose}
-            className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:text-zinc-300"
-          >
-            <X className="w-5 h-5" />
-          </button>
+        <div className="p-4 border-b flex flex-col gap-3 print:hidden">
+          <div className="flex justify-between items-center">
+            <h3 className="font-bold text-zinc-900 dark:text-white">Print Loading Token</h3>
+            <button
+              onClick={onClose}
+              className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:text-zinc-300"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+            <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider shrink-0">Size:</span>
+            {SLIP_SIZES.map(s => (
+              <button
+                key={s.id}
+                onClick={() => setFormat(s.id)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${
+                  format === s.id
+                    ? "bg-primary-50 text-primary-700 dark:bg-primary-500/10 dark:text-primary-400 ring-1 ring-primary-600/20 dark:ring-primary-500/30"
+                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div ref={previewWrapRef} className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-900 p-4">
@@ -170,7 +208,7 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
             id="print-area"
             className="text-black bg-white relative p-2 md:p-4"
             style={{
-              width: format === 'A4' ? '794px' : (format === 'Thermal-58mm' ? '180px' : '240px'),
+              width: PREVIEW_WIDTHS[format] || '240px',
               transformOrigin: 'top left',
               transform: format === 'A4' && previewScale < 1 ? `scale(${previewScale})` : undefined,
             }}
@@ -178,8 +216,13 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
             <style dangerouslySetInnerHTML={{ __html: `
             @media print {
               @page {
-                size: ${format === 'A4' ? 'A4' : format === 'Thermal-58mm' ? '58mm auto' : '80mm auto'};
+                size: ${format === 'A4' ? 'A4' : format.replace('Thermal-', '') + ' auto'};
                 margin: 0;
+              }
+              #print-area {
+                transform: none !important;
+                width: ${format === 'A4' ? '794px' : PREVIEW_WIDTHS[format]} !important;
+                margin: 0 !important;
               }
             }
           `}} />
@@ -210,7 +253,7 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
               </tr>
               <tr>
                 <td className="border border-black p-1 font-bold">Vehicle</td>
-                <td className="border border-black p-1 font-bold">{slip.vehicleNo}</td>
+                <td className="border border-black p-1 font-bold">{formatVehicleNo(slip.vehicleNo)}</td>
               </tr>
               {slip.driverName && (
                 <tr>
@@ -333,7 +376,7 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
                     const filename = `Slip-${slip.id.slice(0, 8).toUpperCase()}.pdf`;
                     setIsPrinting(true);
                     try {
-                      const blob = await createSlipPdfBlob(slip, customerName, companySettings);
+                      const blob = await createSlipPdfBlob(slip, customerName, companySettings, format);
                       await sharePdfBlob(blob, filename, 'Share Loading Token');
                     } finally {
                       setIsPrinting(false);
@@ -352,7 +395,7 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
                   const filename = `Slip-${slip.id.slice(0, 8).toUpperCase()}.pdf`;
                   setIsPrinting(true);
                   try {
-                    const blob = await createSlipPdfBlob(slip, customerName, companySettings);
+                    const blob = await createSlipPdfBlob(slip, customerName, companySettings, format);
                     await sharePdfBlob(blob, filename);
                     addToast('success', 'PDF downloaded successfully.');
                     setTimeout(() => onClose(), 1500);
@@ -401,7 +444,7 @@ export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => v
 
                 setIsPrinting(true);
                 try {
-                  const blob = await createSlipPdfBlob(slip, customerName, companySettings);
+                  const blob = await createSlipPdfBlob(slip, customerName, companySettings, format);
                   const filename = `Slip-${slip.id.slice(0, 8).toUpperCase()}.pdf`;
                   const title = `Slip ${slip.id.slice(0, 8).toUpperCase()}`;
                   const result = await sharePdfBlob(blob, filename, title);

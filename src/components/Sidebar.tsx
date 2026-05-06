@@ -11,6 +11,7 @@ import {
   CalendarDays,
   X,
   Receipt,
+  ClipboardList,
   ChevronLeft,
   ChevronRight,
   MoreHorizontal,
@@ -43,6 +44,7 @@ const navGroups: { label: string; items: { id: string; label: string; icon: type
     items: [
       { id: "dispatch", label: "Dispatch", icon: Truck },
       { id: "invoices", label: "Invoicing", icon: Receipt },
+      { id: "quotations", label: "Quotations", icon: ClipboardList },
       { id: "vehicles", label: "Vehicles", icon: Truck },
     ],
   },
@@ -83,7 +85,7 @@ export function Sidebar({
   isOpen,
   setIsOpen,
 }: SidebarProps) {
-  const { userRole } = useErp();
+  const { userRole, hasPermission } = useErp();
   const { tap } = useHapticFeedback();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
@@ -101,14 +103,14 @@ export function Sidebar({
   }, [isMoreOpen]);
 
   const filteredNavItems = navItems.filter((item) => {
-    if (
-      userRole === "Manager" &&
-      (item.id === "ledger" || item.id === "settings" || item.id === "employees")
-    )
-      return false;
-    if (userRole !== "Admin" && item.id === "employees") return false;
-    if (userRole === "Partner" && item.id === "settings") return false;
-    if (userRole !== "Admin" && item.id === "audit") return false;
+    if (item.id === "customers" && !hasPermission("viewAllCustomers")) return false;
+    if (item.id === "ledger" && !hasPermission("viewCustomerLedger")) return false;
+    if (item.id === "dispatch" && !hasPermission("viewAllDispatches")) return false;
+    if (item.id === "daybook" && !hasPermission("viewDaybook")) return false;
+    if (item.id === "vehicles" && !hasPermission("manageVehicles")) return false;
+    if (item.id === "employees" && !hasPermission("manageEmployees")) return false;
+    if (item.id === "settings" && !userRole) return false;
+    if (item.id === "audit" && userRole !== "Admin") return false;
     return true;
   });
 
@@ -316,10 +318,14 @@ export function Sidebar({
           Sits on a translucent surface so content gently blurs behind it.
           ═══════════════════════════════════════════════════════════ */}
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 backdrop-blur-xl bg-surface/90 border-t border-border z-40 flex items-stretch pb-[env(safe-area-inset-bottom)] min-h-16"
+        className="md:hidden fixed bottom-0 left-0 right-0 backdrop-blur-xl bg-surface/90 border-t border-border z-40 flex items-stretch pb-[env(safe-area-inset-bottom)] min-h-16 mobile-bottom-nav"
         aria-label="Primary"
       >
-        {bottomBarItems.map((item) => {
+        {bottomBarItems.filter(item => {
+          if (item.id === "dispatch" && !hasPermission("viewAllDispatches")) return false;
+          if (item.id === "daybook" && !hasPermission("viewDaybook")) return false;
+          return true;
+        }).map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
           return (

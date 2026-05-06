@@ -57,6 +57,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "html2pdf.js": "^0.14.0",
+    "idb-keyval": "^6.2.2",
     "jspdf": "^3.0.1",
     "lucide-react": "^0.546.0",
     "pg": "^8.20.0",

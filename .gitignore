@@ -36,3 +36,16 @@ dev-server-*.out.log
 memory/
 
 .vercel
+
+# Scratch files, AI logs, and internal documentation
+BUGFIX_IMPLEMENTATION_LOG.md
+MOBILE_ASSESSMENT.md
+CLAUDE.md
+deadcode.md
+lint_warnings.txt
+lint_warnings_utf8.txt
+ts-prune-output.txt
+metadata.json
+refactor_ledger.py
+replace_ui.py
+test.cjs

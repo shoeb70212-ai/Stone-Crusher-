@@ -12,6 +12,7 @@ export function useInvoiceGenerator() {
 
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittingAction, setSubmittingAction] = useState<"download" | "whatsapp" | "print" | "create" | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [selectedSlipIds, setSelectedSlipIds] = useState<string[]>([]);
@@ -164,10 +165,12 @@ export function useInvoiceGenerator() {
     }
   };
 
-  const handleGenerate = () => {
-    if (isSubmitting) return;
-    if (!newInvoice.customerId || !newInvoice.items?.length || !newInvoice.invoiceNo) return;
+  const handleGenerate = async (action: "download" | "whatsapp" | "print" | "create" = "create") => {
+    if (isSubmitting) return null;
+    if (!newInvoice.customerId || !newInvoice.items?.length || !newInvoice.invoiceNo) return null;
+    
     setIsSubmitting(true);
+    setSubmittingAction(action);
 
     let finalCustomerId = newInvoice.customerId!;
     if (finalCustomerId.startsWith("NEW:")) {
@@ -184,7 +187,8 @@ export function useInvoiceGenerator() {
     if (selectedSlips.length !== selectedSlipIds.length) {
       addToast("error", "One or more selected slips could not be found. Refresh and try again.");
       setIsSubmitting(false);
-      return;
+      setSubmittingAction(null);
+      return null;
     }
 
     const invalidSlip = selectedSlips.find(
@@ -196,7 +200,8 @@ export function useInvoiceGenerator() {
     if (invalidSlip) {
       addToast("error", "Selected slips no longer match this customer or invoice.");
       setIsSubmitting(false);
-      return;
+      setSubmittingAction(null);
+      return null;
     }
 
     let subTotal = 0, cgst = 0, sgst = 0;
@@ -214,7 +219,8 @@ export function useInvoiceGenerator() {
       if (Math.abs(Math.round(subTotal) - selectedSlipTotal) > 1) {
         addToast("error", "Invoice item total must match the selected slip total before slips can be linked.");
         setIsSubmitting(false);
-        return;
+        setSubmittingAction(null);
+        return null;
       }
     }
 
@@ -222,42 +228,49 @@ export function useInvoiceGenerator() {
     sgst = Math.round(sgst * 100) / 100;
     const total = Math.round(subTotal + cgst + sgst);
 
+    let resultInvoice: Invoice;
+
     if (editingInvoiceId) {
-      updateInvoice(editingInvoiceId, {
+      resultInvoice = {
+        ...(invoices.find(inv => inv.id === editingInvoiceId) as Invoice),
         invoiceNo: newInvoice.invoiceNo,
-        date: newInvoice.date,
+        date: newInvoice.date!,
         customerId: finalCustomerId,
         type: newInvoice.type as "GST" | "Cash",
-        items: newInvoice.items,
+        items: newInvoice.items!,
         subTotal, cgst, sgst, total,
         slipIds: selectedSlipIds,
-      });
+      };
+      updateInvoice(editingInvoiceId, resultInvoice);
+      
       const oldInvoice = invoices.find((inv) => inv.id === editingInvoiceId);
       if (oldInvoice?.slipIds) {
         oldInvoice.slipIds.forEach((id) => {
-          if (!selectedSlipIds.includes(id)) updateSlip(id, { invoiceId: null as unknown as undefined });
+          if (!selectedSlipIds.includes(id)) updateSlip(id, { invoiceId: undefined });
         });
       }
       selectedSlipIds.forEach((id) => updateSlip(id, { invoiceId: editingInvoiceId }));
     } else {
       const newInvoiceId = generateId();
-      const invoice: Invoice = {
+      resultInvoice = {
         id: newInvoiceId,
         invoiceNo: newInvoice.invoiceNo,
         date: newInvoice.date!,
         customerId: finalCustomerId,
         type: newInvoice.type as "GST" | "Cash",
-        items: newInvoice.items,
+        items: newInvoice.items!,
         subTotal, cgst, sgst, total,
         status: "Pending",
         slipIds: selectedSlipIds,
       };
-      addInvoice(invoice);
+      addInvoice(resultInvoice);
       selectedSlipIds.forEach((id) => updateSlip(id, { invoiceId: newInvoiceId }));
     }
 
     setIsSubmitting(false);
+    setSubmittingAction(null);
     setShowGenerateModal(false);
+    return resultInvoice;
   };
 
   const exportData = async (filteredInvoices: Invoice[]) => {
@@ -331,6 +344,7 @@ export function useInvoiceGenerator() {
     // state
     showGenerateModal, setShowGenerateModal,
     isSubmitting,
+    submittingAction,
     isExporting,
     editingInvoiceId,
     selectedSlipIds, setSelectedSlipIds,

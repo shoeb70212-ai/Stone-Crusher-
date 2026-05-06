@@ -17,6 +17,7 @@ import {
   Transaction,
   Vehicle,
   Invoice,
+  Quotation,
   CompanySettings,
   Task,
   AuditLog,
@@ -26,7 +27,21 @@ import { supabase } from "../lib/supabase";
 import { isNative } from "../lib/capacitor";
 import { getEmployeeTransactionImpact } from "../lib/employee-ledger";
 import { clearBiometricCredentials } from "../lib/biometrics";
-import { generateId } from "../lib/utils";
+import { generateId, formatVehicleNo } from "../lib/utils";
+import {
+  saveLocalRecord,
+  getLocalCollection,
+  getLocalCollectionRecent,
+  saveLocalSingleton,
+  getLocalSingleton,
+  setLocalCollection,
+  deleteLocalRecord,
+  isLocalEmpty,
+  pushDeltaToCloud,
+  pullAllFromCloud,
+  pushFullDatasetToCloud,
+  hasMasterKey,
+} from "../lib/sync-engine";
 
 // ---------------------------------------------------------------------------
 // API helpers
@@ -63,6 +78,7 @@ interface ErpState {
   transactions: Transaction[];
   vehicles: Vehicle[];
   invoices: Invoice[];
+  quotations: Quotation[];
   tasks: Task[];
   auditLogs: AuditLog[];
   companySettings: CompanySettings;
@@ -75,6 +91,7 @@ interface ErpState {
   session: Session | null;
   signOut: () => Promise<void>;
   recordAuditEvent: (entry: AuditLogInput) => void;
+  hasPermission: (key: keyof import("../types").UserPermissions) => boolean;
 
   // Settings
   updateCompanySettings: (settings: CompanySettings) => Promise<boolean>;
@@ -109,6 +126,11 @@ interface ErpState {
   addInvoice: (invoice: Invoice) => boolean;
   updateInvoice: (id: string, updates: Partial<Invoice>) => boolean;
 
+  // Quotation CRUD
+  addQuotation: (quotation: Quotation) => boolean;
+  updateQuotation: (id: string, updates: Partial<Quotation>) => boolean;
+  deleteQuotation: (id: string) => boolean;
+
   // Transaction CRUD
   addTransaction: (transaction: Transaction) => boolean;
   updateTransaction: (id: string, updates: Partial<Transaction>) => boolean;
@@ -130,6 +152,12 @@ interface ErpState {
   flushSync: () => Promise<boolean>;
   /** Ref to the current retry count (exposed for manual reset). */
   retryCountRef: React.MutableRefObject<number>;
+
+  // Pagination
+  historicalBalances: Record<string, number>;
+  historicalEmployeeBalances: Record<string, number>;
+  loadHistoricalData: () => Promise<void>;
+  loadInactiveCustomers: () => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -159,6 +187,7 @@ const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
     { id: "6", name: "Boulders", defaultPrice: 250, unit: "Ton", hsnCode: "25169090", gstRate: 5 },
   ],
   users: [],
+  designTheme: "Minimal",
 };
 
 const LOCAL_BACKUP_KEY = "erp_data_backup";
@@ -188,6 +217,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings>(DEFAULT_COMPANY_SETTINGS);
@@ -200,6 +230,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error' | 'failed'>('idle');
   const [syncQueueV2Enabled, setSyncQueueV2Enabled] = useState(false);
+  const [historicalBalances, setHistoricalBalances] = useState<Record<string, number>>({});
+  const [historicalEmployeeBalances, setHistoricalEmployeeBalances] = useState<Record<string, number>>({});
   useEffect(() => {
     setSyncQueueV2Enabled(companySettings.flags?.syncQueueV2 ?? false);
   }, [companySettings.flags]);
@@ -232,56 +264,181 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // -----------------------------------------------------------------------
-  // Data Loading — server-first with localStorage fallback
+  // Data Loading — IndexedDB-first → Supabase cloud → legacy server fallback
   // -----------------------------------------------------------------------
+
+  /** Helper: apply a loaded dataset to React state. */
+  const applyDataToState = useCallback((data: any) => {
+    if (data.customers?.length) setCustomers(data.customers);
+    if (data.employees?.length) setEmployees(data.employees);
+    if (data.employeeTransactions?.length) setEmployeeTransactions(data.employeeTransactions);
+    if (data.slips?.length) setSlips(data.slips);
+    if (data.transactions?.length) setTransactions(data.transactions);
+    if (data.vehicles?.length) setVehicles(data.vehicles);
+    if (data.invoices?.length) setInvoices(data.invoices);
+    if (data.quotations?.length) setQuotations(data.quotations);
+    if (data.tasks?.length) setTasks(data.tasks);
+    if (data.auditLogs?.length) setAuditLogs(data.auditLogs);
+    if (data.companySettings) setCompanySettings(data.companySettings);
+    if (typeof data.bootstrapRequired === 'boolean') setBootstrapRequired(data.bootstrapRequired);
+  }, []);
+
+  const loadFromIDB = useCallback(async () => {
+    const localData: any = {};
+    try {
+      const allCustomers = await getLocalCollection('customers');
+      localData.customers = allCustomers.filter((c: any) => c.isActive !== false);
+      const allEmployees = await getLocalCollection('employees');
+      localData.employees = allEmployees.filter((e: any) => e.isActive !== false);
+      localData.vehicles = await getLocalCollection('vehicles');
+      localData.tasks = await getLocalCollection('tasks');
+
+      const timedCollections = [
+        'slips', 'transactions', 'invoices',
+        'quotations', 'employeeTransactions', 'auditLogs',
+      ];
+      let olderSlips: any[] = [], olderInvoices: any[] = [], olderTransactions: any[] = [], olderEmployeeTransactions: any[] = [];
+      let totalSkipped = 0;
+
+      for (const col of timedCollections) {
+        const { recent, older } = await getLocalCollectionRecent(col, 60);
+        localData[col] = recent;
+        totalSkipped += older.length;
+        if (col === 'slips') olderSlips = older;
+        if (col === 'invoices') olderInvoices = older;
+        if (col === 'transactions') olderTransactions = older;
+        if (col === 'employeeTransactions') olderEmployeeTransactions = older;
+      }
+
+      if (totalSkipped > 0) {
+        console.log(`[ErpContext] Skipped ${totalSkipped} older records (load on demand).`);
+      }
+
+      const customerBal: Record<string, number> = {};
+      const employeeBal: Record<string, number> = {};
+      for (const s of olderSlips) {
+        if (!s.invoiceId && (s.status === "Tallied" || s.status === "Pending" || s.status === "Loaded")) {
+          customerBal[s.customerId] = (customerBal[s.customerId] || 0) + (s.totalAmount - (s.amountPaid ?? 0));
+        }
+      }
+      for (const inv of olderInvoices) {
+        if (inv.status !== "Cancelled") {
+          customerBal[inv.customerId] = (customerBal[inv.customerId] || 0) + inv.total;
+        }
+      }
+      for (const t of olderTransactions) {
+        if (t.customerId) {
+          if (t.type === "Income") customerBal[t.customerId] = (customerBal[t.customerId] || 0) - t.amount;
+          else if (t.type === "Expense") customerBal[t.customerId] = (customerBal[t.customerId] || 0) + t.amount;
+        }
+      }
+      for (const tx of olderEmployeeTransactions) {
+        employeeBal[tx.employeeId] = (employeeBal[tx.employeeId] || 0) + getEmployeeTransactionImpact(tx);
+      }
+
+      setHistoricalBalances(customerBal);
+      setHistoricalEmployeeBalances(employeeBal);
+
+      localData.companySettings = await getLocalSingleton('companySettings');
+      applyDataToState(localData);
+      return true;
+    } catch (e) {
+      console.warn('[ErpContext] loadFromIDB failed:', e);
+      return false;
+    }
+  }, [applyDataToState]);
 
   useEffect(() => {
     async function loadData() {
+      let loaded = false;
+
+      // ── Priority 1: IndexedDB (instant, offline-safe) ──
       try {
-        const API_URL = import.meta.env.VITE_API_URL || "";
-        const res = await fetch(`${API_URL}/api/data`, {
-          headers: apiHeaders(session, false),
-        });
-        if (!res.ok) throw new Error(`Failed to load API data: HTTP ${res.status}`);
-        const data = await res.json();
-        if (typeof data.bootstrapRequired === 'boolean') setBootstrapRequired(data.bootstrapRequired);
-        if (data.customers) setCustomers(data.customers);
-        if (data.employees) setEmployees(data.employees);
-        if (data.employeeTransactions) setEmployeeTransactions(data.employeeTransactions);
-        if (data.slips) setSlips(data.slips);
-        if (data.transactions) setTransactions(data.transactions);
-        if (data.vehicles) setVehicles(data.vehicles);
-        if (data.invoices) setInvoices(data.invoices);
-        if (data.tasks) setTasks(data.tasks);
-        if (data.auditLogs) setAuditLogs(data.auditLogs);
-        if (data.companySettings) setCompanySettings(data.companySettings);
-      } catch {
-        // Server unreachable — fall back to localStorage mirror so the app
-        // remains usable offline.
-        const saved = localStorage.getItem(LOCAL_BACKUP_KEY);
-        if (saved) {
-          try {
-            const data = JSON.parse(saved);
-            if (data.customers) setCustomers(data.customers);
-            if (data.employees) setEmployees(data.employees);
-            if (data.employeeTransactions) setEmployeeTransactions(data.employeeTransactions);
-            if (data.slips) setSlips(data.slips);
-            if (data.transactions) setTransactions(data.transactions);
-            if (data.vehicles) setVehicles(data.vehicles);
-            if (data.invoices) setInvoices(data.invoices);
-            if (data.tasks) setTasks(data.tasks);
-            if (data.auditLogs) setAuditLogs(data.auditLogs);
-            if (data.companySettings) setCompanySettings(data.companySettings);
-          } catch {
-            // Corrupt backup — start fresh (context state remains at defaults).
+        const localEmpty = await isLocalEmpty();
+        if (!localEmpty) {
+          console.log('[ErpContext] Loading from IndexedDB (offline cache)...');
+          loaded = await loadFromIDB();
+          if (loaded) console.log('[ErpContext] IndexedDB load complete.');
+        }
+      } catch (e) {
+        console.warn('[ErpContext] IndexedDB initial check failed:', e);
+      }
+
+      // ── Priority 2: Supabase cloud (if vault is unlocked) ──
+      if (hasMasterKey()) {
+        try {
+          console.log('[ErpContext] Pulling from Supabase (encrypted cloud)...');
+          const cloudData = await pullAllFromCloud();
+          if (cloudData) {
+            await loadFromIDB(); // Load paginated data from the newly updated IDB
+            loaded = true;
+            console.log('[ErpContext] Cloud pull complete.');
+          }
+        } catch (e) {
+          console.warn('[ErpContext] Cloud pull failed (offline?):', e);
+        }
+      }
+
+      // ── Priority 3: Legacy server.ts fallback (first-time migration) ──
+      if (!loaded) {
+        try {
+          console.log('[ErpContext] Falling back to legacy server.ts...');
+          const API_URL = import.meta.env.VITE_API_URL || "";
+          const res = await fetch(`${API_URL}/api/data`, {
+            headers: apiHeaders(session, false),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          if (typeof data.bootstrapRequired === 'boolean') setBootstrapRequired(data.bootstrapRequired);
+          
+          // ── One-time migration: save to IndexedDB + push to Supabase ──
+          console.log('[ErpContext] Migrating legacy data to IndexedDB...');
+          const collections = [
+            'customers', 'employees', 'employeeTransactions', 'slips',
+            'transactions', 'vehicles', 'invoices', 'quotations', 'tasks', 'auditLogs',
+          ];
+          for (const col of collections) {
+            if (Array.isArray(data[col])) {
+              await setLocalCollection(col, data[col]);
+            }
+          }
+          if (data.companySettings) {
+            await saveLocalSingleton('companySettings', data.companySettings);
+          }
+
+          await loadFromIDB();
+          loaded = true;
+
+          // Push to Supabase (encrypted) if vault is unlocked
+          if (hasMasterKey()) {
+            try {
+              console.log('[ErpContext] Pushing legacy data to Supabase (encrypted)...');
+              const migrationPayload: any = {};
+              for (const col of collections) {
+                if (Array.isArray(data[col])) migrationPayload[col] = data[col];
+              }
+              if (data.companySettings) migrationPayload.companySettings = data.companySettings;
+              await pushFullDatasetToCloud(migrationPayload);
+              console.log('[ErpContext] Migration to Supabase complete!');
+            } catch (e) {
+              console.warn('[ErpContext] Migration push to Supabase failed (will retry):', e);
+            }
+          }
+        } catch {
+          // Server also unreachable — try localStorage as absolute last resort
+          const saved = localStorage.getItem(LOCAL_BACKUP_KEY);
+          if (saved) {
+            try {
+              applyDataToState(JSON.parse(saved));
+            } catch { /* corrupt backup — start fresh */ }
           }
         }
-      } finally {
-        setIsLoading(false);
       }
+
+      setIsLoading(false);
     }
     loadData();
-  }, [session?.user?.id]);
+  }, [session?.user?.id, applyDataToState, loadFromIDB]);
 
   // -----------------------------------------------------------------------
   // Delta-Sync Queue — batches mutations and PATCHes them to the server
@@ -295,6 +452,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     | Transaction
     | Vehicle
     | Invoice
+    | Quotation
     | Task
     | AuditLog
     | CompanySettings;
@@ -421,16 +579,41 @@ export function ErpProvider({ children }: { children: ReactNode }) {
 
     setSyncStatus('syncing');
     try {
-      const API_URL = import.meta.env.VITE_API_URL || "";
-      const res = await fetch(`${API_URL}/api/data`, {
-        method: "PATCH",
-        headers: apiHeaders(session),
-        body: JSON.stringify(payload),
-      });
+      // ── Step 1: Save to IndexedDB immediately (always works offline) ──
+      for (const [table, items] of Object.entries(payload.updates)) {
+        if (table === 'companySettings') {
+          await saveLocalSingleton('companySettings', items);
+          continue;
+        }
+        if (Array.isArray(items)) {
+          for (const item of items as any[]) {
+            if (item.id) await saveLocalRecord(table, item.id, item);
+          }
+        }
+      }
+      for (const [table, ids] of Object.entries(payload.deletions)) {
+        if (Array.isArray(ids)) {
+          for (const id of ids) {
+            await deleteLocalRecord(table, id);
+          }
+        }
+      }
 
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || body.details || `Sync failed with HTTP ${res.status}`);
+      // ── Step 2: Push encrypted delta to Supabase (if vault unlocked) ──
+      if (hasMasterKey()) {
+        await pushDeltaToCloud(payload.updates, payload.deletions);
+      }
+
+      // ── Step 3 (legacy): Also push to local server.ts if it's reachable ──
+      try {
+        const API_URL = import.meta.env.VITE_API_URL || "";
+        await fetch(`${API_URL}/api/data`, {
+          method: "PATCH",
+          headers: apiHeaders(session),
+          body: JSON.stringify(payload),
+        });
+      } catch {
+        // server.ts is optional now — ignore if unreachable
       }
 
       retryCountRef.current = 0;
@@ -494,8 +677,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   }, [triggerSync]);
 
   // -----------------------------------------------------------------------
-  // Local mirror — debounced backup to localStorage (5s) as a crash-safety net.
-  // Immediate writes were blocking the UI thread on every keystroke on mobile.
+  // Local mirror — debounced backup to IndexedDB (replaces old localStorage).
+  // IndexedDB has no 5MB size limit so this scales to any dataset size.
   // -----------------------------------------------------------------------
 
   const backupTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -503,32 +686,23 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isLoading) return;
     if (backupTimeoutRef.current) clearTimeout(backupTimeoutRef.current);
-    backupTimeoutRef.current = setTimeout(() => {
+    backupTimeoutRef.current = setTimeout(async () => {
       try {
-        localStorage.setItem(
-          LOCAL_BACKUP_KEY,
-          JSON.stringify({
-            customers,
-            employees,
-            employeeTransactions,
-            slips,
-            transactions,
-            vehicles,
-            invoices,
-            tasks,
-            auditLogs,
-            companySettings,
-          }),
-        );
-      } catch (e) {
-        // QuotaExceededError — warn but don't crash; sync queue is the source of truth.
-        if (e instanceof DOMException && e.name === 'QuotaExceededError') {
-          console.warn('[ErpContext] localStorage quota exceeded — backup skipped. Data is still in sync queue.');
-        } else {
-          console.error('[ErpContext] localStorage backup failed:', e);
+        // Save each collection to IndexedDB
+        const collections: Record<string, any[]> = {
+          customers, employees, employeeTransactions, slips,
+          transactions, vehicles, invoices, quotations, tasks, auditLogs,
+        };
+        for (const [col, items] of Object.entries(collections)) {
+          for (const item of items) {
+            if (item.id) await saveLocalRecord(col, item.id, item);
+          }
         }
+        await saveLocalSingleton('companySettings', companySettings);
+      } catch (e) {
+        console.error('[ErpContext] IndexedDB backup failed:', e);
       }
-    }, 1000);
+    }, 5000); // 5s debounce — less frequent than old 1s since IndexedDB is more I/O heavy
   }, [
     customers,
     employees,
@@ -673,6 +847,28 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     queueUpdate("auditLogs", log);
   }, [getCurrentActor, queueUpdate]);
 
+  const hasPermission = useCallback((key: keyof import("../types").UserPermissions) => {
+    if (userRole === "Admin") return true;
+
+    const users = companySettings.users ?? [];
+    const user = users.find(
+      (u) =>
+        u.id === session?.user.id ||
+        (session?.user.email && u.email.toLowerCase() === session.user.email.toLowerCase()),
+    );
+    
+    if (user && user.permissions && user.permissions[key] !== undefined) {
+      return user.permissions[key]!;
+    }
+
+    // Default fallbacks if permissions are undefined for the user
+    if (userRole === "Manager") {
+      return ["viewAllCustomers", "viewCustomerLedger", "viewCustomerStatement", "viewPendingAmounts", "viewAllDispatches", "viewDaybook", "viewReports", "manageVehicles", "manageEmployees"].includes(key);
+    }
+    // Partner default
+    return ["viewAllCustomers", "viewCustomerLedger", "viewCustomerStatement", "viewPendingAmounts", "viewAllDispatches", "viewReports"].includes(key);
+  }, [userRole, session, companySettings.users]);
+
   // -----------------------------------------------------------------------
   // Vehicle CRUD
   // -----------------------------------------------------------------------
@@ -687,8 +883,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       action: "Created vehicle",
       entityType: "Vehicle",
       entityId: normalised.id,
-      entityLabel: normalised.vehicleNo,
-      description: `Created vehicle ${normalised.vehicleNo}.`,
+      entityLabel: formatVehicleNo(normalised.vehicleNo),
+      description: `Created vehicle ${formatVehicleNo(normalised.vehicleNo)}.`,
       metadata: { ownerName: normalised.ownerName || undefined },
     });
     return true;
@@ -703,8 +899,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       action: "Updated vehicle",
       entityType: "Vehicle",
       entityId: updated.id,
-      entityLabel: updated.vehicleNo,
-      description: `Updated vehicle ${updated.vehicleNo}.`,
+      entityLabel: formatVehicleNo(updated.vehicleNo),
+      description: `Updated vehicle ${formatVehicleNo(updated.vehicleNo)}.`,
       metadata: { ownerName: updated.ownerName || undefined, isActive: updated.isActive !== false },
     });
     return true;
@@ -722,8 +918,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       action: "Deactivated vehicle",
       entityType: "Vehicle",
       entityId: id,
-      entityLabel: vehicle.vehicleNo,
-      description: `Deactivated vehicle ${vehicle.vehicleNo}.`,
+      entityLabel: formatVehicleNo(vehicle.vehicleNo),
+      description: `Deactivated vehicle ${formatVehicleNo(vehicle.vehicleNo)}.`,
     });
     return true;
   }, [userRole, vehicles, queueUpdate, recordAudit]);
@@ -777,6 +973,69 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   }, [invoices, queueUpdate, recordAudit]);
 
   // -----------------------------------------------------------------------
+  // Quotation CRUD
+  // -----------------------------------------------------------------------
+
+  /** Appends a new quotation. */
+  const addQuotation = useCallback((quotation: Quotation): boolean => {
+    setQuotations((prev) => [...prev, quotation]);
+    queueUpdate("quotations", quotation);
+    recordAudit({
+      action: "Created quotation",
+      entityType: "Quotation",
+      entityId: quotation.id,
+      entityLabel: quotation.quotationNo,
+      description: `Created ${quotation.type} quotation ${quotation.quotationNo} for ${quotation.total.toLocaleString("en-IN")}.`,
+      metadata: { status: quotation.status, total: quotation.total, customerId: quotation.customerId },
+    });
+    return true;
+  }, [queueUpdate, recordAudit]);
+
+  /** Partially updates a quotation by ID. */
+  const updateQuotation = useCallback((id: string, updates: Partial<Quotation>): boolean => {
+    const previous = quotations.find((q) => q.id === id);
+    if (!previous) return false;
+    const updated = { ...previous, ...updates };
+    setQuotations((prev) => prev.map((q) => (q.id === id ? updated : q)));
+    queueUpdate("quotations", updated);
+
+    const action =
+      updates.status && updates.status !== previous.status
+        ? `Marked quotation ${updates.status.toLowerCase()}`
+        : "Updated quotation";
+
+    recordAudit({
+      action,
+      entityType: "Quotation",
+      entityId: id,
+      entityLabel: updated.quotationNo,
+      description:
+        updates.status && updates.status !== previous.status
+          ? `Changed quotation ${updated.quotationNo} from ${previous.status} to ${updated.status}.`
+          : `Updated quotation ${updated.quotationNo}.`,
+      metadata: { status: updated.status, total: updated.total },
+    });
+    return true;
+  }, [quotations, queueUpdate, recordAudit]);
+
+  /** Hard-deletes a quotation. */
+  const deleteQuotation = useCallback((id: string): boolean => {
+    if (!isManagerOrAbove(userRole)) return false;
+    const quotation = quotations.find((q) => q.id === id);
+    if (!quotation) return false;
+    setQuotations((prev) => prev.filter((q) => q.id !== id));
+    queueDelete("quotations", id);
+    recordAudit({
+      action: "Deleted quotation",
+      entityType: "Quotation",
+      entityId: id,
+      entityLabel: quotation.quotationNo,
+      description: `Deleted quotation ${quotation.quotationNo}.`,
+    });
+    return true;
+  }, [userRole, quotations, queueDelete, recordAudit]);
+
+  // -----------------------------------------------------------------------
   // Company Settings & Materials
   // -----------------------------------------------------------------------
 
@@ -785,10 +1044,27 @@ export function ErpProvider({ children }: { children: ReactNode }) {
    *  exist yet), so the initial admin account can always be saved. */
   const updateCompanySettings = useCallback(async (settings: CompanySettings): Promise<boolean> => {
     const isFirstRunSetup = !companySettings.users || companySettings.users.length === 0;
-    if (!isAdmin(userRole) && !isFirstRunSetup) return false;
+    if (!userRole && !isFirstRunSetup) return false;
+
+    let nextSettings = { ...settings };
+    if (userRole === "Partner") {
+      nextSettings = {
+        ...companySettings,
+        theme: settings.theme,
+        primaryColor: settings.primaryColor,
+        designTheme: settings.designTheme,
+        mobileLayout: settings.mobileLayout,
+      };
+    } else if (userRole === "Manager") {
+      nextSettings = {
+        ...settings,
+        users: companySettings.users,
+      };
+    }
+
     const normalised = {
-      ...settings,
-      materials: (settings.materials || []).map((m) => ({
+      ...nextSettings,
+      materials: (nextSettings.materials || []).map((m) => ({
         ...m,
         isActive: m.isActive ?? true,
       })),
@@ -1010,8 +1286,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       action: "Created slip",
       entityType: "Slip",
       entityId: slip.id,
-      entityLabel: slip.vehicleNo,
-      description: `Created slip ${slip.id} for ${slip.vehicleNo}.`,
+      entityLabel: formatVehicleNo(slip.vehicleNo),
+      description: `Created slip ${slip.id} for ${formatVehicleNo(slip.vehicleNo)}.`,
       metadata: {
         status: slip.status,
         materialType: slip.materialType,
@@ -1033,7 +1309,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       action: status === "Cancelled" ? "Cancelled slip" : "Changed slip status",
       entityType: "Slip",
       entityId: id,
-      entityLabel: previous.vehicleNo,
+      entityLabel: formatVehicleNo(previous.vehicleNo),
       description: `Changed slip ${id} from ${previous.status} to ${status}.`,
       metadata: { previousStatus: previous.status, status, totalAmount: updated.totalAmount },
     });
@@ -1051,8 +1327,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       action: "Updated slip",
       entityType: "Slip",
       entityId: id,
-      entityLabel: updated.vehicleNo,
-      description: `Updated slip ${id} for ${updated.vehicleNo}.`,
+      entityLabel: formatVehicleNo(updated.vehicleNo),
+      description: `Updated slip ${id} for ${formatVehicleNo(updated.vehicleNo)}.`,
       metadata: {
         status: updated.status,
         materialType: updated.materialType,
@@ -1204,31 +1480,45 @@ export function ErpProvider({ children }: { children: ReactNode }) {
    */
    const customerBalanceById = useMemo(() => {
      const balances: Record<string, number> = {};
- 
+     const slipTotals: Record<string, number> = {};
+     const invoiceTotals: Record<string, number> = {};
+     const incomeTotals: Record<string, number> = {};
+     const expenseTotals: Record<string, number> = {};
+
+     for (const s of slips) {
+       if (!s.invoiceId && (s.status === "Tallied" || s.status === "Pending" || s.status === "Loaded")) {
+         slipTotals[s.customerId] = (slipTotals[s.customerId] || 0) + (s.totalAmount - (s.amountPaid ?? 0));
+       }
+     }
+
+     for (const inv of invoices) {
+       if (inv.status !== "Cancelled") {
+         invoiceTotals[inv.customerId] = (invoiceTotals[inv.customerId] || 0) + inv.total;
+       }
+     }
+
+     for (const t of transactions) {
+       if (t.customerId) {
+         if (t.type === "Income") {
+           incomeTotals[t.customerId] = (incomeTotals[t.customerId] || 0) + t.amount;
+         } else if (t.type === "Expense") {
+           expenseTotals[t.customerId] = (expenseTotals[t.customerId] || 0) + t.amount;
+         }
+       }
+     }
+
      customers.forEach((customer) => {
-       const unbilledSlipTotal = slips
-         .filter(
-           (s) =>
-             s.customerId === customer.id &&
-             (s.status === "Tallied" || s.status === "Pending" || s.status === "Loaded") &&
-             !s.invoiceId,
-         )
-         .reduce((sum, s) => sum + (s.totalAmount - (s.amountPaid ?? 0)), 0);
- 
-       const invoiceTotal = invoices
-         .filter((inv) => inv.customerId === customer.id && inv.status !== "Cancelled")
-         .reduce((sum, inv) => sum + inv.total, 0);
- 
-       const custTxs = transactions.filter((t) => t.customerId === customer.id);
-       const incomeTotal = custTxs.filter((t) => t.type === "Income").reduce((sum, t) => sum + t.amount, 0);
-       const expenseTotal = custTxs.filter((t) => t.type === "Expense").reduce((sum, t) => sum + t.amount, 0);
- 
        balances[customer.id] =
-         customer.openingBalance + unbilledSlipTotal + invoiceTotal + expenseTotal - incomeTotal;
+         customer.openingBalance +
+         (historicalBalances[customer.id] || 0) +
+         (slipTotals[customer.id] || 0) +
+         (invoiceTotals[customer.id] || 0) +
+         (expenseTotals[customer.id] || 0) -
+         (incomeTotals[customer.id] || 0);
      });
- 
+
      return balances;
-   }, [customers, slips, invoices, transactions]);
+   }, [customers, slips, invoices, transactions, historicalBalances]);
  
    const getCustomerBalance = useCallback((customerId: string): number => {
      if (customerId === "CASH") return 0;
@@ -1241,13 +1531,13 @@ export function ErpProvider({ children }: { children: ReactNode }) {
 
   const employeeBalanceById = useMemo(() => {
     const balances: Record<string, number> = {};
-    employees.forEach((employee) => { balances[employee.id] = employee.openingBalance; });
+    employees.forEach((employee) => { balances[employee.id] = employee.openingBalance + (historicalEmployeeBalances[employee.id] || 0); });
     employeeTransactions.forEach((tx) => {
       if (!(tx.employeeId in balances)) return;
       balances[tx.employeeId] = (balances[tx.employeeId] ?? 0) + getEmployeeTransactionImpact(tx);
     });
     return balances;
-  }, [employees, employeeTransactions]);
+  }, [employees, employeeTransactions, historicalEmployeeBalances]);
 
   const getEmployeeBalance = useCallback((employeeId: string): number => {
     return employeeBalanceById[employeeId] ?? 0;
@@ -1278,8 +1568,9 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     inactiveCustomers.forEach((c) => {
       const hasSlips = slips.some((s) => s.customerId === c.id);
       const hasInvoices = invoices.some((inv) => inv.customerId === c.id);
+      const hasQuotations = quotations.some((q) => q.customerId === c.id);
       const hasTxs = transactions.some((t) => t.customerId === c.id);
-      if (hasSlips || hasInvoices || hasTxs) {
+      if (hasSlips || hasInvoices || hasQuotations || hasTxs) {
         skipped++;
         return;
       }
@@ -1319,10 +1610,49 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     vehicles,
     slips,
     invoices,
+    quotations,
     transactions,
     queueDelete,
     recordAudit,
   ]);
+
+  // -----------------------------------------------------------------------
+  // Pagination Functions
+  // -----------------------------------------------------------------------
+
+  const loadHistoricalData = useCallback(async () => {
+    try {
+      const allSlips = await getLocalCollection('slips');
+      setSlips(allSlips);
+      const allInvoices = await getLocalCollection('invoices');
+      setInvoices(allInvoices);
+      const allTransactions = await getLocalCollection('transactions');
+      setTransactions(allTransactions);
+      const allQuotations = await getLocalCollection('quotations');
+      setQuotations(allQuotations);
+      const allEmployeeTx = await getLocalCollection('employeeTransactions');
+      setEmployeeTransactions(allEmployeeTx);
+      const allAuditLogs = await getLocalCollection('auditLogs');
+      setAuditLogs(allAuditLogs);
+
+      // Reset historical balances since all data is now in state
+      setHistoricalBalances({});
+      setHistoricalEmployeeBalances({});
+    } catch (e) {
+      console.error('[ErpContext] Failed to load historical data:', e);
+    }
+  }, []);
+
+  const loadInactiveCustomers = useCallback(async () => {
+    try {
+      const allCustomers = await getLocalCollection('customers');
+      setCustomers(allCustomers);
+      const allEmployees = await getLocalCollection('employees');
+      setEmployees(allEmployees);
+    } catch (e) {
+      console.error('[ErpContext] Failed to load inactive customers:', e);
+    }
+  }, []);
 
   // -----------------------------------------------------------------------
   // Provider — value is memoised so reference-equality holds across re-renders,
@@ -1337,6 +1667,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     transactions,
     vehicles,
     invoices,
+    quotations,
     tasks,
     auditLogs,
     companySettings,
@@ -1347,6 +1678,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     session,
     signOut,
     recordAuditEvent: recordAudit,
+    hasPermission,
     updateCompanySettings,
     toggleMaterialActive,
     addCustomer,
@@ -1365,6 +1697,9 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     updateSlip,
     addInvoice,
     updateInvoice,
+    addQuotation,
+    updateQuotation,
+    deleteQuotation,
     addTransaction,
     updateTransaction,
     deleteTransaction,
@@ -1375,11 +1710,11 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     getEmployeeBalance,
     purgeInactiveRecords,
     flushSync: flushSyncQueue,
-    retryCountRef,
+    retryCountRef, historicalBalances, historicalEmployeeBalances, loadHistoricalData, loadInactiveCustomers,
   }), [
-    customers, employees, employeeTransactions, slips, transactions, vehicles, invoices, tasks, auditLogs,
+    customers, employees, employeeTransactions, slips, transactions, vehicles, invoices, quotations, tasks, auditLogs,
     companySettings, bootstrapRequired, isLoading, syncStatus, userRole, session, signOut,
-    recordAudit,
+    recordAudit, hasPermission,
     updateCompanySettings, toggleMaterialActive,
     addCustomer, updateCustomer, deleteCustomer,
     addEmployee, updateEmployee, deleteEmployee,
@@ -1387,9 +1722,11 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     addVehicle, updateVehicle, deleteVehicle,
     addSlip, updateSlipStatus, updateSlip,
     addInvoice, updateInvoice,
+    addQuotation, updateQuotation, deleteQuotation,
     addTransaction, updateTransaction, deleteTransaction,
     addTask, toggleTask, deleteTask,
     getCustomerBalance, getEmployeeBalance, purgeInactiveRecords, flushSyncQueue,
+    historicalBalances, historicalEmployeeBalances, loadHistoricalData, loadInactiveCustomers,
   ]);
 
   return (

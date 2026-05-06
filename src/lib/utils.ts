@@ -71,3 +71,40 @@ export function parseFeetInches(val: string | number): number {
   }
   return feet;
 }
+
+/**
+ * Normalises an Indian vehicle registration number to a canonical form
+ * by stripping all spaces, hyphens, dots, and uppercasing.
+ *
+ * Examples:
+ *   "MH 20 AA 0555" → "MH20AA0555"
+ *   "mh-20-aa-0555" → "MH20AA0555"
+ *   "MH20AS0453"    → "MH20AS0453" (no-op)
+ */
+export function normalizeVehicleNo(raw: string): string {
+  return raw.replace(/[\s\-\.]+/g, "").toUpperCase();
+}
+
+/**
+ * Formats a normalised vehicle number into the standard Indian
+ * registration display format: "XX 00 XX 0000".
+ *
+ * Indian vehicle numbers follow: [State 2-letter][District 1-2 digit][Series 0-3 letter][Number 1-4 digit]
+ * If the string doesn't match the expected pattern it is returned as-is (uppercased).
+ *
+ * Examples:
+ *   "MH20AA0555"  → "MH 20 AA 0555"
+ *   "MH20AS0453"  → "MH 20 AS 0453"
+ *   "MH20AB0111"  → "MH 20 AB 0111"
+ *   "DL1CAB1234"  → "DL 1 CAB 1234"
+ *   "RANDOM"      → "RANDOM"
+ */
+export function formatVehicleNo(raw: string): string {
+  const clean = normalizeVehicleNo(raw);
+  // Match: state(2 letters) + district(1-2 digits) + series(0-3 letters) + number(1-4 digits)
+  const m = clean.match(/^([A-Z]{2})(\d{1,2})([A-Z]{0,3})(\d{1,4})$/);
+  if (!m) return clean;
+  const [, state, district, series, num] = m;
+  // Build spaced format, omitting empty series
+  return [state, district, series, num].filter(Boolean).join(" ");
+}

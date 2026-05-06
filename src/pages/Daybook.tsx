@@ -3,7 +3,7 @@ import { useErp } from "../context/ErpContext";
 import { Slip, Transaction } from "../types";
 import { transactionSchema } from "../lib/validation";
 import { useToast } from "../components/ui/Toast";
-import { generateId } from "../lib/utils";
+import { generateId, formatVehicleNo } from "../lib/utils";
 import {
   Calendar as CalendarIcon,
   ArrowUpRight,
@@ -156,7 +156,7 @@ export function Daybook() {
           date: new Date(item.date).toLocaleDateString(),
           time: new Date(item.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           type: "Dispatch",
-          description: `${item.materialType} - ${item.vehicleNo}`,
+          description: `${item.materialType} - ${formatVehicleNo(item.vehicleNo)}`,
           customer: cust?.name || "Cash",
           amount: item.totalAmount,
         };
@@ -321,15 +321,15 @@ export function Daybook() {
             </p>
           </div>
 
-<div className="bg-zinc-900 dark:bg-zinc-800 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl shadow-sm text-white flex flex-col justify-between border border-zinc-800 dark:border-zinc-700">
+<div className="bg-white dark:bg-zinc-800 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-zinc-100 dark:border-zinc-700 shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between mb-1">
-               <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Net</p>
-               <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-zinc-300" />
+               <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Net</p>
+               <IndianRupee className="w-3.5 h-3.5 sm:w-4 h-4 text-zinc-500 dark:text-zinc-400" />
             </div>
-            <span className={`text-base sm:text-2xl font-bold ${dailyData.netCashFlow >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+            <span className={`text-xl sm:text-2xl font-bold ${dailyData.netCashFlow >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
               {dailyData.netCashFlow >= 0 ? "+" : "-"}₹{Math.abs(dailyData.netCashFlow).toLocaleString()}
             </span>
-            <p className="text-xs font-medium text-zinc-400 mt-1 truncate">
+            <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400 mt-1 bg-zinc-50 dark:bg-zinc-500/10 px-1.5 py-0.5 rounded w-fit truncate">
                net position
             </p>
           </div>

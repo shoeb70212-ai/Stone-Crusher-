@@ -24,15 +24,13 @@ import { useToast } from "../components/ui/Toast";
 import { generateId } from "../lib/utils";
 
 export function Ledger() {
-  const { transactions, customers, slips, invoices, companySettings, addTransaction, addCustomer, getCustomerBalance } =
+  const { transactions, customers, slips, invoices, companySettings, addTransaction, addCustomer, getCustomerBalance, hasPermission, loadHistoricalData } =
     useErp();
   const { addToast } = useToast();
-  const [activeTab, setActiveTab] = useState<"transactions" | "customers">(
-    "transactions",
-  );
-  const [isTxModalOpen, setIsTxModalOpen] = useState(false);
+  const [isPeriodModalOpen, setIsPeriodModalOpen] = useState(false);
   const [isCustModalOpen, setIsCustModalOpen] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [viewCustomerLedger, setViewCustomerLedger] = useState<Customer | null>(
     null,
   );
@@ -52,13 +50,7 @@ export function Ledger() {
   // Reference to statement table for PDF export
   const statementRef = useRef<HTMLDivElement>(null);
 
-  const [txFormData, setTxFormData] = useState({
-    type: "Expense" as TransactionType,
-    amount: "",
-    category: "",
-    description: "",
-    customerId: "",
-  });
+
 
   const [custFormData, setCustFormData] = useState({
     name: "",
@@ -68,31 +60,7 @@ export function Ledger() {
     openingBalance: "0",
   });
 
-  const handleCreateTx = (e: React.FormEvent) => {
-    e.preventDefault();
-    const amount = parseFloat(txFormData.amount) || 0;
-    if (amount <= 0) {
-      return; // silently ignore — form validation should prevent this
-    }
-    const newTx: Transaction = {
-      id: "tx_" + generateId(),
-      date: new Date().toISOString(),
-      type: txFormData.type,
-      amount: Math.round(amount),
-      category: txFormData.category,
-      description: txFormData.description,
-      customerId: txFormData.customerId || undefined,
-    };
-    addTransaction(newTx);
-    setIsTxModalOpen(false);
-    setTxFormData({
-      type: "Expense",
-      amount: "",
-      category: "",
-      description: "",
-      customerId: "",
-    });
-  };
+
 
   const handleCreateCustomer = (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,12 +89,7 @@ export function Ledger() {
     });
   }, [transactions, txStartDate, txEndDate]);
 
-  const totalCashIn = filteredTransactions
-    .filter((t) => t.type === "Income")
-    .reduce((sum, t) => sum + t.amount, 0);
-  const totalExpense = filteredTransactions
-    .filter((t) => t.type === "Expense")
-    .reduce((sum, t) => sum + t.amount, 0);
+
 
   /** Export the filtered transactions as a CSV file */
   const handleExportTransactions = async () => {
@@ -196,240 +159,88 @@ export function Ledger() {
     }
   };
 
+  const canViewLedger = hasPermission("viewCustomerLedger");
+  const canViewPending = hasPermission("viewPendingAmounts");
+  const canManageCustomers = hasPermission("viewAllCustomers");
+  const canViewStatement = hasPermission("viewCustomerStatement");
+
+  if (!canViewLedger) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-zinc-500 py-12">
+        <UserCircle className="w-12 h-12 mb-4 opacity-50" />
+        <p className="text-lg">You do not have permission to view the customer ledger.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-4 md:space-y-6">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h2 className="text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
-            Ledger & Finance
-          </h2>
-          <p className="text-zinc-500 dark:text-zinc-400 mt-1">
-            Track expenses, cash flow, and customer outstanding balances.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2 md:gap-3">
+    <div className="space-y-4 md:space-y-6 h-full flex flex-col">
+      {/* Top Action Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 md:gap-4 shrink-0">
+        <h2 className="hidden md:block text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight mr-2">
+          Customer Ledger
+        </h2>
+        <div className="flex flex-1 md:flex-none justify-end gap-2 w-full md:w-auto">
           <button
-            onClick={() => setIsCustModalOpen(true)}
-            className="flex-1 md:flex-none justify-center bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 px-4 py-2 rounded-lg font-medium flex items-center transition-colors shadow-sm"
+            onClick={async () => {
+              setIsLoadingHistory(true);
+              await loadHistoricalData();
+              setIsLoadingHistory(false);
+              addToast("success", "Historical records loaded successfully");
+            }}
+            disabled={isLoadingHistory}
+            className="flex-1 md:flex-none justify-center bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded-lg text-sm font-medium flex items-center transition-colors shadow-sm disabled:opacity-50"
           >
-            <UserCircle className="w-4 h-4 md:w-5 md:h-5 mr-2 shrink-0" />
-            <span className="whitespace-nowrap text-sm md:text-base">Add Customer</span>
+            {isLoadingHistory ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+            Load History
           </button>
           <button
-            onClick={() => setIsTxModalOpen(true)}
-            className="flex-1 md:flex-none justify-center bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium flex items-center transition-colors shadow-sm"
+            onClick={() => setIsPeriodModalOpen(true)}
+            className="flex-1 md:flex-none justify-center bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded-lg text-sm font-medium flex items-center transition-colors shadow-sm"
           >
-            <Plus className="w-4 h-4 md:w-5 md:h-5 mr-2 shrink-0" />
-            <span className="whitespace-nowrap text-sm md:text-base">New Transaction</span>
+            <Calendar className="w-4 h-4 mr-2" />
+            Period Filter
           </button>
-        </div>
-      </div>
-
-      {/* Date-range filter for Transactions */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 bg-white dark:bg-zinc-800 p-3 rounded-xl border border-zinc-100 dark:border-zinc-700 shadow-sm">
-        <div className="flex items-center gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 shrink-0">
-          <Calendar className="w-4 h-4 text-primary-500" />
-          <span>Period:</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 flex-1 w-full sm:w-auto">
-          <input
-            type="date"
-            value={txStartDate}
-            onChange={(e) => setTxStartDate(e.target.value)}
-            className="flex-1 min-w-0 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
-          />
-          <span className="text-zinc-400 shrink-0">to</span>
-          <input
-            type="date"
-            value={txEndDate}
-            onChange={(e) => setTxEndDate(e.target.value)}
-            className="flex-1 min-w-0 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
-          />
-        </div>
-        <button
-          onClick={handleExportTransactions}
-          className="w-full sm:w-auto sm:ml-auto flex items-center justify-center gap-1.5 px-3 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-sm font-semibold rounded-lg hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors shadow-sm"
-        >
-          <Download className="w-4 h-4" />
-          Export CSV
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:p-6">
-        <div className="bg-primary-50 border border-primary-100 p-3 md:p-5 rounded-2xl flex items-center justify-between">
-          <div>
-            <p className="text-primary-800 font-medium">
-              Total Cash/Income (Recorded)
-            </p>
-            <p className="text-3xl font-bold text-primary-600 mt-1">
-              ₹{totalCashIn.toLocaleString()}
-            </p>
-          </div>
-          <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center text-primary-600">
-            <IndianRupee className="w-6 h-6" />
-          </div>
-        </div>
-        <div className="bg-rose-50 border border-rose-100 p-3 md:p-5 rounded-2xl flex items-center justify-between">
-          <div>
-            <p className="text-rose-800 font-medium">Total Expenses</p>
-            <p className="text-3xl font-bold text-rose-600 mt-1">
-              ₹{totalExpense.toLocaleString()}
-            </p>
-          </div>
-          <div className="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center text-rose-600">
-            <CreditCard className="w-6 h-6" />
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 overflow-hidden">
-        <div className="border-b border-zinc-100 dark:border-zinc-700 px-4 py-3 flex flex-wrap gap-4 text-sm md:text-base">
-          <button
-            className={`font-medium pb-3 border-b-2 transition-colors ${activeTab === "transactions" ? "border-primary-600 text-primary-600" : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:text-zinc-200"}`}
-            onClick={() => setActiveTab("transactions")}
-          >
-            Day Book (Transactions)
-          </button>
-          <button
-            className={`font-medium pb-3 border-b-2 transition-colors ${activeTab === "customers" ? "border-primary-600 text-primary-600" : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:text-zinc-200"}`}
-            onClick={() => setActiveTab("customers")}
-          >
-            Customer Ledger
-          </button>
-        </div>
-
-        <div className="p-0 md:p-5">
-          {activeTab === "transactions" && (
-            <>
-            {/* Mobile list view */}
-            <div className="md:hidden divide-y divide-zinc-100 dark:divide-zinc-800">
-               {filteredTransactions.length === 0 && (
-                 <div className="p-8 text-center text-zinc-500">No transactions in this period.</div>
-               )}
-               {filteredTransactions.slice().reverse().map((tx) => {
-                  const cust = customers.find((c) => c.id === tx.customerId);
-                  return (
-                     <div key={tx.id} className={`p-3 flex items-center gap-3 border-l-4 ${tx.type === "Income" ? "border-l-primary-500 bg-primary-50/30 dark:bg-primary-500/5" : "border-l-rose-500 bg-rose-50/30 dark:bg-rose-500/5"}`}>
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${tx.type === "Income" ? "bg-primary-100 text-primary-600 dark:bg-primary-500/20 dark:text-primary-400" : "bg-rose-100 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400"}`}>
-                           {tx.type === "Income" ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                           <div className="flex justify-between items-center">
-                              <span className="text-xs font-bold text-zinc-900 dark:text-white truncate">{tx.category}</span>
-                              <span className={`text-xs font-bold ${tx.type === "Income" ? "text-primary-600 dark:text-primary-400" : "text-rose-600 dark:text-rose-400"}`}>
-                                 {tx.type === "Income" ? "+" : "-"} ₹{tx.amount.toLocaleString()}
-                              </span>
-                           </div>
-                           <div className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">{tx.description}</div>
-                           <div className="flex justify-between items-center text-[10px] text-zinc-400 mt-0.5">
-                              <span>{new Date(tx.date).toLocaleDateString()} {new Date(tx.date).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})}</span>
-                              {tx.customerId && <span className="font-medium text-zinc-600 dark:text-zinc-300">Ref: {cust?.name}</span>}
-                           </div>
-                        </div>
-                     </div>
-                  );
-               })}
-            </div>
-            {/* Desktop table view */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-sm text-left ">
-                <thead className="text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-900/50 uppercase rounded-lg">
-                  <tr>
-                    <th className="px-4 py-3 rounded-l-lg">Date & Time</th>
-                    <th className="px-4 py-3">Category/Desc</th>
-                    <th className="px-4 py-3">Related To</th>
-                    <th className="px-4 py-3 rounded-r-lg text-right">
-                      Amount
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTransactions
-                    .slice()
-                    .reverse()
-                    .map((tx) => {
-                      const cust = customers.find(
-                        (c) => c.id === tx.customerId,
-                      );
-                      return (
-                        <tr
-                          key={tx.id}
-                          className="border-b border-zinc-50 dark:border-zinc-700/50 last:border-0 hover:bg-zinc-50 dark:hover:bg-zinc-800"
-                        >
-                          <td className="px-4 py-4">
-                            <p className="font-medium text-zinc-900 dark:text-white">
-                              {new Date(tx.date).toLocaleDateString()}
-                            </p>
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                              {new Date(tx.date).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </p>
-                          </td>
-                          <td className="px-4 py-4">
-                            <p className="font-medium text-zinc-900 dark:text-white">
-                              {tx.category}
-                            </p>
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                              {tx.description}
-                            </p>
-                          </td>
-                          <td className="px-4 py-4 text-zinc-700 dark:text-zinc-200">
-                            {tx.customerId ? cust?.name : "-"}
-                          </td>
-                          <td className="px-4 py-4 text-right">
-                            <span
-                              className={`font-semibold inline-flex items-center px-2.5 py-1 rounded-full text-xs
-                            ${tx.type === "Income" ? "bg-primary-50 text-primary-700" : "bg-rose-50 text-rose-700"}`}
-                            >
-                              {tx.type === "Income" ? "+" : "-"} ₹
-                              {tx.amount.toLocaleString()}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
-            </>
+          {canManageCustomers && (
+            <button
+              onClick={() => setIsCustModalOpen(true)}
+              className="flex-1 md:flex-none justify-center bg-primary-600 hover:bg-primary-700 text-white border border-transparent px-3 py-2 rounded-lg text-sm font-medium flex items-center transition-colors shadow-sm"
+            >
+              <UserCircle className="w-4 h-4 mr-2 shrink-0" />
+              Add Customer
+            </button>
           )}
+        </div>
+      </div>
 
-          {activeTab === "customers" && (
-            <>
+      <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 overflow-hidden flex-1 flex flex-col min-h-0">
+        <div className="p-0 md:p-5 flex-1 overflow-y-auto">
             <div className="md:hidden divide-y divide-zinc-100 dark:divide-zinc-800">
                {customers.length === 0 && <div className="p-8 text-center text-zinc-500">No customers found.</div>}
                {customers.map((cust) => {
                   const currentBalance = getCustomerBalance(cust.id);
                   return (
-                     <div key={cust.id} className="p-4 flex flex-col gap-3">
-                        <div className="flex justify-between items-start">
-                           <div>
-                              <div className="font-bold text-zinc-900 dark:text-white text-lg">{cust.name}</div>
-                              <div className="text-zinc-500 text-sm mt-0.5">{cust.phone}</div>
-                           </div>
-                           <div className="text-right">
-                              <div className={`font-bold text-lg ${currentBalance > 0 ? "text-rose-600" : currentBalance < 0 ? "text-primary-600" : "text-zinc-900 dark:text-white"}`}>
-                                 ₹{Math.abs(currentBalance).toLocaleString()} {currentBalance < 0 ? "(Cr)" : currentBalance > 0 ? "(Dr)" : ""}
-                              </div>
-                              <div className="mt-1">
-                                 {currentBalance > 0 ? (
-                                    <span className="text-rose-600 font-medium text-xs bg-rose-50 px-2 py-0.5 rounded">Owes Us</span>
-                                 ) : currentBalance < 0 ? (
-                                    <span className="text-primary-600 font-medium text-xs bg-primary-50 px-2 py-0.5 rounded">Advance</span>
-                                 ) : (
-                                    <span className="text-zinc-500 font-medium text-xs bg-zinc-100 px-2 py-0.5 rounded">Settled</span>
-                                 )}
-                              </div>
-                           </div>
+                     <div key={cust.id} className={`p-3 flex items-center justify-between gap-3 ${canViewStatement ? "hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors" : ""}`} onClick={() => canViewStatement && setViewCustomerLedger(cust)}>
+                        <div className="flex-1 min-w-0">
+                           <div className="font-bold text-zinc-900 dark:text-white truncate">{cust.name}</div>
+                           <div className="text-xs text-zinc-500 truncate mt-0.5">{cust.phone}</div>
                         </div>
-                        <button
-                           onClick={() => setViewCustomerLedger(cust)}
-                           className="w-full text-indigo-600 hover:text-indigo-900 font-medium text-sm bg-indigo-50 hover:bg-indigo-100 py-2 rounded-lg transition-colors"
-                        >
-                           View Ledger Statement
-                        </button>
+                        {canViewPending && (
+                          <div className="text-right flex flex-col items-end shrink-0">
+                             <span className={`font-bold text-sm ${currentBalance > 0 ? "text-rose-600" : currentBalance < 0 ? "text-primary-600" : "text-zinc-900 dark:text-white"}`}>
+                                ₹{Math.abs(currentBalance).toLocaleString()} {currentBalance < 0 ? "(Cr)" : currentBalance > 0 ? "(Dr)" : ""}
+                             </span>
+                             <div className="mt-1">
+                                {currentBalance > 0 ? (
+                                   <span className="text-rose-600 font-bold text-[10px] bg-rose-50 px-1.5 py-0.5 rounded">OWES</span>
+                                ) : currentBalance < 0 ? (
+                                   <span className="text-primary-600 font-bold text-[10px] bg-primary-50 px-1.5 py-0.5 rounded">ADV</span>
+                                ) : (
+                                   <span className="text-zinc-500 font-bold text-[10px] bg-zinc-100 px-1.5 py-0.5 rounded">CLEAR</span>
+                                )}
+                             </div>
+                          </div>
+                        )}
                      </div>
                   );
                })}
@@ -476,23 +287,23 @@ export function Ledger() {
                             </span>
                           )}
                         </td>
-                        <td
-                          className={`px-4 py-4 text-right font-bold ${currentBalance > 0 ? "text-rose-600" : currentBalance < 0 ? "text-primary-600" : "text-zinc-900 dark:text-white"}`}
-                        >
-                          ₹{Math.abs(currentBalance).toLocaleString()}{" "}
-                          {currentBalance < 0
-                            ? "(Cr)"
-                            : currentBalance > 0
-                              ? "(Dr)"
-                              : ""}
-                        </td>
+                        {canViewPending ? (
+                          <td className="px-4 py-4 text-right font-bold text-zinc-900 dark:text-white">
+                            ₹{Math.abs(currentBalance).toLocaleString()}{" "}
+                            {currentBalance < 0 ? "(Cr)" : currentBalance > 0 ? "(Dr)" : ""}
+                          </td>
+                        ) : (
+                          <td className="px-4 py-4 text-right text-zinc-400">Hidden</td>
+                        )}
                         <td className="px-4 py-4 text-right">
-                          <button
-                            onClick={() => setViewCustomerLedger(cust)}
-                            className="text-indigo-600 hover:text-indigo-900 font-medium text-xs bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded transition-colors"
-                          >
-                            View Ledger
-                          </button>
+                          {canViewStatement && (
+                            <button
+                              onClick={() => setViewCustomerLedger(cust)}
+                              className="text-indigo-600 hover:text-indigo-900 font-medium text-xs bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded transition-colors"
+                            >
+                              View Ledger
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -500,176 +311,53 @@ export function Ledger() {
                 </tbody>
               </table>
             </div>
-            </>
-          )}
         </div>
       </div>
 
-      {isTxModalOpen && (
+      {isPeriodModalOpen && (
         <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-zinc-800 rounded-2xl w-full max-w-md shadow-xl">
+          <div className="bg-white dark:bg-zinc-800 rounded-2xl w-full max-w-sm shadow-xl">
             <div className="px-4 py-3 md:px-6 md:py-4 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white">
-                Record Transaction
-              </h3>
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white">Period Filter</h3>
               <button
-                onClick={() => setIsTxModalOpen(false)}
+                onClick={() => setIsPeriodModalOpen(false)}
                 className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:text-zinc-300"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleCreateTx} className="p-3 md:p-5 space-y-4">
-              <div className="flex space-x-4 mb-2">
-                <label
-                  className={`flex-1 flex items-center justify-center py-2 px-4 rounded-lg border-2 cursor-pointer transition-colors ${txFormData.type === "Income" ? "border-primary-500 bg-primary-50 text-primary-700 font-semibold" : "border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400"}`}
-                >
+            <div className="p-4 md:p-6 space-y-4">
+              <div className="flex flex-col gap-3">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Start Date</label>
                   <input
-                    type="radio"
-                    className="hidden"
-                    checked={txFormData.type === "Income"}
-                    onChange={() =>
-                      setTxFormData({ ...txFormData, type: "Income" })
-                    }
+                    type="date"
+                    value={txStartDate}
+                    onChange={(e) => setTxStartDate(e.target.value)}
+                    className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm font-medium text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
                   />
-                  Cash In (Income)
-                </label>
-                <label
-                  className={`flex-1 flex items-center justify-center py-2 px-4 rounded-lg border-2 cursor-pointer transition-colors ${txFormData.type === "Expense" ? "border-rose-500 bg-rose-50 text-rose-700 font-semibold" : "border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400"}`}
-                >
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">End Date</label>
                   <input
-                    type="radio"
-                    className="hidden"
-                    checked={txFormData.type === "Expense"}
-                    onChange={() =>
-                      setTxFormData({ ...txFormData, type: "Expense" })
-                    }
+                    type="date"
+                    value={txEndDate}
+                    onChange={(e) => setTxEndDate(e.target.value)}
+                    className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm font-medium text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
                   />
-                  Cash Out (Expense)
-                </label>
+                </div>
               </div>
-
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                  Amount (₹)
-                </label>
-                <input
-                  required
-                  type="number"
-                  step="0.01"
-                  min="1"
-                  value={txFormData.amount}
-                  onChange={(e) =>
-                    setTxFormData({ ...txFormData, amount: e.target.value })
-                  }
-                  className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none"
-                  placeholder="1000"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                  Category
-                </label>
-                {txFormData.type === "Expense" ? (
-                   <select
-                     required
-                     value={txFormData.category}
-                     onChange={(e) =>
-                       setTxFormData({ ...txFormData, category: e.target.value })
-                     }
-                     className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none"
-                   >
-                     <option value="" disabled>Select Category</option>
-                     {companySettings.expenseCategories?.map((cat, i) => (
-                        <option key={i} value={cat}>{cat}</option>
-                     ))}
-                   </select>
-                ) : (
-                   <>
-                     <input
-                       required
-                       list="category-options"
-                       type="text"
-                       value={txFormData.category}
-                       onChange={(e) =>
-                         setTxFormData({ ...txFormData, category: e.target.value })
-                       }
-                       className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none"
-                       placeholder="Payment Received, Advance, etc."
-                     />
-                     <datalist id="category-options">
-                        <option value="Payments Received" />
-                        <option value="Advance Received" />
-                        <option value="Scrap Sale" />
-                        <option value="Other Income" />
-                     </datalist>
-                   </>
-                )}
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                  Customer (Optional)
-                </label>
-                <select
-                  value={txFormData.customerId}
-                  onChange={(e) => {
-                     const cid = e.target.value;
-                     let suggestedCategory = txFormData.category;
-                     if (cid) {
-                        const pastTxs = transactions.filter(t => t.customerId === cid && t.type === txFormData.type);
-                        if (pastTxs.length > 0) {
-                           suggestedCategory = pastTxs[0].category;
-                        } else {
-                           if (txFormData.type === "Income") {
-                              suggestedCategory = "Payments Received";
-                           } else if (companySettings.expenseCategories && companySettings.expenseCategories.length > 0) {
-                              suggestedCategory = companySettings.expenseCategories[0];
-                           }
-                        }
-                     }
-                     setTxFormData({ ...txFormData, customerId: cid, category: suggestedCategory });
-                  }}
-                  className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none"
-                >
-                  <option value="">None (General {txFormData.type})</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                  If selected, this will update the customer's ledger balance.
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                  Description
-                </label>
-                <textarea
-                  required
-                  value={txFormData.description}
-                  onChange={(e) =>
-                    setTxFormData({
-                      ...txFormData,
-                      description: e.target.value,
-                    })
-                  }
-                  className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none resize-none h-20"
-                  placeholder="Enter details..."
-                ></textarea>
-              </div>
-
               <button
-                type="submit"
-                className="w-full py-2 bg-zinc-900 text-white font-medium hover:bg-black rounded-lg transition-colors mt-2"
+                onClick={() => {
+                  handleExportTransactions();
+                  setIsPeriodModalOpen(false);
+                }}
+                className="w-full py-2 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-sm font-semibold rounded-lg hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors shadow-sm mt-2 flex items-center justify-center gap-2"
               >
-                Save Transaction
+                <Download className="w-4 h-4" />
+                Export CSV
               </button>
-            </form>
+            </div>
           </div>
         </div>
       )}

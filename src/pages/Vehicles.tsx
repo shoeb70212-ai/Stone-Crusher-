@@ -3,7 +3,7 @@ import { useErp } from "../context/ErpContext";
 import { Truck, Plus, X, FileText, Edit2, Printer } from "lucide-react";
 import { MeasurementType, Slip, Vehicle } from "../types";
 import { format, parseISO } from "date-fns";
-import { parseFeetInches, generateId } from "../lib/utils";
+import { parseFeetInches, generateId, normalizeVehicleNo, formatVehicleNo } from "../lib/utils";
 import { PrintSlipModal } from "../components/forms/PrintSlipModal";
 
 export function Vehicles() {
@@ -36,7 +36,7 @@ export function Vehicles() {
   const openEditModal = (v: Vehicle) => {
     setEditingVehicleId(v.id);
     setFormData({
-      vehicleNo: v.vehicleNo,
+      vehicleNo: formatVehicleNo(v.vehicleNo),
       ownerName: v.ownerName,
       driverName: v.driverName || "",
       driverPhone: v.driverPhone || "",
@@ -52,7 +52,7 @@ export function Vehicles() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const vehicleData = {
-      vehicleNo: formData.vehicleNo.toUpperCase(),
+      vehicleNo: normalizeVehicleNo(formData.vehicleNo),
       ownerName: formData.ownerName,
       driverName: formData.driverName,
       driverPhone: formData.driverPhone,
@@ -75,10 +75,10 @@ export function Vehicles() {
 
   const filteredVehicles = useMemo(() => {
     if (!searchTerm) return vehicles;
-    const term = searchTerm.toLowerCase().replace(/\s+/g, '');
+    const term = normalizeVehicleNo(searchTerm) || searchTerm.toLowerCase().replace(/\s+/g, '');
     return vehicles.filter(
       (v) =>
-        v.vehicleNo.toLowerCase().replace(/\s+/g, '').includes(term) ||
+        normalizeVehicleNo(v.vehicleNo).includes(term) ||
         v.ownerName.toLowerCase().replace(/\s+/g, '').includes(term) ||
         (v.driverName && v.driverName.toLowerCase().replace(/\s+/g, '').includes(term))
     );
@@ -99,7 +99,7 @@ export function Vehicles() {
     // Slips involving this vehicle
     const vehicleSlips = slips.filter(
       (s) =>
-        s.vehicleNo.toUpperCase() === selectedVehicle.vehicleNo.toUpperCase(),
+        normalizeVehicleNo(s.vehicleNo) === normalizeVehicleNo(selectedVehicle.vehicleNo),
     );
 
     return vehicleSlips.sort(
@@ -155,7 +155,7 @@ export function Vehicles() {
             {sortedVehicles.map((v) => (
               <div key={v.id} className="p-3 flex flex-col gap-1.5 bg-white dark:bg-zinc-800 rounded-xl shadow-sm border border-zinc-100 dark:border-zinc-700 mx-2 my-2 active:scale-[0.98] transition-transform">
                 <div className="flex justify-between items-start">
-                   <div className="font-bold text-zinc-900 dark:text-white text-sm">{v.vehicleNo}</div>
+                   <div className="font-bold text-zinc-900 dark:text-white text-sm">{formatVehicleNo(v.vehicleNo)}</div>
                    <div className="flex items-center gap-1.5">
                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase ${v.defaultMeasurementType === "Volume (Brass)" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200"}`}>
                         {v.defaultMeasurementType === "Volume (Brass)" ? "Brass" : "Weight"}
@@ -221,7 +221,7 @@ export function Vehicles() {
                     className="border-b border-zinc-50 dark:border-zinc-700/50 last:border-0 hover:bg-zinc-50 dark:hover:bg-zinc-800"
                   >
                     <td className="px-4 py-4 font-bold text-zinc-900 dark:text-white align-top">
-                      {v.vehicleNo}
+                      {formatVehicleNo(v.vehicleNo)}
                     </td>
                     <td className="px-4 py-4 font-medium text-zinc-700 dark:text-zinc-200 align-top">
                       {v.ownerName}
@@ -308,7 +308,7 @@ export function Vehicles() {
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        vehicleNo: e.target.value.toUpperCase(),
+                        vehicleNo: formatVehicleNo(e.target.value),
                       })
                     }
                     type="text"
@@ -510,7 +510,7 @@ export function Vehicles() {
             <div className="px-4 py-3 md:px-6 md:py-4 border-b border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 flex justify-between items-center shrink-0">
               <div>
                 <h3 className="text-xl font-bold text-zinc-900 dark:text-white uppercase">
-                  {selectedVehicle.vehicleNo} - Trip History
+                  {formatVehicleNo(selectedVehicle.vehicleNo)} - Trip History
                 </h3>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400">
                   Owner: {selectedVehicle.ownerName || "Self"}

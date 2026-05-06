@@ -63,6 +63,33 @@ export function SettingsAppearance({ localSettings, setLocalSettings, isSaved, o
         </div>
       </div>
 
+      {/* ── Design Theme ── */}
+      <div>
+        <label className="block text-sm font-semibold text-foreground mb-3">Design Theme</label>
+        <p className="text-xs text-muted-foreground mb-3 max-w-xl leading-relaxed">
+          <b>Minimal</b> provides a clean, solid, and flat look. <b>Glassmorphism</b> introduces translucent backgrounds, glows, and enhanced visual depth.
+        </p>
+        <div className="grid grid-cols-2 gap-2 max-w-md">
+          {(["Minimal", "Glassmorphism"] as const).map((designTheme) => {
+            const isActive = (localSettings.designTheme || "Minimal") === designTheme;
+            return (
+              <button
+                key={designTheme}
+                onClick={() => upd({ designTheme })}
+                aria-pressed={isActive}
+                className={`px-4 py-3 rounded-xl border font-medium text-sm transition-colors ${
+                  isActive
+                    ? "border-primary-600 bg-primary-50 dark:bg-primary-500/10 text-foreground"
+                    : "border-border bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground"
+                }`}
+              >
+                {designTheme}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* ── Primary Brand Color ── */}
       <div>
         <label className="block text-sm font-semibold text-foreground mb-3">Primary Brand Color</label>

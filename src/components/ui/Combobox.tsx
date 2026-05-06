@@ -13,20 +13,6 @@ interface ComboboxProps {
   clearable?: boolean;
 }
 
-function useCompactPicker() {
-  const [isCompact, setIsCompact] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia("(max-width: 767px)");
-    const update = () => setIsCompact(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-
-  return isCompact;
-}
-
 export function Combobox({
   options,
   value,
@@ -42,8 +28,8 @@ export function Combobox({
   const [search, setSearch] = useState("");
   const [opensUp, setOpensUp] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const isCompactPicker = useCompactPicker();
+
+  const [freqs, setFreqs] = useState<Record<string, number>>({});
 
   const selectedOption = options.find((o) => o.value === value);
   const displayValue = selectedOption
@@ -55,21 +41,21 @@ export function Combobox({
         : "";
 
   useEffect(() => {
+    if (isOpen) {
+      try {
+        const usageKey = `combobox_freq_${mobileTitle || placeholder || "generic"}`;
+        setFreqs(JSON.parse(localStorage.getItem(usageKey) || "{}"));
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, [isOpen, mobileTitle, placeholder]);
+
+  useEffect(() => {
     if (!isOpen) {
       setSearch(displayValue);
     }
   }, [isOpen, displayValue]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    if (isCompactPicker) {
-      document.body.style.overflow = "hidden";
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
-    return () => {
-      if (isCompactPicker) document.body.style.overflow = "";
-    };
-  }, [isOpen, isCompactPicker]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -82,17 +68,26 @@ export function Combobox({
   }, []);
 
   useEffect(() => {
-    if (!isOpen || !wrapperRef.current || isCompactPicker) return;
+    if (!isOpen || !wrapperRef.current) return;
     const rect = wrapperRef.current.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
     const dropdownHeight = 240;
     setOpensUp(spaceBelow < dropdownHeight && rect.top > dropdownHeight);
-  }, [isOpen, isCompactPicker]);
+  }, [isOpen]);
 
-  const normalizedSearch = search.toLowerCase().replace(/\s+/g, "");
-  const filteredOptions = options.filter((o) =>
-    o.label.toLowerCase().replace(/\s+/g, "").includes(normalizedSearch),
-  );
+  const normalizedSearch = search.toLowerCase().replace(/[\s\-\.]+/g, "");
+  
+  const sortedOptions = React.useMemo(() => {
+    return [...options].sort((a, b) => {
+      const freqA = freqs[a.value] || 0;
+      const freqB = freqs[b.value] || 0;
+      return freqB - freqA;
+    });
+  }, [options, freqs]);
+
+  const filteredOptions = sortedOptions.filter((o) =>
+    o.label.toLowerCase().replace(/[\s\-\.]+/g, "").includes(normalizedSearch),
+  ).slice(0, 5);
 
   const handleCreate = () => {
     if (allowCreate && search.trim()) {
@@ -102,6 +97,15 @@ export function Combobox({
   };
 
   const handleSelect = (option: { label: string; value: string }) => {
+    try {
+      const usageKey = `combobox_freq_${mobileTitle || placeholder || "generic"}`;
+      const currentFreqs = JSON.parse(localStorage.getItem(usageKey) || "{}");
+      currentFreqs[option.value] = (currentFreqs[option.value] || 0) + 1;
+      localStorage.setItem(usageKey, JSON.stringify(currentFreqs));
+    } catch (e) {
+      // ignore
+    }
+    
     onChange(option.value);
     setSearch(option.label);
     setIsOpen(false);
@@ -117,8 +121,7 @@ export function Combobox({
       <div className="relative">
         <input
           type="text"
-          value={isOpen && !isCompactPicker ? search : displayValue}
-          readOnly={isCompactPicker}
+          value={isOpen ? search : displayValue}
           onChange={(e) => {
             setSearch(e.target.value);
             setIsOpen(true);
@@ -149,7 +152,7 @@ export function Combobox({
         )}
       </div>
 
-      {isOpen && !isCompactPicker && (
+      {isOpen && (
         <ul className={`absolute z-50 w-full max-h-60 overflow-auto bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg ${opensUp ? "bottom-full mb-1" : "top-full mt-1"}`}>
           {filteredOptions.length > 0 ? (
             filteredOptions.map((option) => (
@@ -175,73 +178,6 @@ export function Combobox({
             <li className="px-4 py-3 text-sm text-zinc-500 text-center">{emptyText}</li>
           )}
         </ul>
-      )}
-
-      {isOpen && isCompactPicker && (
-        <div className="fixed inset-0 z-[70] flex flex-col justify-end md:hidden">
-          <div className="absolute inset-0 bg-black/45 backdrop-blur-sm" onClick={() => setIsOpen(false)} />
-          <div className="relative flex max-h-[82dvh] flex-col rounded-t-2xl bg-white shadow-2xl dark:bg-zinc-900">
-            <div className="flex justify-center pt-3 pb-1">
-              <div className="h-1 w-10 rounded-full bg-zinc-300 dark:bg-zinc-600" />
-            </div>
-            <div className="flex items-center justify-between border-b border-zinc-100 px-4 pb-3 dark:border-zinc-800">
-              <h3 className="text-base font-bold text-zinc-900 dark:text-white">
-                {mobileTitle || placeholder}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-400"
-                aria-label="Close"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="border-b border-zinc-100 p-3 dark:border-zinc-800">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full min-h-11 rounded-xl border border-zinc-200 bg-zinc-50 pl-9 pr-3 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
-                  placeholder="Search"
-                />
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
-              {filteredOptions.length > 0 ? (
-                filteredOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => handleSelect(option)}
-                    className={`flex min-h-12 w-full items-center justify-between rounded-xl px-3 text-left text-sm font-semibold ${
-                      option.value === value
-                        ? "bg-primary-50 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300"
-                        : "text-zinc-800 hover:bg-zinc-50 dark:text-zinc-100 dark:hover:bg-zinc-800"
-                    }`}
-                  >
-                    <span className="truncate">{option.label}</span>
-                    {option.value === value && <Check className="h-4 w-4 shrink-0" />}
-                  </button>
-                ))
-              ) : allowCreate && search.trim() ? (
-                <button
-                  type="button"
-                  onClick={handleCreate}
-                  className="flex min-h-12 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-semibold text-primary-700 dark:text-primary-300"
-                >
-                  <Plus className="h-4 w-4" />
-                  Create "{search.trim()}"
-                </button>
-              ) : (
-                <div className="py-8 text-center text-sm text-zinc-500">{emptyText}</div>
-              )}
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

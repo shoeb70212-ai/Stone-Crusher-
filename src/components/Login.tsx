@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, User, AlertCircle, Fingerprint } from 'lucide-react';
+import { Lock, User, AlertCircle, Fingerprint, Eye, EyeOff } from 'lucide-react';
 import { useErp } from '../context/ErpContext';
 import { loginSchema, type LoginInput } from '../lib/validation';
 import { supabase } from '../lib/supabase';
@@ -25,6 +25,7 @@ export function Login({ onLogin }: LoginProps) {
   const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
   const [canUseBiometric, setCanUseBiometric] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const { companySettings, isLoading, recordAuditEvent, session, userRole } = useErp();
 
@@ -248,7 +249,7 @@ export function Login({ onLogin }: LoginProps) {
                 Email address
               </label>
               <div className="relative">
-                <User className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <User className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
                   id="login-username"
                   type="text"
@@ -259,7 +260,7 @@ export function Login({ onLogin }: LoginProps) {
                   aria-describedby={fieldErrors.email ? 'username-error' : undefined}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className={`w-full h-12 pl-10 pr-4 text-sm bg-surface md:bg-surface-2 border border-border rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-colors text-foreground placeholder:text-muted-foreground ${fieldErrors.email ? 'border-danger ring-2 ring-danger/20' : ''}`}
+                  className={`w-full h-12 pl-11 pr-4 text-base md:text-sm bg-surface md:bg-surface-2 border border-border rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-colors text-foreground placeholder:text-muted-foreground ${fieldErrors.email ? 'border-danger ring-2 ring-danger/20' : ''}`}
                   placeholder="you@company.com"
                 />
               </div>
@@ -279,25 +280,34 @@ export function Login({ onLogin }: LoginProps) {
                 <button
                   type="button"
                   onClick={() => setShowForgotPassword(true)}
-                  className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline"
+                  className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline min-h-[44px] px-2 -mr-2 flex items-center"
                   aria-label="Reset your password"
                 >
                   Forgot password?
                 </button>
               </div>
               <div className="relative">
-                <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Lock className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
                   id="login-password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   required
                   aria-invalid={!!fieldErrors.password}
                   aria-describedby={fieldErrors.password ? 'password-error' : undefined}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className={`w-full h-12 pl-10 pr-4 text-sm bg-surface md:bg-surface-2 border border-border rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-colors text-foreground placeholder:text-muted-foreground ${fieldErrors.password ? 'border-danger ring-2 ring-danger/20' : ''}`}
+                  className={`w-full h-12 pl-11 pr-12 text-base md:text-sm bg-surface md:bg-surface-2 border border-border rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-colors text-foreground placeholder:text-muted-foreground [&::-ms-reveal]:hidden [&::-webkit-credentials-auto-fill-button]:hidden ${fieldErrors.password ? 'border-danger ring-2 ring-danger/20' : ''}`}
                   placeholder="Enter your password"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="w-10 h-10 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors rounded-lg active:bg-surface"
+                  style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', zIndex: 10 }}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
               </div>
               {fieldErrors.password && (
                 <p id="password-error" className="text-xs text-danger ml-0.5" role="alert">{fieldErrors.password}</p>

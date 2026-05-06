@@ -14,16 +14,23 @@ import {
   ArrowUpRight,
   Edit2,
   Trash2,
+  Loader2,
+  Printer,
+  MessageCircle,
+  Download,
 } from "lucide-react";
 import { Customer } from "../types";
 import { format, parseISO } from "date-fns";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { customerSchema } from "../lib/validation";
 import { useToast } from "../components/ui/Toast";
-import { generateId } from "../lib/utils";
+import { generateId, formatVehicleNo } from "../lib/utils";
+import { downloadCSV, downloadLedgerStatementPdf } from "../lib/export-utils";
+import { printHtml } from "../lib/print-utils";
+import { buildLedgerWhatsAppMessage, openWhatsAppMessage } from "../lib/whatsapp-share";
 
 export function Customers() {
-  const { customers, addCustomer, updateCustomer, deleteCustomer, slips, transactions, getCustomerBalance, invoices } = useErp();
+  const { customers, addCustomer, updateCustomer, deleteCustomer, slips, transactions, getCustomerBalance, invoices, hasPermission } = useErp();
   const { addToast } = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDataId, setEditingDataId] = useState<string | null>(null);
@@ -31,7 +38,12 @@ export function Customers() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
     null,
   );
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   
+  const canViewPending = hasPermission("viewPendingAmounts");
+  const canViewLedger = hasPermission("viewCustomerLedger");
+  const canManageCustomers = hasPermission("viewAllCustomers"); // For adding/editing
+
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
 
@@ -174,7 +186,7 @@ export function Customers() {
           date: s.date,
           type: "Dispatch",
           category: "Slip",
-          description: `Trip ${s.vehicleNo} - ${s.materialType} • ${s.quantity.toFixed(2)} ${s.measurementType === 'Volume (Brass)' ? 'Brass' : 'Tons'} @ ₹${s.ratePerUnit}${s.invoiceId ? ' (Billed)' : ''}`,
+          description: `Trip ${formatVehicleNo(s.vehicleNo)} - ${s.materialType} • ${s.quantity.toFixed(2)} ${s.measurementType === 'Volume (Brass)' ? 'Brass' : 'Tons'} @ ₹${s.ratePerUnit}${s.invoiceId ? ' (Billed)' : ''}`,
           amount: s.totalAmount,
           isCharge: true,
           affectsBalance: !s.invoiceId, // Billed slips don't increase balance since the Invoice handles it
@@ -272,7 +284,7 @@ export function Customers() {
 
   return (
     <div className="space-y-4 md:space-y-6">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <div className="flex flex-col gap-4">
         <div>
           <h2 className="text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
             Customers Directory
@@ -281,28 +293,31 @@ export function Customers() {
             Manage customer profiles and view their balances.
           </p>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center transition-colors shadow-sm"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Add Customer
-        </button>
-      </div>
 
-      {/* Search Bar */}
-      <div className="bg-white dark:bg-zinc-800 p-4 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search className="w-5 h-5 text-zinc-400" />
+        {/* Search & Actions Row */}
+        <div className="flex items-center gap-2 bg-white dark:bg-zinc-800 p-2 sm:p-3 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700">
+          <div className="relative flex-1 min-w-0">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-400" />
+            </div>
+            <input
+              type="text"
+              placeholder="Search customers by name, phone..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 sm:pl-10 pr-4 py-2 border-none bg-transparent rounded-lg focus:ring-0 outline-none dark:text-white text-sm sm:text-base"
+            />
           </div>
-          <input
-            type="text"
-            placeholder="Search customers by name, phone, or GSTIN..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-zinc-800 dark:text-white"
-          />
+          {canManageCustomers && (
+            <button
+              onClick={openCreateModal}
+              className="bg-primary-600 hover:bg-primary-700 text-white px-3 sm:px-4 py-2 rounded-lg font-medium flex items-center justify-center transition-colors shadow-sm shrink-0 text-sm"
+            >
+              <Plus className="w-4 h-4 sm:w-5 sm:h-5 sm:mr-2 mr-1" />
+              <span className="hidden sm:inline">Add Customer</span>
+              <span className="sm:hidden">Add</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -340,14 +355,16 @@ export function Customers() {
                     </div>
 
                     <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-                      <div className="text-right">
-                        <div className="text-[10px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400 font-semibold">Bal</div>
-                        <span className={`font-bold tracking-tight text-xs sm:text-base ${
-                            bal > 0 ? "text-rose-600 dark:text-rose-400" : bal < 0 ? "text-primary-600 dark:text-primary-400" : "text-zinc-700 dark:text-zinc-200"
-                        }`}>
-                          ₹{Math.abs(bal).toLocaleString()} {bal > 0 ? "Dr" : bal < 0 ? "Cr" : ""}
-                        </span>
-                      </div>
+                      {canViewPending && (
+                        <div className="text-right">
+                          <div className="text-[10px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400 font-semibold">Bal</div>
+                          <span className={`font-bold tracking-tight text-xs sm:text-base ${
+                              bal > 0 ? "text-rose-600 dark:text-rose-400" : bal < 0 ? "text-primary-600 dark:text-primary-400" : "text-zinc-700 dark:text-zinc-200"
+                          }`}>
+                            ₹{Math.abs(bal).toLocaleString()} {bal > 0 ? "Dr" : bal < 0 ? "Cr" : ""}
+                          </span>
+                        </div>
+                      )}
                       <span className={`px-1.5 py-0.5 sm:px-2 sm:py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${c.isActive !== false ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"}`}>
                         {c.isActive !== false ? "Active" : "Inactive"}
                       </span>
@@ -359,10 +376,12 @@ export function Customers() {
                   {isExpanded && (
                     <div className="px-3 pb-3 pt-2 sm:px-4 sm:pb-4 sm:pt-2 border-t border-zinc-100 dark:border-zinc-700/50 bg-zinc-50 dark:bg-zinc-900/20">
                       <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4 mb-3 sm:mb-4">
-                         <div>
-                            <span className="text-[10px] uppercase tracking-wide text-zinc-500 font-semibold block">Opening</span>
-                            <span className="text-xs sm:text-sm font-medium dark:text-zinc-200">₹{c.openingBalance.toLocaleString()} {c.openingBalance > 0 ? "Dr" : c.openingBalance < 0 ? "Cr" : ""}</span>
-                         </div>
+                         {canViewPending && (
+                           <div>
+                              <span className="text-[10px] uppercase tracking-wide text-zinc-500 font-semibold block">Opening</span>
+                              <span className="text-xs sm:text-sm font-medium dark:text-zinc-200">₹{c.openingBalance.toLocaleString()} {c.openingBalance > 0 ? "Dr" : c.openingBalance < 0 ? "Cr" : ""}</span>
+                           </div>
+                         )}
                          <div>
                             <span className="text-[10px] uppercase tracking-wide text-zinc-500 font-semibold block">GSTIN</span>
                             <span className="block text-xs sm:text-sm font-medium dark:text-zinc-200 uppercase break-words">{c.gstin || 'N/A'}</span>
@@ -374,15 +393,21 @@ export function Customers() {
                       </div>
 
                       <div className="flex flex-wrap gap-1.5 sm:gap-2 justify-end">
-                        <button onClick={(e) => { e.stopPropagation(); setSelectedCustomer(c); }} className="text-xs sm:text-sm bg-primary-50 hover:bg-primary-100 text-primary-700 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-medium flex items-center active:scale-[0.98] transition-transform">
-                          <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1" /> <span className="hidden sm:inline">Statement</span>
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); openEditModal(c); }} className="text-xs sm:text-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-medium flex items-center border border-indigo-100 active:scale-[0.98] transition-transform">
-                          <Edit2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1" /> <span className="hidden sm:inline">Edit</span>
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); removeCustomer(c.id); }} className={`text-xs sm:text-sm px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-medium flex items-center border active:scale-[0.98] transition-transform ${c.isActive !== false ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-100" : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-100"}`}>
-                          {c.isActive !== false ? (<><Trash2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1" /><span className="hidden sm:inline">Deactivate</span></>) : (<><Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1" /><span className="hidden sm:inline">Reactivate</span></>)}
-                        </button>
+                        {canViewLedger && (
+                          <button onClick={(e) => { e.stopPropagation(); setSelectedCustomer(c); }} className="text-xs sm:text-sm bg-primary-50 hover:bg-primary-100 text-primary-700 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-medium flex items-center active:scale-[0.98] transition-transform">
+                            <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1" /> <span className="hidden sm:inline">Statement</span>
+                          </button>
+                        )}
+                        {canManageCustomers && (
+                          <>
+                            <button onClick={(e) => { e.stopPropagation(); openEditModal(c); }} className="text-xs sm:text-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-medium flex items-center border border-indigo-100 active:scale-[0.98] transition-transform">
+                              <Edit2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1" /> <span className="hidden sm:inline">Edit</span>
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); removeCustomer(c.id); }} className={`text-xs sm:text-sm px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-medium flex items-center border active:scale-[0.98] transition-transform ${c.isActive !== false ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-100" : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-100"}`}>
+                              {c.isActive !== false ? (<><Trash2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1" /><span className="hidden sm:inline">Deactivate</span></>) : (<><Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1" /><span className="hidden sm:inline">Reactivate</span></>)}
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
@@ -515,7 +540,7 @@ export function Customers() {
       {selectedCustomer && (
         <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center md:p-4 z-50 overflow-hidden">
           <div className="bg-[#f8fafc] md:rounded-2xl w-full h-full md:h-auto max-w-4xl md:max-h-[90vh] overflow-hidden shadow-xl flex flex-col relative">
-            <div className="px-4 py-3 md:px-6 md:py-4 border-b border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 flex justify-between items-center shrink-0">
+            <div className="px-4 py-3 md:px-6 md:py-4 border-b border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 flex flex-wrap justify-between items-center gap-3 shrink-0">
               <div>
                 <h3 className="text-xl font-bold text-zinc-900 dark:text-white">
                   {selectedCustomer.name} - Statement
@@ -527,12 +552,114 @@ export function Customers() {
                   </strong>
                 </p>
               </div>
-              <button
-                onClick={() => setSelectedCustomer(null)}
-                className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:text-zinc-300 p-1"
-              >
-                <X className="w-6 h-6" />
-              </button>
+              
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => {
+                    const html = `
+                      <div style="padding:24px;font-family:Inter,sans-serif;">
+                        <h2 style="margin:0 0 4px;">${selectedCustomer.name}</h2>
+                        <p style="margin:0 0 12px;color:#666;">Phone: ${selectedCustomer.phone || 'N/A'}${selectedCustomer.address ? ` | ${selectedCustomer.address}` : ''}${selectedCustomer.gstin ? ` | GSTIN: ${selectedCustomer.gstin}` : ''}</p>
+                        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                          <thead><tr style="background:#f4f4f5;"><th style="padding:8px;text-align:left;">Date</th><th style="padding:8px;text-align:left;">Particulars</th><th style="padding:8px;text-align:right;">Debit</th><th style="padding:8px;text-align:right;">Credit</th><th style="padding:8px;text-align:right;">Balance</th></tr></thead>
+                          <tbody>
+                            ${customerHistory.map(e => {
+                              const dateStr = e.date === new Date(0).toISOString() ? "-" : new Date(e.date).toLocaleDateString();
+                              const debit = e.isCharge ? e.amount : 0;
+                              const credit = !e.isCharge ? e.amount : 0;
+                              return `<tr><td style="padding:8px;border-bottom:1px solid #eee;">${dateStr}</td><td style="padding:8px;border-bottom:1px solid #eee;">${e.description}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#e11d48;">${debit > 0 ? debit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#059669;">${credit > 0 ? credit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;">${Math.abs(e.runningBalance).toLocaleString()} ${e.runningBalance < 0 ? 'Cr' : e.runningBalance > 0 ? 'Dr' : ''}</td></tr>`;
+                            }).join('')}
+                          </tbody>
+                        </table>
+                        <p style="margin-top:12px;text-align:right;font-weight:bold;">Closing Balance: ₹${Math.abs(getCustomerBalance(selectedCustomer.id)).toLocaleString()} ${getCustomerBalance(selectedCustomer.id) < 0 ? 'Cr' : getCustomerBalance(selectedCustomer.id) > 0 ? 'Dr' : ''}</p>
+                      </div>
+                    `;
+                    printHtml(html);
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-xs sm:text-sm font-semibold rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Print</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const entries = customerHistory.map(h => ({
+                       date: new Date(h.date),
+                       desc: h.description,
+                       debit: h.isCharge ? h.amount : 0,
+                       credit: !h.isCharge ? h.amount : 0
+                    }));
+                    const message = buildLedgerWhatsAppMessage({ customer: selectedCustomer, entries, closingBalance: getCustomerBalance(selectedCustomer.id) });
+                    openWhatsAppMessage(message);
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 text-white text-xs sm:text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
+                >
+                  <MessageCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">WhatsApp</span>
+                </button>
+                <button
+                  onClick={async () => {
+                    const rows = customerHistory.map(h => {
+                       const debit = h.isCharge ? h.amount : 0;
+                       const credit = !h.isCharge ? h.amount : 0;
+                       return {
+                          date: h.date === new Date(0).toISOString() ? "-" : new Date(h.date).toLocaleDateString(),
+                          particulars: h.description,
+                          debit: debit > 0 ? debit : "",
+                          credit: credit > 0 ? credit : "",
+                          balance: `${Math.abs(h.runningBalance)} ${h.runningBalance < 0 ? "Cr" : h.runningBalance > 0 ? "Dr" : ""}`,
+                       }
+                    });
+                    try {
+                      await downloadCSV(rows, { date: "Date", particulars: "Particulars", debit: "Debit (₹)", credit: "Credit (₹)", balance: "Balance (₹)" }, `Ledger_${selectedCustomer.name.replace(/\s+/g, "_")}`);
+                    } catch (err) {
+                      addToast("error", err instanceof Error ? err.message : "Export failed.");
+                    }
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-xs sm:text-sm font-semibold rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">CSV</span>
+                </button>
+                <button
+                  onClick={async () => {
+                     const html = `
+                      <div style="padding:24px;font-family:Inter,sans-serif;">
+                        <h2 style="margin:0 0 4px;">${selectedCustomer.name}</h2>
+                        <p style="margin:0 0 12px;color:#666;">Phone: ${selectedCustomer.phone || 'N/A'}${selectedCustomer.address ? ` | ${selectedCustomer.address}` : ''}${selectedCustomer.gstin ? ` | GSTIN: ${selectedCustomer.gstin}` : ''}</p>
+                        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                          <thead><tr style="background:#f4f4f5;"><th style="padding:8px;text-align:left;">Date</th><th style="padding:8px;text-align:left;">Particulars</th><th style="padding:8px;text-align:right;">Debit</th><th style="padding:8px;text-align:right;">Credit</th><th style="padding:8px;text-align:right;">Balance</th></tr></thead>
+                          <tbody>
+                            ${customerHistory.map(e => {
+                              const dateStr = e.date === new Date(0).toISOString() ? "-" : new Date(e.date).toLocaleDateString();
+                              const debit = e.isCharge ? e.amount : 0;
+                              const credit = !e.isCharge ? e.amount : 0;
+                              return `<tr><td style="padding:8px;border-bottom:1px solid #eee;">${dateStr}</td><td style="padding:8px;border-bottom:1px solid #eee;">${e.description}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#e11d48;">${debit > 0 ? debit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#059669;">${credit > 0 ? credit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;">${Math.abs(e.runningBalance).toLocaleString()} ${e.runningBalance < 0 ? 'Cr' : e.runningBalance > 0 ? 'Dr' : ''}</td></tr>`;
+                            }).join('')}
+                          </tbody>
+                        </table>
+                        <p style="margin-top:12px;text-align:right;font-weight:bold;">Closing Balance: ₹${Math.abs(getCustomerBalance(selectedCustomer.id)).toLocaleString()} ${getCustomerBalance(selectedCustomer.id) < 0 ? 'Cr' : getCustomerBalance(selectedCustomer.id) > 0 ? 'Dr' : ''}</p>
+                      </div>
+                    `;
+                     setIsExportingPdf(true);
+                     try {
+                        await downloadLedgerStatementPdf(selectedCustomer.name, html);
+                     } catch (err) {
+                        addToast('error', 'PDF export failed.');
+                     } finally {
+                        setIsExportingPdf(false);
+                     }
+                  }}
+                  disabled={isExportingPdf}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs sm:text-sm font-semibold rounded-lg hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                >
+                  {isExportingPdf ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+                  <span className="hidden sm:inline">{isExportingPdf ? 'Generating...' : 'PDF'}</span>
+                </button>
+                <button
+                  onClick={() => setSelectedCustomer(null)}
+                  className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:text-zinc-300 p-1 ml-1"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-zinc-800">

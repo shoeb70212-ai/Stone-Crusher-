@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useErp } from "../context/ErpContext";
 import { CompanySettings } from "../types";
-import { Building2, Users, Receipt, Palette, X, Mail, KeyRound, Lock, Database, Upload, Download } from "lucide-react";
+import { Building2, Users, Receipt, Palette, X, Mail, KeyRound, Lock, Database, Upload, Download, Eye, EyeOff } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { downloadCSV } from "../lib/export-utils";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
@@ -30,7 +30,26 @@ export function Settings() {
   const { userRole, companySettings, updateCompanySettings, purgeInactiveRecords, session, invoices, addInvoice } = useErp();
   const { addToast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<Tab>("general");
+  const visibleTabs = useMemo(() => {
+    return TABS.filter(tab => {
+      if (userRole === "Admin") return true;
+      if (userRole === "Manager") return ["general", "materials", "appearance"].includes(tab.id);
+      return ["appearance"].includes(tab.id);
+    });
+  }, [userRole]);
+
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    if (userRole === "Admin") return "general";
+    if (userRole === "Manager") return "general";
+    return "appearance";
+  });
+
+  useEffect(() => {
+    if (!visibleTabs.some(t => t.id === activeTab)) {
+      setActiveTab(visibleTabs[0]?.id as Tab);
+    }
+  }, [visibleTabs, activeTab]);
+
   const [isSaved, setIsSaved] = useState(false);
 
   // Invite modal
@@ -41,11 +60,15 @@ export function Settings() {
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [changePasswordData, setChangePasswordData] = useState({ current: "", next: "", confirm: "" });
   const [changePasswordSubmitting, setChangePasswordSubmitting] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState({ current: false, next: false, confirm: false });
 
   // Admin reset-password modal
   const [resetTargetId, setResetTargetId] = useState<string | null>(null);
   const [resetPasswordValue, setResetPasswordValue] = useState("");
   const [resetPasswordSubmitting, setResetPasswordSubmitting] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+
+  const [showInvitePassword, setShowInvitePassword] = useState(false);
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const pendingRestoreFileRef = React.useRef<string | null>(null);
@@ -367,7 +390,7 @@ export function Settings() {
             aria-label="Settings sections"
             className="flex md:flex-wrap overflow-x-auto no-scrollbar md:overflow-visible md:space-x-1 border-b border-border px-2 md:px-0"
           >
-            {TABS.map(({ id, label, icon: Icon }) => (
+            {visibleTabs.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 role="tab"
@@ -521,14 +544,23 @@ export function Settings() {
               ].map(({ label, key, placeholder }) => (
                 <div key={key}>
                   <label htmlFor={`cp-${key}`} className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">{label}</label>
-                  <input
-                    id={`cp-${key}`}
-                    required type="password" minLength={key !== "current" ? 8 : undefined}
-                    value={changePasswordData[key]}
-                    onChange={(e) => setChangePasswordData({ ...changePasswordData, [key]: e.target.value })}
-                    placeholder={placeholder}
-                    className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none bg-transparent dark:text-white"
-                  />
+                  <div className="relative">
+                    <input
+                      id={`cp-${key}`}
+                      required type={showChangePassword[key] ? "text" : "password"} minLength={key !== "current" ? 8 : undefined}
+                      value={changePasswordData[key]}
+                      onChange={(e) => setChangePasswordData({ ...changePasswordData, [key]: e.target.value })}
+                      placeholder={placeholder}
+                      className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none bg-transparent dark:text-white pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowChangePassword(prev => ({ ...prev, [key]: !prev[key] }))}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                    >
+                      {showChangePassword[key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
               ))}
               <div className="pt-2 flex justify-end gap-3">
@@ -556,9 +588,18 @@ export function Settings() {
               </p>
               <div>
                 <label htmlFor="rp-new" className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">New Password</label>
-                <input id="rp-new" required type="password" minLength={8} value={resetPasswordValue} onChange={(e) => setResetPasswordValue(e.target.value)} placeholder="Min. 8 characters"
-                  className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none bg-transparent dark:text-white"
-                />
+                <div className="relative">
+                  <input id="rp-new" required type={showResetPassword ? "text" : "password"} minLength={8} value={resetPasswordValue} onChange={(e) => setResetPasswordValue(e.target.value)} placeholder="Min. 8 characters"
+                    className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none bg-transparent dark:text-white pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetPassword(!showResetPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                  >
+                    {showResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
               <div className="pt-2 flex justify-end gap-3">
                 <button type="button" onClick={() => { setResetTargetId(null); setResetPasswordValue(""); }} className="px-4 py-2 text-zinc-600 dark:text-zinc-300 font-medium hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-lg transition-colors">Cancel</button>
@@ -587,11 +628,28 @@ export function Settings() {
               ].map(({ label, key, type, placeholder }) => (
                 <div key={key}>
                   <label htmlFor={`inv-${key}`} className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">{label}</label>
-                  <input id={`inv-${key}`} required type={type} minLength={key === "password" ? 8 : undefined}
-                    value={inviteFormData[key]} onChange={(e) => setInviteFormData({ ...inviteFormData, [key]: e.target.value })}
-                    placeholder={placeholder}
-                    className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none dark:text-white"
-                  />
+                  {type === "password" ? (
+                    <div className="relative">
+                      <input id={`inv-${key}`} required type={showInvitePassword ? "text" : "password"} minLength={8}
+                        value={inviteFormData[key]} onChange={(e) => setInviteFormData({ ...inviteFormData, [key]: e.target.value })}
+                        placeholder={placeholder}
+                        className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none dark:text-white pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowInvitePassword(!showInvitePassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                      >
+                        {showInvitePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  ) : (
+                    <input id={`inv-${key}`} required type={type} minLength={key === "password" ? 8 : undefined}
+                      value={inviteFormData[key]} onChange={(e) => setInviteFormData({ ...inviteFormData, [key]: e.target.value })}
+                      placeholder={placeholder}
+                      className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none dark:text-white"
+                    />
+                  )}
                 </div>
               ))}
               <div>

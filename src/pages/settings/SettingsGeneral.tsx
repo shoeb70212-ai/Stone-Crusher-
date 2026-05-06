@@ -155,8 +155,11 @@ export function SettingsGeneral({
             className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none transition-shadow bg-white dark:bg-zinc-800 dark:text-white"
           >
             <option value="A4">A4 Size</option>
-            <option value="Thermal-80mm">Thermal - 80mm</option>
-            <option value="Thermal-58mm">Thermal - 58mm</option>
+            <option value="Thermal-58mm">Thermal - 58mm (2.28")</option>
+            <option value="Thermal-76mm">Thermal - 76mm (3")</option>
+            <option value="Thermal-80mm">Thermal - 80mm (3.15")</option>
+            <option value="Thermal-100mm">Thermal - 100mm (4")</option>
+            <option value="Thermal-110mm">Thermal - 110mm (4.33")</option>
           </select>
           <p className="mt-1 text-xs text-zinc-500">Select the default print format for dispatch slips.</p>
         </div>

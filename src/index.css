@@ -218,12 +218,14 @@ html {
   /* Drives <body> and any element that uses semantic bg via design tokens. */
   background-color: var(--background);
   color: var(--foreground);
+  transition: background-color 0.3s ease, background-image 0.5s ease, color 0.3s ease;
 }
 
 body {
   font-family: var(--font-sans);
   background-color: var(--background);
   color: var(--foreground);
+  transition: background-color 0.3s ease, color 0.3s ease;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
   max-width: 100vw;
@@ -1675,4 +1677,74 @@ h1, h2, h3, h4 {
     box-shadow: none !important;
     margin: 0 !important;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DESIGN THEMES
+   ═══════════════════════════════════════════════════════════ */
+
+/* Minimal is the default logic, so we just define the glassmorphism overrides here */
+@keyframes ambient-shift {
+  0% { background-position: 0% 0%, 100% 100%; }
+  50% { background-position: 100% 100%, 0% 0%; }
+  100% { background-position: 0% 0%, 100% 100%; }
+}
+
+html.design-glassmorphism {
+  /* Dynamic mesh-like background color mix */
+  background-image: 
+    radial-gradient(circle at 15% 50%, var(--primary-100), transparent 50%),
+    radial-gradient(circle at 85% 30%, var(--primary-50), transparent 50%);
+  background-attachment: fixed;
+  background-size: 150% 150%;
+  animation: ambient-shift 20s ease-in-out infinite;
+}
+
+html.design-glassmorphism.dark {
+  background-image: 
+    radial-gradient(circle at 15% 50%, var(--primary-900), transparent 50%),
+    radial-gradient(circle at 85% 30%, var(--primary-950), transparent 50%);
+}
+
+/* Transitions for smooth theme switching */
+header, .card-surface, .mobile-bottom-nav, .bg-surface-2 {
+  transition: background-color 0.4s ease, backdrop-filter 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+.design-glassmorphism .card-surface,
+.design-glassmorphism .mobile-bottom-nav,
+.design-glassmorphism header {
+  background-color: rgba(255, 255, 255, 0.6) !important;
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-top-color: rgba(255, 255, 255, 0.8);
+  border-left-color: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
+}
+
+.design-glassmorphism.dark .card-surface,
+.design-glassmorphism.dark .mobile-bottom-nav,
+.design-glassmorphism.dark header {
+  background-color: rgba(22, 22, 24, 0.65) !important;
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-top-color: rgba(255, 255, 255, 0.1);
+  border-left-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+/* Inputs and inner surfaces in Glassmorphism */
+.design-glassmorphism .bg-surface-2 {
+  background-color: rgba(244, 244, 245, 0.4) !important;
+}
+
+.design-glassmorphism.dark .bg-surface-2 {
+  background-color: rgba(31, 31, 35, 0.4) !important;
+}
+
+/* Floating Action Button enhanced */
+.design-glassmorphism .mobile-fab {
+  box-shadow: 0 8px 32px var(--primary-500);
 }

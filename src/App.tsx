@@ -8,15 +8,23 @@ import { Login } from "./components/Login";
 import { SetupAdminScreen } from "./components/SetupAdminScreen";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { ResetPasswordScreen } from "./components/ResetPasswordScreen";
+import MasterKeyScreen from "./components/MasterKeyScreen";
 import { supabase } from "./lib/supabase";
 import { recordDeviceAccess } from "./lib/device-info";
 import { isNative } from "./lib/capacitor";
+import { importMasterKey } from "./lib/crypto-utils";
+import { setMasterKey } from "./lib/sync-engine";
 
 /**
  * Thin inner wrapper that wires the OfflineIndicator's `onReconnect` callback
  * to ErpContext's `flushSync`. Must be rendered inside ErpProvider.
  */
-function AppShell({ isAuthenticated, onLogin }: { isAuthenticated: boolean; onLogin: () => void }) {
+function AppShell({ isAuthenticated, isVaultUnlocked, onLogin, onVaultUnlocked }: {
+  isAuthenticated: boolean;
+  isVaultUnlocked: boolean;
+  onLogin: () => void;
+  onVaultUnlocked: () => void;
+}) {
   const { flushSync, bootstrapRequired, isLoading, syncStatus, retryCountRef } = useErp();
 
   // Show the welcome wizard once after the very first account creation.
@@ -42,7 +50,9 @@ function AppShell({ isAuthenticated, onLogin }: { isAuthenticated: boolean; onLo
         }}
       />
       {isAuthenticated ? (
-        showWelcome ? (
+        !isVaultUnlocked ? (
+          <MasterKeyScreen onUnlocked={onVaultUnlocked} />
+        ) : showWelcome ? (
           <WelcomeScreen onDone={handleWelcomeDone} />
         ) : (
           <Layout />
@@ -65,6 +75,8 @@ function AppShell({ isAuthenticated, onLogin }: { isAuthenticated: boolean; onLo
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  // E2EE vault state — must be unlocked after Supabase login
+  const [isVaultUnlocked, setIsVaultUnlocked] = useState(false);
   // True when Supabase fires a PASSWORD_RECOVERY event (user clicked the reset email link).
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
@@ -85,8 +97,21 @@ export default function App() {
     // Read the current session on mount — covers page reload with a live session.
     supabase.auth
       .getSession()
-      .then(({ data }) => {
-        if (data.session) setIsAuthenticated(true);
+      .then(async ({ data }) => {
+        if (data.session) {
+          setIsAuthenticated(true);
+          const savedKey = localStorage.getItem('crushtrack_vault_key');
+          if (savedKey) {
+            try {
+              const key = await importMasterKey(savedKey);
+              setMasterKey(key);
+              setIsVaultUnlocked(true);
+            } catch (e) {
+              console.warn('Failed to restore vault key', e);
+              localStorage.removeItem('crushtrack_vault_key');
+            }
+          }
+        }
       })
       .catch(() => {
         // ignore session read errors — user stays unauthenticated
@@ -98,12 +123,28 @@ export default function App() {
     // Keep isAuthenticated in sync with Supabase's auth state changes
     // (sign-in from Login, sign-out from Sidebar, token refresh, etc.).
     // PASSWORD_RECOVERY fires when the user lands via the reset-password email link.
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
         setIsPasswordRecovery(true);
         setIsAuthenticated(false);
       } else {
-        setIsAuthenticated(!!session);
+        const isAuth = !!session;
+        setIsAuthenticated(isAuth);
+        
+        if (isAuth) {
+          const savedKey = localStorage.getItem('crushtrack_vault_key');
+          if (savedKey) {
+            try {
+              const key = await importMasterKey(savedKey);
+              setMasterKey(key);
+              setIsVaultUnlocked(true);
+            } catch (e) {
+              localStorage.removeItem('crushtrack_vault_key');
+            }
+          }
+        } else {
+          setIsVaultUnlocked(false);
+        }
       }
     });
 
@@ -142,7 +183,9 @@ export default function App() {
         <Router>
           <AppShell
             isAuthenticated={isAuthenticated}
+            isVaultUnlocked={isVaultUnlocked}
             onLogin={() => setIsAuthenticated(true)}
+            onVaultUnlocked={() => setIsVaultUnlocked(true)}
           />
         </Router>
       </ErpProvider>

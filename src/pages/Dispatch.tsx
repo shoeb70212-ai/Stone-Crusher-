@@ -21,7 +21,7 @@ import { MobileModal } from "../components/ui/MobileModal";
 import { MobileChip, MobileFilterSheet } from "../components/ui/MobilePrimitives";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { DocumentActionButton, type DocumentAction } from "../components/ui/DocumentActionButton";
-import { cn } from "../lib/utils";
+import { cn, formatVehicleNo, normalizeVehicleNo } from "../lib/utils";
 import { useHapticFeedback } from "../lib/use-haptic-feedback";
 import { getStatusColor } from "../lib/status-styles";
 import { useDebounce } from "../lib/use-debounce";
@@ -69,7 +69,7 @@ export function Dispatch() {
       if (activeTab === "pending" && s.status !== "Pending") return false;
 
       // Vehicle search uses the debounced value to avoid filtering on every keystroke.
-      if (debouncedFilterVehicle.trim() && !s.vehicleNo.toLowerCase().includes(debouncedFilterVehicle.trim().toLowerCase())) {
+      if (debouncedFilterVehicle.trim() && !normalizeVehicleNo(s.vehicleNo).includes(normalizeVehicleNo(debouncedFilterVehicle.trim()))) {
         return false;
       }
 
@@ -684,7 +684,7 @@ export function Dispatch() {
                           >
                             <span className="font-bold text-zinc-900 dark:text-white uppercase tracking-wide text-xs truncate"
                             >
-                              {slip.vehicleNo}
+                              {formatVehicleNo(slip.vehicleNo)}
                             </span>
                             <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase shrink-0 ${getStatusColor(slip.status)}`}
                             >
@@ -830,7 +830,7 @@ export function Dispatch() {
                       </td>
                       <td className="px-4 py-4">
                         <p className="font-medium text-zinc-900 dark:text-white">
-                          {slip.vehicleNo}
+                          {formatVehicleNo(slip.vehicleNo)}
                         </p>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">
                           {slip.materialType}

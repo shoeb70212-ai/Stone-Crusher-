@@ -138,6 +138,19 @@ export interface Material {
 /** A system user with role-based access. */
 export type UserRole = "Admin" | "Partner" | "Manager";
 
+export interface UserPermissions {
+  viewAllCustomers?: boolean;
+  viewCustomerLedger?: boolean;
+  viewCustomerStatement?: boolean;
+  viewPendingAmounts?: boolean;
+  viewAllDispatches?: boolean;
+  viewDaybook?: boolean;
+  viewReports?: boolean;
+  manageVehicles?: boolean;
+  manageEmployees?: boolean;
+  viewOnlyOwnRecords?: boolean;
+}
+
 export interface UserAccount {
   id: string;
   name: string;
@@ -146,6 +159,7 @@ export interface UserAccount {
   passwordHash?: string;
   role: UserRole;
   status: "Active" | "Inactive";
+  permissions?: UserPermissions;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +170,7 @@ export interface UserAccount {
 export type AuditEntityType =
   | "Slip"
   | "Invoice"
+  | "Quotation"
   | "Customer"
   | "Employee"
   | "EmployeeTransaction"
@@ -202,11 +217,12 @@ export interface CompanySettings {
 
   // UI preferences
   theme?: "light" | "dark" | "system";
+  designTheme?: "Minimal" | "Glassmorphism";
   primaryColor?: "emerald" | "blue" | "violet" | "rose" | "amber";
   mobileLayout?: "Comfortable" | "Compact";
 
   // Print / invoice layout
-  slipFormat?: "A4" | "Thermal-80mm" | "Thermal-58mm";
+  slipFormat?: "A4" | "Thermal-58mm" | "Thermal-76mm" | "Thermal-80mm" | "Thermal-100mm" | "Thermal-110mm";
   invoiceFormat?: "A4" | "Thermal-80mm" | "Thermal-58mm";
   invoiceTemplate?: "Classic" | "Modern" | "Minimal";
   invoiceShowDueDate?: boolean;
@@ -257,6 +273,35 @@ export interface Invoice {
   status: "Pending" | "Paid" | "Cancelled";
   /** IDs of the dispatch slips included in this invoice. */
   slipIds?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Quotation (Estimate / Proforma)
+// ---------------------------------------------------------------------------
+
+/** Workflow states for a quotation. */
+export type QuotationStatus = "Draft" | "Sent" | "Accepted" | "Expired" | "Rejected";
+
+/** A pre-sale estimate sent to a customer before invoicing. */
+export interface Quotation {
+  id: string;
+  quotationNo: string;
+  date: string;
+  /** Optional expiry date after which the quotation is no longer valid. */
+  validUntil?: string;
+  customerId?: string;
+  customerName?: string;
+  type: "GST" | "Cash";
+  items: InvoiceItem[];
+  subTotal: number;
+  cgst: number;
+  sgst: number;
+  total: number;
+  status: QuotationStatus;
+  /** Free-form notes or terms & conditions for this quotation. */
+  notes?: string;
+  /** Populated when this quotation is converted to a formal invoice. */
+  convertedInvoiceId?: string;
 }
 
 // ---------------------------------------------------------------------------

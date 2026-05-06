@@ -1,7 +1,8 @@
-import React from "react";
 import { Invoice, InvoiceItem, Slip, Customer } from "../../types";
 import { MobileModal } from "../../components/ui/MobileModal";
 import { Combobox } from "../../components/ui/Combobox";
+import { formatVehicleNo } from "../../lib/utils";
+import { Download, MessageCircle, Printer, FileText, Loader2, X } from "lucide-react";
 
 interface Material {
   id: string | number;
@@ -26,7 +27,8 @@ interface Props {
   materials: Material[];
   customers: Customer[];
   isSubmitting: boolean;
-  onGenerate: () => void;
+  submittingAction?: "download" | "whatsapp" | "print" | "create" | null;
+  onGenerate: (action: "download" | "whatsapp" | "print" | "create") => void;
   onAddItem: () => void;
   generateInvoiceNoForType: (type: string) => string;
 }
@@ -37,7 +39,7 @@ export function InvoiceCreateModal({
   newItem, setNewItem,
   selectedSlipIds, setSelectedSlipIds,
   unbilledSlips, materials, customers,
-  isSubmitting, onGenerate, onAddItem,
+  isSubmitting, submittingAction, onGenerate, onAddItem,
   generateInvoiceNoForType,
 }: Props) {
   return (
@@ -159,7 +161,7 @@ export function InvoiceCreateModal({
                       <span className="font-medium text-zinc-900 dark:text-white mr-2">
                         {new Date(slip.date).toLocaleDateString()}
                       </span>
-                      <span className="text-zinc-500 dark:text-zinc-400">{slip.vehicleNo}</span>
+                      <span className="text-zinc-500 dark:text-zinc-400">{formatVehicleNo(slip.vehicleNo)}</span>
                     </div>
                     <div className="flex space-x-4">
                       <span className="text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded text-xs">
@@ -176,13 +178,10 @@ export function InvoiceCreateModal({
           </div>
         )}
 
-        <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
-          <div className="bg-zinc-50 dark:bg-zinc-900/50 px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 font-semibold text-xs text-zinc-700 dark:text-zinc-200">
-            Add Items
-          </div>
-          <div className="p-2 bg-white dark:bg-zinc-800 grid grid-cols-2 gap-2 items-end">
-            <div className="col-span-2">
-              <label className="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Material</label>
+        <div className="bg-white dark:bg-zinc-800 p-3 space-y-3 border-b border-zinc-100 dark:border-zinc-800">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase mb-1">Material</label>
               <select
                 value={newItem.materialType}
                 onChange={(e) => {
@@ -195,7 +194,7 @@ export function InvoiceCreateModal({
                     rate: mat?.defaultPrice || 0,
                   });
                 }}
-                className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500 text-sm"
+                className="w-full border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-primary-500 text-sm bg-zinc-50 dark:bg-zinc-900"
               >
                 {materials.map((m) => (
                   <option key={m.id} value={m.name}>{m.name}</option>
@@ -203,220 +202,195 @@ export function InvoiceCreateModal({
               </select>
             </div>
             <div>
-              <label className="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Qty</label>
-              <input
-                type="number"
-                value={newItem.quantity}
-                onChange={(e) => setNewItem({ ...newItem, quantity: Number(e.target.value) })}
-                className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Rate</label>
+              <label className="block text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase mb-1">Rate</label>
               <input
                 type="number"
                 value={newItem.rate}
                 onChange={(e) => setNewItem({ ...newItem, rate: Number(e.target.value) })}
-                className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500 text-sm"
+                className="w-full border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-primary-500 text-sm bg-zinc-50 dark:bg-zinc-900"
               />
             </div>
-            {newInvoice.type === "GST" && (
-              <>
-                <div>
-                  <label className="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">HSN</label>
-                  <input
-                    type="text"
-                    value={newItem.hsnCode}
-                    onChange={(e) => setNewItem({ ...newItem, hsnCode: e.target.value })}
-                    className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">GST %</label>
-                  <input
-                    type="number"
-                    value={newItem.gstRate}
-                    onChange={(e) => setNewItem({ ...newItem, gstRate: Number(e.target.value) })}
-                    className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500 text-sm"
-                  />
-                </div>
-              </>
-            )}
+          </div>
+          
+          {newInvoice.type === "GST" && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase mb-1">HSN</label>
+                <input
+                  type="text"
+                  value={newItem.hsnCode}
+                  onChange={(e) => setNewItem({ ...newItem, hsnCode: e.target.value })}
+                  className="w-full border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-primary-500 text-sm bg-zinc-50 dark:bg-zinc-900"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase mb-1">GST%</label>
+                <input
+                  type="number"
+                  value={newItem.gstRate}
+                  onChange={(e) => setNewItem({ ...newItem, gstRate: Number(e.target.value) })}
+                  className="w-full border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-primary-500 text-sm bg-zinc-50 dark:bg-zinc-900"
+                />
+              </div>
+            </div>
+          )}
+          
+          <div className="grid grid-cols-2 gap-3 items-end">
+            <div>
+              <label className="block text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase mb-1">Qty</label>
+              <input
+                type="number"
+                value={newItem.quantity}
+                onChange={(e) => setNewItem({ ...newItem, quantity: Number(e.target.value) })}
+                className="w-full border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-primary-500 text-sm bg-zinc-50 dark:bg-zinc-900"
+              />
+            </div>
             <button
               onClick={onAddItem}
-              className="col-span-2 md:col-span-1 bg-zinc-900 text-white rounded-lg px-4 py-2 hover:bg-zinc-800 transition-colors text-sm font-medium w-full"
+              className="w-full bg-primary-600 text-white rounded-lg h-[38px] hover:bg-primary-700 transition-colors text-sm font-bold shadow-sm active:scale-[0.98]"
             >
-              Add
+              Add Item
             </button>
           </div>
-
-          {newInvoice.items && newInvoice.items.length > 0 && (
-            <>
-              {/* Mobile list view */}
-              <div className="md:hidden space-y-2 mt-4 px-2 pb-2">
+              
+              <div className="space-y-2">
                 {newInvoice.items.map((it, idx) => {
                   const gstAmount = newInvoice.type === "GST" ? it.amount * ((it.gstRate || 0) / 100) : 0;
                   const total = Math.round(it.amount + gstAmount);
                   return (
-                    <div key={idx} className="bg-zinc-50 dark:bg-zinc-800/50 p-3 rounded-xl border border-zinc-200 dark:border-zinc-700 relative text-sm">
-                      <button
-                        onClick={() => setNewInvoice({ ...newInvoice, items: newInvoice.items?.filter((_, i) => i !== idx) })}
-                        className="absolute top-3 right-3 text-rose-500 hover:text-rose-700 font-medium bg-white dark:bg-zinc-800 rounded px-2 py-0.5 text-xs"
-                      >
-                        Remove
-                      </button>
-                      <div className="font-bold text-zinc-900 dark:text-white pr-14">{it.materialType}</div>
-                      <div className="text-zinc-600 dark:text-zinc-400 mt-1">
-                        {it.quantity} x ₹{it.rate} = ₹{it.amount.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                    <div key={idx} className="bg-white dark:bg-zinc-800 rounded-xl border border-zinc-100 dark:border-zinc-700 p-3 shadow-sm relative group overflow-hidden">
+                      <div className="flex justify-between items-start mb-1">
+                        <div className="font-bold text-zinc-900 dark:text-white text-sm">{it.materialType}</div>
+                        <button
+                          onClick={() => setNewInvoice({ ...newInvoice, items: newInvoice.items?.filter((_, i) => i !== idx) })}
+                          className="p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
                       </div>
-                      {newInvoice.type === "GST" && (
-                        <div className="text-xs text-zinc-500 mt-1 flex gap-2">
-                          <span>HSN: {it.hsnCode}</span>
-                          <span>GST: {it.gstRate}% (₹{gstAmount.toLocaleString("en-IN", { maximumFractionDigits: 0 })})</span>
+                      
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400 mb-2">
+                        <div className="flex items-center gap-1">
+                          <span className="opacity-60">Qty:</span>
+                          <span className="font-semibold text-zinc-700 dark:text-zinc-300">{it.quantity}</span>
                         </div>
-                      )}
-                      <div className="mt-2 text-right font-bold text-zinc-900 dark:text-white border-t border-zinc-200 dark:border-zinc-700/50 pt-2">
-                        Total: ₹{total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                        <div className="flex items-center gap-1">
+                          <span className="opacity-60">Rate:</span>
+                          <span className="font-semibold text-zinc-700 dark:text-zinc-300">₹{it.rate}</span>
+                        </div>
+                        {newInvoice.type === "GST" && (
+                          <>
+                            <div className="flex items-center gap-1">
+                              <span className="opacity-60">HSN:</span>
+                              <span className="font-semibold text-zinc-700 dark:text-zinc-300">{it.hsnCode}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className="opacity-60">GST:</span>
+                              <span className="font-semibold text-zinc-700 dark:text-zinc-300">{it.gstRate}%</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center justify-between pt-2 border-t border-zinc-50 dark:border-zinc-700/50">
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase">Sub: ₹{it.amount.toLocaleString()}</span>
+                        <div className="text-right">
+                          <span className="text-sm font-black text-zinc-900 dark:text-white">₹{total.toLocaleString()}</span>
+                        </div>
                       </div>
                     </div>
                   );
                 })}
               </div>
 
-              {/* Desktop table view */}
-              <div className="hidden md:block overflow-x-auto mt-4">
-                <table className="w-full text-sm text-left border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
-                  <thead className="bg-zinc-50 dark:bg-zinc-900/50 border-b border-zinc-200 dark:border-zinc-700">
-                    <tr>
-                      <th className="py-2 px-4 font-semibold text-zinc-600 dark:text-zinc-300">Material</th>
-                      {newInvoice.type === "GST" && (
-                        <>
-                          <th className="py-2 px-4 font-semibold text-zinc-600 dark:text-zinc-300">HSN</th>
-                          <th className="py-2 px-4 font-semibold text-zinc-600 dark:text-zinc-300">GST %</th>
-                        </>
-                      )}
-                      <th className="py-2 px-4 font-semibold text-zinc-600 dark:text-zinc-300">Qty</th>
-                      <th className="py-2 px-4 font-semibold text-zinc-600 dark:text-zinc-300">Rate</th>
-                      <th className="py-2 px-4 font-semibold text-zinc-600 dark:text-zinc-300 text-right">Amount</th>
-                      {newInvoice.type === "GST" && (
-                        <>
-                          <th className="py-2 px-4 font-semibold text-zinc-600 dark:text-zinc-300 text-right">CGST</th>
-                          <th className="py-2 px-4 font-semibold text-zinc-600 dark:text-zinc-300 text-right">SGST</th>
-                        </>
-                      )}
-                      <th className="py-2 px-4 font-semibold text-zinc-600 dark:text-zinc-300 text-right">Total</th>
-                      <th className="py-2 px-4 font-semibold text-zinc-600 dark:text-zinc-300"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    {newInvoice.items.map((it, idx) => {
-                      const gstAmount = newInvoice.type === "GST" ? it.amount * ((it.gstRate || 0) / 100) : 0;
-                      const cgst = gstAmount / 2;
-                      const sgst = gstAmount / 2;
-                      const total = Math.round(it.amount + cgst + sgst);
-                      return (
-                        <tr key={idx}>
-                          <td className="py-2 px-4">{it.materialType}</td>
-                          {newInvoice.type === "GST" && (
-                            <>
-                              <td className="py-2 px-4">{it.hsnCode}</td>
-                              <td className="py-2 px-4">{it.gstRate}%</td>
-                            </>
-                          )}
-                          <td className="py-2 px-4">{it.quantity}</td>
-                          <td className="py-2 px-4">₹{it.rate}</td>
-                          <td className="py-2 px-4 text-right">₹{it.amount.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</td>
-                          {newInvoice.type === "GST" && (
-                            <>
-                              <td className="py-2 px-4 text-right">₹{cgst.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</td>
-                              <td className="py-2 px-4 text-right">₹{sgst.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</td>
-                            </>
-                          )}
-                          <td className="py-2 px-4 text-right font-medium text-zinc-900 dark:text-white">
-                            ₹{total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                          </td>
-                          <td className="py-2 px-4 text-right">
-                            <button
-                              onClick={() => setNewInvoice({ ...newInvoice, items: newInvoice.items?.filter((_, i) => i !== idx) })}
-                              className="text-rose-500 hover:text-rose-700 text-xs px-2 py-1 rounded hover:bg-rose-50"
-                            >
-                              Remove
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot className="bg-zinc-50 dark:bg-zinc-900/50 border-t border-zinc-200 dark:border-zinc-700">
-                    <tr>
-                      <td colSpan={newInvoice.type === "GST" ? 8 : 4} className="py-3 px-4 text-right font-medium text-zinc-600 dark:text-zinc-300">
-                        Subtotal:
-                      </td>
-                      <td className="py-3 px-4 text-right font-bold text-zinc-900 dark:text-white">
-                        ₹{Math.round(newInvoice.items.reduce((sum, item) => sum + item.amount, 0)).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                      </td>
-                      <td></td>
-                    </tr>
-                    {newInvoice.type === "GST" && (
-                      <>
-                        <tr>
-                          <td colSpan={8} className="py-1 px-4 text-right text-sm text-zinc-500 dark:text-zinc-400">Total CGST:</td>
-                          <td className="py-1 px-4 text-right text-sm text-zinc-700 dark:text-zinc-200">
-                            ₹{Math.round(newInvoice.items.reduce((sum, item) => sum + (item.amount * ((item.gstRate || 0) / 100)) / 2, 0)).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                          </td>
-                          <td></td>
-                        </tr>
-                        <tr>
-                          <td colSpan={8} className="py-1 px-4 text-right text-sm text-zinc-500 dark:text-zinc-400">Total SGST:</td>
-                          <td className="py-1 px-4 text-right text-sm text-zinc-700 dark:text-zinc-200">
-                            ₹{Math.round(newInvoice.items.reduce((sum, item) => sum + (item.amount * ((item.gstRate || 0) / 100)) / 2, 0)).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                          </td>
-                          <td></td>
-                        </tr>
-                      </>
-                    )}
-                    <tr className="border-t border-zinc-200 dark:border-zinc-700">
-                      <td colSpan={newInvoice.type === "GST" ? 8 : 4} className="py-3 px-4 text-right font-bold text-zinc-900 dark:text-white">
-                        Grand Total:
-                      </td>
-                      <td className="py-3 px-4 text-right font-bold text-primary-600">
-                        ₹{(() => {
-                          let sub = 0, cgst = 0, sgst = 0;
-                          newInvoice.items.forEach((it) => {
-                            sub += it.amount;
-                            if (newInvoice.type === "GST") {
-                              const gst = it.amount * ((it.gstRate || 0) / 100);
-                              cgst += gst / 2;
-                              sgst += gst / 2;
-                            }
-                          });
-                          return Math.round(sub + cgst + sgst).toLocaleString("en-IN", { maximumFractionDigits: 0 });
-                        })()}
-                      </td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </>
-          )}
         </div>
       </div>
 
-      <div className="p-3 md:p-5 border-t border-zinc-100 dark:border-zinc-700 flex justify-end gap-3 bg-zinc-50 dark:bg-zinc-900/50">
-        <button
-          onClick={onClose}
-          className="px-6 py-2.5 border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-700 dark:bg-zinc-800 transition-colors font-medium text-sm"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={onGenerate}
-          disabled={isSubmitting || !newInvoice.customerId || !newInvoice.items?.length || !newInvoice.invoiceNo}
-          className="px-6 py-2.5 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {editingInvoiceId ? "Save Changes" : "Generate & Save"}
-        </button>
+      <div className="p-3 border-t border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-[0_-4px_10px_rgba(0,0,0,0.03)]">
+        <div className="flex items-center gap-3">
+          {/* Left Half: Grand Total */}
+          <div className="flex-1 bg-primary-600 text-white rounded-xl p-3 flex flex-col justify-center h-[76px] shadow-sm">
+            <span className="text-[9px] font-black uppercase tracking-widest opacity-80 mb-2">Grand Total</span>
+            <span className="text-xl font-black leading-none tracking-tight">
+              ₹{(() => {
+                let sub = 0, cgst = 0, sgst = 0;
+                newInvoice.items?.forEach((it) => {
+                  sub += it.amount;
+                  if (newInvoice.type === "GST") {
+                    const gst = it.amount * ((it.gstRate || 0) / 100);
+                    cgst += gst / 2;
+                    sgst += gst / 2;
+                  }
+                });
+                return Math.round(sub + cgst + sgst).toLocaleString();
+              })()}
+            </span>
+          </div>
+
+          {/* Right Half: 4 Buttons Grid */}
+          <div className="flex-1 grid grid-cols-2 gap-2">
+            <button
+              onClick={() => onGenerate("download")}
+              disabled={isSubmitting || !newInvoice.customerId || !newInvoice.items?.length}
+              className="flex flex-col items-center justify-center gap-0.5 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-700/50 transition-all active:scale-95 disabled:opacity-50"
+            >
+              {submittingAction === "download" ? (
+                <Loader2 className="w-4 h-4 animate-spin text-primary-600" />
+              ) : (
+                <Download className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+              )}
+              <span className="text-[9px] font-bold text-zinc-700 dark:text-zinc-300">Download</span>
+            </button>
+
+            <button
+              onClick={() => onGenerate("whatsapp")}
+              disabled={isSubmitting || !newInvoice.customerId || !newInvoice.items?.length}
+              className="flex flex-col items-center justify-center gap-0.5 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all active:scale-95 disabled:opacity-50"
+            >
+              {submittingAction === "whatsapp" ? (
+                <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+              ) : (
+                <MessageCircle className="w-4 h-4 text-emerald-600" />
+              )}
+              <span className="text-[9px] font-bold text-zinc-700 dark:text-zinc-300">Chat</span>
+            </button>
+
+            <button
+              onClick={() => onGenerate("print")}
+              disabled={isSubmitting || !newInvoice.customerId || !newInvoice.items?.length}
+              className="flex flex-col items-center justify-center gap-0.5 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all active:scale-95 disabled:opacity-50"
+            >
+              {submittingAction === "print" ? (
+                <Loader2 className="w-4 h-4 animate-spin text-primary-600" />
+              ) : (
+                <Printer className="w-4 h-4 text-primary-600" />
+              )}
+              <span className="text-[9px] font-bold text-zinc-700 dark:text-zinc-300">Print</span>
+            </button>
+
+            <button
+              onClick={() => onGenerate("create")}
+              disabled={isSubmitting || !newInvoice.customerId || !newInvoice.items?.length}
+              className="flex flex-col items-center justify-center gap-0.5 py-1.5 bg-zinc-100 dark:bg-zinc-800 border border-transparent dark:border-zinc-700 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all active:scale-95 disabled:opacity-50"
+            >
+              {submittingAction === "create" ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-600 dark:text-zinc-400" />
+              ) : (
+                <FileText className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
+              )}
+              <span className="text-[9px] font-bold text-zinc-700 dark:text-zinc-300 text-center leading-[1]">Save</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-2 flex justify-center">
+          <button
+            onClick={onClose}
+            className="text-[10px] text-zinc-400 hover:text-zinc-600 font-bold uppercase tracking-widest px-4 py-1"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </MobileModal>
   );

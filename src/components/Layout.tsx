@@ -14,6 +14,7 @@ const Employees = lazy(() => import("../pages/Employees").then(m => ({ default: 
 const Daybook = lazy(() => import("../pages/Daybook").then(m => ({ default: m.Daybook })));
 const Settings = lazy(() => import("../pages/Settings").then(m => ({ default: m.Settings })));
 const Invoices = lazy(() => import("../pages/Invoices").then(m => ({ default: m.Invoices })));
+const Quotations = lazy(() => import("../pages/Quotations").then(m => ({ default: m.Quotations })));
 const AuditLog = lazy(() => import("../pages/AuditLog").then(m => ({ default: m.AuditLog })));
 import { Menu, ShieldAlert } from "lucide-react";
 import { useErp } from "../context/ErpContext";
@@ -21,7 +22,7 @@ import { isNative } from "../lib/capacitor";
 
 /** Valid view names used by deep links and app shortcuts. */
 const VALID_VIEWS = new Set([
-  'dashboard', 'dispatch', 'invoices', 'customers',
+  'dashboard', 'dispatch', 'invoices', 'quotations', 'customers',
   'employees', 'daybook', 'ledger', 'vehicles', 'settings', 'audit',
 ]);
 
@@ -56,7 +57,7 @@ export function Layout() {
   const [location, setLocation] = useLocation();
   const currentView = location.replace(/^\//, '') || 'dashboard';
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const { userRole, companySettings, isLoading } = useErp();
+  const { userRole, companySettings, isLoading, hasPermission } = useErp();
   const isAdmin = userRole === 'Admin';
 
   // Keep old event API working as a fallback during migration
@@ -176,15 +177,21 @@ export function Layout() {
     }
     root.classList.toggle("dark", isDark);
 
-    // 2. Apply primary brand color class.
+    // 2. Apply primary brand color and design theme classes.
     root.classList.remove(
       "theme-emerald",
       "theme-blue",
       "theme-violet",
       "theme-rose",
-      "theme-amber"
+      "theme-amber",
+      "design-minimal",
+      "design-glassmorphism"
     );
     root.classList.add(`theme-${companySettings.primaryColor || "emerald"}`);
+    
+    // Default to 'Minimal' if not explicitly set
+    const activeDesignTheme = companySettings.designTheme === "Glassmorphism" ? "design-glassmorphism" : "design-minimal";
+    root.classList.add(activeDesignTheme);
 
     // 3. Read the resolved background color from CSS variables and push it
     //    to (a) the <meta theme-color> tag (web/PWA chrome) and (b) the native
@@ -211,26 +218,20 @@ export function Layout() {
           /* status-bar plugin not available — non-critical */
         });
     }
-  }, [companySettings.theme, companySettings.primaryColor]);
+  }, [companySettings.theme, companySettings.primaryColor, companySettings.designTheme]);
 
   // Route protection
   useEffect(() => {
-    if (
-      userRole === "Manager" &&
-      (currentView === "ledger" || currentView === "settings")
-    ) {
-      setLocation("/dashboard");
-    }
-    if (userRole === "Partner" && currentView === "settings") {
-      setLocation("/dashboard");
-    }
-    if (!isAdmin && currentView === "audit") {
-      setLocation("/dashboard");
-    }
-    if (!isAdmin && currentView === "employees") {
-      setLocation("/dashboard");
-    }
-  }, [userRole, currentView, isAdmin, setLocation]);
+    if (currentView === "ledger" && !hasPermission("viewCustomerLedger")) setLocation("/dashboard");
+    if (currentView === "settings" && !isAdmin) setLocation("/dashboard");
+    if (currentView === "audit" && !isAdmin) setLocation("/dashboard");
+    if (currentView === "employees" && !hasPermission("manageEmployees")) setLocation("/dashboard");
+    if (currentView === "customers" && !hasPermission("viewAllCustomers")) setLocation("/dashboard");
+    if (currentView === "dispatch" && !hasPermission("viewAllDispatches")) setLocation("/dashboard");
+    if (currentView === "daybook" && !hasPermission("viewDaybook")) setLocation("/dashboard");
+    if (currentView === "quotations" && !hasPermission("viewReports")) setLocation("/dashboard");
+    if (currentView === "vehicles" && !hasPermission("manageVehicles")) setLocation("/dashboard");
+  }, [userRole, currentView, isAdmin, hasPermission, setLocation]);
 
   let content: React.ReactNode;
   switch (currentView) {
@@ -246,22 +247,29 @@ export function Layout() {
     case "invoices":
       content = <Invoices />;
       break;
+    case "quotations":
+      content = <Quotations />;
+      break;
     case "vehicles":
       content = <Vehicles />;
       break;
     case "customers":
-      content = <Customers />;
+      if (!hasPermission("viewAllCustomers")) {
+        content = <AccessDenied message="You do not have permission to view customers." />;
+      } else {
+        content = <Customers />;
+      }
       break;
     case "employees":
-      if (!isAdmin) {
-        content = <AccessDenied message="Only Admins can view employees." />;
+      if (!hasPermission("manageEmployees")) {
+        content = <AccessDenied message="You do not have permission to view employees." />;
       } else {
         content = <Employees />;
       }
       break;
     case "ledger":
-      if (userRole === "Manager") {
-        content = <AccessDenied message="Managers cannot view the ledger." />;
+      if (!hasPermission("viewCustomerLedger")) {
+        content = <AccessDenied message="You do not have permission to view the ledger." />;
       } else {
         content = <Ledger />;
       }
@@ -284,7 +292,7 @@ export function Layout() {
       content = <Dashboard />;
   }
 
-  const showFab = currentView === "dispatch" || currentView === "invoices";
+  const showFab = currentView === "dispatch" || currentView === "invoices" || currentView === "quotations";
 
   return (
     <>

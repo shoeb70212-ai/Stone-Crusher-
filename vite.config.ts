@@ -41,14 +41,12 @@ export default defineConfig(({mode}) => {
           manualChunks: {
             // Keep heavy PDF/print libs out of the main bundle
             'pdf-libs': ['html2pdf.js'],
-            // Split finance-heavy pages into their own chunk
-            'pages-finance': [
+            // All page components — merged to avoid circular chunk
+            // deps between finance and ops (they share form components).
+            'pages': [
               './src/pages/Invoices.tsx',
               './src/pages/Ledger.tsx',
               './src/pages/Daybook.tsx',
-            ],
-            // Operations pages
-            'pages-ops': [
               './src/pages/Dispatch.tsx',
               './src/pages/Vehicles.tsx',
               './src/pages/Customers.tsx',
