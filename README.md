@@ -230,10 +230,10 @@ Stone-Crusher-/
 │   ├── components/
 │   │   ├── forms/              # Slip / invoice create-edit-print modals
 │   │   ├── ui/                 # Shared primitives (Toast, Combobox, Modal, etc.)
-│   │   ├── App.tsx
 │   │   ├── Layout.tsx          # App shell + URL-based navigation
 │   │   ├── Sidebar.tsx
 │   │   ├── Login.tsx
+│   │   ├── MasterKeyScreen.tsx # E2EE vault unlock screen
 │   │   ├── SetupAdminScreen.tsx
 │   │   └── WelcomeScreen.tsx
 │   ├── context/
@@ -244,6 +244,8 @@ Stone-Crusher-/
 │   ├── lib/
 │   │   ├── utils.ts            # cn(), parseFeetInches()
 │   │   ├── print-utils.ts      # PDF generation (A4 + Thermal)
+│   │   ├── crypto-utils.ts     # AES-GCM encrypt/decrypt for E2EE
+│   │   ├── sync-engine.ts      # IndexedDB + Supabase E2EE sync
 │   │   ├── employee-ledger.ts  # Employee balance calculation
 │   │   ├── supabase.ts         # Supabase client singleton
 │   │   ├── capacitor.ts        # Native-platform detection
@@ -261,6 +263,7 @@ Stone-Crusher-/
 │   │   ├── Dashboard.tsx
 │   │   ├── Dispatch.tsx
 │   │   ├── Invoices.tsx        (+ invoices/ sub-components)
+│   │   ├── Quotations.tsx      (+ quotations/ sub-components)
 │   │   ├── Customers.tsx
 │   │   ├── Daybook.tsx
 │   │   ├── Ledger.tsx
@@ -270,7 +273,6 @@ Stone-Crusher-/
 │   │   └── Settings.tsx        (+ settings/ sub-panels)
 │   ├── __tests__/              # Vitest unit tests
 │   ├── types.ts                # All TypeScript interfaces (source of truth)
-│   ├── featureFlags.ts         # Central feature flag registry
 │   ├── App.tsx
 │   └── main.tsx
 ├── tests/
@@ -424,6 +426,10 @@ A major sprint was conducted to finalize the application for native mobile deplo
 *   **Codebase Cleanup:**
     *   Purged legacy components (`CreateInvoiceForm`, `PrintInvoiceModal`, unused `secure-storage` functions, and dead zod types).
     *   Archived dead code to `deadcode.md` and untracked internal AI scratchpad documentation from the Git repository.
+*   **Deployment & Data Loading Bugfix:**
+    *   Fixed Vercel deployment failure caused by a stale `pnpm-lock.yaml` conflicting with `package-lock.json`.
+    *   Fixed blank dashboard on production: the E2EE sync engine was blocking the legacy PostgreSQL API fallback when the `encrypted_records` table was empty (no E2EE migration had occurred yet). The data loading waterfall now correctly falls through: IndexedDB → E2EE Cloud → Legacy API.
+    *   Wired `isVaultUnlocked` into `ErpProvider` so the Supabase cloud pull re-triggers when the user unlocks the vault after login.
 
 A comprehensive hardening sprint addressed P0–P3 issues across security, correctness, observability, and mobile readiness:
 
