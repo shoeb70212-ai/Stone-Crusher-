@@ -379,8 +379,10 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
         }
       }
 
-      // ── Priority 3: Legacy server.ts fallback (first-time migration) ──
-      if (!loaded && !isVaultUnlocked && !hasMasterKey()) {
+      // ── Priority 3: Legacy API fallback ──
+      // Always try the server API if neither IDB nor E2EE cloud provided data.
+      // The encrypted_records table may be empty if no E2EE migration has run yet.
+      if (!loaded) {
         try {
           console.log('[ErpContext] Falling back to legacy server.ts...');
           const API_URL = import.meta.env.VITE_API_URL || "";
