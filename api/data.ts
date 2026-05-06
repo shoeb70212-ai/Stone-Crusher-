@@ -77,18 +77,24 @@ async function resolveCaller(
 
   const settings = await readSettings();
   const users = (settings.users ?? []) as UserAccount[];
+  
+  // Bootstrap Mode: If no users exist, allow the first authenticated user to be Admin
+  if (users.length === 0) {
+    return { role: 'Admin', userId: caller.userId };
+  }
+
   const settingsUser = users.find(
     (u) =>
       u.id === caller.userId ||
       (u.email || '').toLowerCase() === caller.email.toLowerCase(),
   );
-  if (!settingsUser && users.length > 0) return null;
-  if (settingsUser && settingsUser.status !== 'Active') return null;
+  if (!settingsUser) return null;
+  if (settingsUser.status !== 'Active') return null;
 
   const metadataRole = caller.appMetadata.role;
   const role = isUserRole(metadataRole)
     ? metadataRole
-    : isUserRole(settingsUser?.role)
+    : isUserRole(settingsUser.role)
       ? settingsUser.role
       : null;
   if (!role) return null;
