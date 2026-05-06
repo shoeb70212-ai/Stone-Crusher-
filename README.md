@@ -398,7 +398,32 @@ npx tsx scripts/migrate-users.ts
 
 ## Recent Updates (May 2026)
 
-### Bugfix & Hardening Sprint (20/20 tickets completed)
+### Feature Enhancements & Mobile Optimization Sprint
+
+A major sprint was conducted to finalize the application for native mobile deployment, improve UX aesthetics, and clean up technical debt:
+
+*   **Mobile-First UX Optimization:**
+    *   Replaced bulky search popups with sleek, inline **Autocomplete** drop-downs for Vehicles, Customers, and Drivers.
+    *   Optimized the **Dispatch Slip** forms into compact, high-density two-column layouts.
+    *   Redesigned the **Invoice Creation** workflow with a split-footer layout (Grand Total + 2x2 action grid) to eliminate horizontal scrolling.
+    *   Prevented native iOS zoom-ins on the **Login** screen and stabilized touch targets.
+*   **Persistent Master Key (Trusted Device):**
+    *   The Master Key is now securely persisted to `localStorage` after the initial authentication, eliminating the need to repeatedly enter the master password on trusted devices.
+*   **Granular Role Permissions:**
+    *   Fully enforced the `hasPermission` helper across the Dashboard, Daybook, Settings, and Sidebar. Managers and Partners now have strictly controlled visibility over sensitive financials.
+*   **Standardized Printing & Export:**
+    *   Consolidated the printing logic for both Invoices and Slips to dynamically support **A4, Thermal-80mm, and Thermal-58mm** formats. PDF generation now accurately respects exact dimensions to eliminate dead whitespace.
+*   **Performance Pagination:**
+    *   Implemented lazy-loading for dispatch slips. The system now only loads the last **60 days** of data on cold boot, massively reducing memory overhead while allowing on-demand historical lookups.
+*   **Aesthetic Polish:**
+    *   Fixed the **Glassmorphism** theme application in the global layout cascade.
+    *   Standardized **Vehicle Number formatting** (`XX 00 XX 0000`) across all logs and ledgers.
+    *   Addressed blank "Net Amount" UI rendering states.
+*   **Quotations Module Completion:**
+    *   Wired up the final `addQuotation` and `updateQuotation` methods in the sync engine.
+*   **Codebase Cleanup:**
+    *   Purged legacy components (`CreateInvoiceForm`, `PrintInvoiceModal`, unused `secure-storage` functions, and dead zod types).
+    *   Archived dead code to `deadcode.md` and untracked internal AI scratchpad documentation from the Git repository.
 
 A comprehensive hardening sprint addressed P0–P3 issues across security, correctness, observability, and mobile readiness:
 
