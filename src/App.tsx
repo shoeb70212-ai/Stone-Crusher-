@@ -179,7 +179,7 @@ export default function App() {
 
   return (
     <ToastProvider>
-      <ErpProvider>
+      <ErpProvider isVaultUnlocked={isVaultUnlocked}>
         <Router>
           <AppShell
             isAuthenticated={isAuthenticated}

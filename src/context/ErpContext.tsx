@@ -208,7 +208,7 @@ const isAdmin = (role: UserRole | null) => role === "Admin";
 /** Returns true if the role may perform manager-or-above operations. */
 const isManagerOrAbove = (role: UserRole | null) => role === "Admin" || role === "Manager";
 
-export function ErpProvider({ children }: { children: ReactNode }) {
+export function ErpProvider({ children, isVaultUnlocked = false }: { children: ReactNode; isVaultUnlocked?: boolean }) {
   // ---- Core state (initialised empty; hydrated from server on mount) ------
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -365,7 +365,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       }
 
       // ── Priority 2: Supabase cloud (if vault is unlocked) ──
-      if (hasMasterKey()) {
+      if (hasMasterKey() && isVaultUnlocked) {
         try {
           console.log('[ErpContext] Pulling from Supabase (encrypted cloud)...');
           const cloudData = await pullAllFromCloud();
@@ -380,7 +380,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       }
 
       // ── Priority 3: Legacy server.ts fallback (first-time migration) ──
-      if (!loaded) {
+      if (!loaded && !isVaultUnlocked && !hasMasterKey()) {
         try {
           console.log('[ErpContext] Falling back to legacy server.ts...');
           const API_URL = import.meta.env.VITE_API_URL || "";
@@ -438,7 +438,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
     }
     loadData();
-  }, [session?.user?.id, applyDataToState, loadFromIDB]);
+  }, [session?.user?.id, applyDataToState, loadFromIDB, isVaultUnlocked]);
 
   // -----------------------------------------------------------------------
   // Delta-Sync Queue — batches mutations and PATCHes them to the server
