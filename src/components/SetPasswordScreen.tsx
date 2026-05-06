@@ -1,0 +1,183 @@
+import React, { useState } from 'react';
+import { AlertCircle, KeyRound, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import logoSvg from '../assets/logo.svg';
+
+interface SetPasswordScreenProps {
+  /** Called after the user successfully sets their password. */
+  onPasswordSet: () => void;
+  /** The display name of the currently signed-in user. */
+  userName?: string;
+}
+
+/**
+ * Shown on first login when the admin created the user without a password.
+ * The user must choose their own password before accessing the app.
+ */
+export function SetPasswordScreen({ onPasswordSet, userName }: SetPasswordScreenProps) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    if (password !== confirm) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setError('Your session has expired. Please sign in again.');
+        return;
+      }
+
+      const API_URL = (import.meta.env.VITE_API_URL as string) || '';
+      const res = await fetch(`${API_URL}/api/admin-users`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ newPassword: password }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error || 'Failed to set password. Please try again.');
+        return;
+      }
+
+      onPasswordSet();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const inputCls =
+    "w-full h-12 px-4 text-sm bg-surface md:bg-surface-2 border border-border rounded-xl outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors text-foreground placeholder:text-muted-foreground";
+
+  return (
+    <div className="min-h-screen flex flex-col md:flex-row bg-background">
+      {/* ── Brand panel ── */}
+      <div className="md:flex-1 md:min-h-screen relative bg-primary-600 dark:bg-primary-700 flex flex-col items-center md:items-start justify-center px-6 md:px-12 lg:px-16 py-10 md:py-12">
+        <div
+          aria-hidden="true"
+          className="hidden md:block absolute inset-0 opacity-[0.07] pointer-events-none"
+          style={{
+            backgroundImage:
+              "linear-gradient(to right, white 1px, transparent 1px), linear-gradient(to bottom, white 1px, transparent 1px)",
+            backgroundSize: "32px 32px",
+          }}
+        />
+        <div className="relative flex flex-col items-center md:items-start gap-4 md:gap-6 max-w-md">
+          <div className="w-16 h-16 md:w-14 md:h-14 rounded-2xl overflow-hidden shadow-elev-md bg-white">
+            <img src={logoSvg} alt="CrushTrack logo" className="w-full h-full object-cover" />
+          </div>
+          <div className="text-center md:text-left">
+            <h1 className="text-3xl md:text-5xl font-display font-bold text-white tracking-tight leading-[1.05]">
+              CrushTrack
+            </h1>
+            <p className="text-primary-100 mt-1.5 md:mt-3 text-sm md:text-base">
+              Stone Crusher ERP
+            </p>
+          </div>
+          <p className="hidden md:block text-sm text-primary-100/90 leading-relaxed mt-4 max-w-xs">
+            Welcome aboard! Set a personal password to secure your account.
+          </p>
+        </div>
+      </div>
+
+      {/* ── Form panel ── */}
+      <div className="flex-1 bg-surface md:bg-background rounded-t-3xl md:rounded-none -mt-5 md:mt-0 px-6 pt-8 md:pt-0 pb-6 md:px-12 lg:px-16 flex flex-col justify-center">
+        <div className="w-full max-w-sm md:max-w-md mx-auto">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-10 h-10 rounded-xl bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <h2 className="text-2xl md:text-3xl font-display font-bold text-foreground tracking-tight">
+              Set your password
+            </h2>
+          </div>
+          <p className="text-sm text-muted-foreground mb-7 ml-[52px] leading-relaxed">
+            {userName ? (
+              <>Welcome, <strong className="text-foreground">{userName}</strong>! </>
+            ) : null}
+            Choose a secure password for your account. You'll use this to sign in going forward.
+          </p>
+
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
+            {error && (
+              <div
+                className="bg-danger-muted text-danger-foreground p-3 rounded-xl text-sm flex items-center gap-2"
+                role="alert"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="relative">
+              <KeyRound className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                required
+                type={showPassword ? "text" : "password"}
+                placeholder="New password (min 8 characters)"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                minLength={8}
+                className={`${inputCls} pl-11 pr-10`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+
+            <div className="relative">
+              <KeyRound className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                required
+                type={showConfirm ? "text" : "password"}
+                placeholder="Confirm password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                minLength={8}
+                className={`${inputCls} pl-11 pr-10`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirm(!showConfirm)}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label={showConfirm ? "Hide password" : "Show password"}
+              >
+                {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full h-12 bg-primary-600 hover:bg-primary-700 active:scale-[0.99] disabled:opacity-60 text-white text-sm font-semibold rounded-xl transition-all shadow-elev-sm mt-2 flex items-center justify-center gap-2"
+            >
+              {submitting ? 'Setting password…' : 'Set Password & Continue'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}

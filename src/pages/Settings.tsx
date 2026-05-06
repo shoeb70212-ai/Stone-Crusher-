@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useErp } from "../context/ErpContext";
 import { CompanySettings } from "../types";
-import { Building2, Users, Receipt, Palette, X, Mail, KeyRound, Lock, Database, Upload, Download, Eye, EyeOff } from "lucide-react";
+import { Building2, Users, Receipt, Palette, X, UserPlus, KeyRound, Lock, Database, Upload, Download, Eye, EyeOff, Copy, Check as CheckIcon } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { downloadCSV } from "../lib/export-utils";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
@@ -52,9 +52,12 @@ export function Settings() {
 
   const [isSaved, setIsSaved] = useState(false);
 
-  // Invite modal
-  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
-  const [inviteFormData, setInviteFormData] = useState({ name: "", email: "", role: "Partner", password: "" });
+  // Create User modal
+  const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
+  const [createUserFormData, setCreateUserFormData] = useState({ name: "", email: "", role: "Partner", password: "" });
+  // Temp password returned after creating a user without a password
+  const [generatedTempPassword, setGeneratedTempPassword] = useState<string | null>(null);
+  const [tempPasswordCopied, setTempPasswordCopied] = useState(false);
 
   // Change-password modal (logged-in user)
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
@@ -68,7 +71,7 @@ export function Settings() {
   const [resetPasswordSubmitting, setResetPasswordSubmitting] = useState(false);
   const [showResetPassword, setShowResetPassword] = useState(false);
 
-  const [showInvitePassword, setShowInvitePassword] = useState(false);
+  const [showCreateUserPassword, setShowCreateUserPassword] = useState(false);
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const pendingRestoreFileRef = React.useRef<string | null>(null);
@@ -104,10 +107,11 @@ export function Settings() {
     }
   }, [activeTab, deviceInfo]);
 
-  const syncUserAdminChanges = async (): Promise<boolean> => {
-    if (userRole !== "Admin") return true;
+  const syncUserAdminChanges = async (): Promise<{ synced: boolean, nextVersion?: number }> => {
+    if (userRole !== "Admin") return { synced: true };
     const before = companySettings.users || [];
     const after = localSettings.users || [];
+    let latestVersion: number | undefined;
     const hasChanges =
       before.length !== after.length ||
       before.some((oldUser) => {
@@ -121,10 +125,10 @@ export function Settings() {
         );
       });
 
-    if (!hasChanges) return true;
+    if (!hasChanges) return { synced: true };
     if (!session?.access_token) {
       addToast("error", "You must be signed in to update users.");
-      return false;
+      return { synced: false };
     }
 
     const API_URL = import.meta.env.VITE_API_URL as string || "";
@@ -138,8 +142,10 @@ export function Settings() {
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           addToast("error", body.error || `Could not remove ${oldUser.name}.`);
-          return false;
+          return { synced: false };
         }
+        const body = await res.json();
+        latestVersion = body.currentVersion;
       }
     }
 
@@ -169,18 +175,25 @@ export function Settings() {
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         addToast("error", body.error || `Could not update ${nextUser.name}.`);
-        return false;
+        return { synced: false };
       }
+      const body = await res.json();
+      latestVersion = body.currentVersion;
     }
 
-    return true;
+    return { synced: true, nextVersion: latestVersion };
   };
 
   const handleSave = async () => {
-    const usersSynced = await syncUserAdminChanges();
-    if (!usersSynced) return;
+    const syncResult = await syncUserAdminChanges();
+    if (!syncResult.synced) return;
 
-    const saved = await updateCompanySettings(localSettings);
+    const finalSettings = { ...localSettings };
+    if (syncResult.nextVersion !== undefined) {
+      finalSettings.version = syncResult.nextVersion;
+    }
+
+    const saved = await updateCompanySettings(finalSettings);
     if (!saved) {
       addToast("error", "Could not save settings to Supabase. Check your connection and try again.");
       return;
@@ -277,11 +290,11 @@ export function Settings() {
     }
   };
 
-  const handleInviteUser = async (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (inviteFormData.password.length < 8) { addToast("error", "Password must be at least 8 characters."); return; }
-    const name = inviteFormData.name.trim();
-    const email = inviteFormData.email.trim().toLowerCase();
+    if (createUserFormData.password && createUserFormData.password.length < 8) { addToast("error", "Password must be at least 8 characters."); return; }
+    const name = createUserFormData.name.trim();
+    const email = createUserFormData.email.trim().toLowerCase();
     if (!name) { addToast("error", "Full name is required."); return; }
     if (!email) { addToast("error", "Email address is required."); return; }
     const duplicate = (localSettings.users || []).some((user) => (user.email || "").trim().toLowerCase() === email);
@@ -289,27 +302,41 @@ export function Settings() {
 
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
-    if (!token) { addToast("error", "You must be signed in to invite users."); return; }
+    if (!token) { addToast("error", "You must be signed in to create users."); return; }
 
     const API_URL = import.meta.env.VITE_API_URL as string || "";
+    const body: Record<string, string> = { name, email, role: createUserFormData.role };
+    if (createUserFormData.password) body.password = createUserFormData.password;
+
     const res = await fetch(`${API_URL}/api/admin-users`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name, email, password: inviteFormData.password, role: inviteFormData.role }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      addToast("error", body.error || "Failed to create user. Check your connection and try again.");
+      const resBody = await res.json().catch(() => ({}));
+      addToast("error", resBody.error || "Failed to create user. Check your connection and try again.");
       return;
     }
 
-    const { user: newUser } = await res.json();
+    const { user: newUser, currentVersion, tempPassword } = await res.json();
     const updated = { ...localSettings, users: [...(localSettings.users || []), newUser] };
+    if (currentVersion !== undefined) {
+      updated.version = currentVersion;
+    }
     setLocalSettings(updated);
-    setIsInviteModalOpen(false);
-    setInviteFormData({ name: "", email: "", role: "Partner", password: "" });
-    addToast("success", "User created. They can sign in with this email and password.");
+
+    if (tempPassword) {
+      // Show the generated temporary password so the admin can share it
+      setGeneratedTempPassword(tempPassword);
+      setTempPasswordCopied(false);
+      addToast("success", "User created! Share the temporary password with them. They will set their own password on first login.");
+    } else {
+      setIsCreateUserModalOpen(false);
+      addToast("success", "User created. They can sign in with this email and password.");
+    }
+    setCreateUserFormData({ name: "", email: "", role: "Partner", password: "" });
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -428,7 +455,7 @@ export function Settings() {
             <SettingsUsers
               {...sharedProps}
               userRole={userRole}
-              onOpenInvite={() => setIsInviteModalOpen(true)}
+              onOpenInvite={() => setIsCreateUserModalOpen(true)}
               onOpenChangePassword={() => setIsChangePasswordOpen(true)}
               onOpenResetPassword={(id) => { setResetTargetId(id); setResetPasswordValue(""); }}
             />
@@ -612,49 +639,49 @@ export function Settings() {
         </div>
       )}
 
-      {/* Invite User Modal */}
-      {isInviteModalOpen && (
+      {/* Create User Modal */}
+      {isCreateUserModalOpen && !generatedTempPassword && (
         <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white dark:bg-zinc-800 rounded-2xl w-full max-w-md shadow-xl overflow-hidden">
             <div className="px-6 py-4 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2"><Mail className="w-5 h-5 text-primary-600" /> Invite Team Member</h3>
-              <button onClick={() => setIsInviteModalOpen(false)} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"><X className="w-5 h-5" /></button>
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2"><UserPlus className="w-5 h-5 text-primary-600" /> Create New User</h3>
+              <button onClick={() => setIsCreateUserModalOpen(false)} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleInviteUser} className="p-6 space-y-4">
+            <form onSubmit={handleCreateUser} className="p-6 space-y-4">
               {[
                 { label: "Full Name",      key: "name"     as const, type: "text",     placeholder: "e.g. Jane Doe"         },
                 { label: "Email Address",  key: "email"    as const, type: "email",    placeholder: "jane@example.com"      },
-                { label: "Password",       key: "password" as const, type: "password", placeholder: "Min. 8 characters"     },
               ].map(({ label, key, type, placeholder }) => (
                 <div key={key}>
-                  <label htmlFor={`inv-${key}`} className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">{label}</label>
-                  {type === "password" ? (
-                    <div className="relative">
-                      <input id={`inv-${key}`} required type={showInvitePassword ? "text" : "password"} minLength={8}
-                        value={inviteFormData[key]} onChange={(e) => setInviteFormData({ ...inviteFormData, [key]: e.target.value })}
-                        placeholder={placeholder}
-                        className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none dark:text-white pr-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowInvitePassword(!showInvitePassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                      >
-                        {showInvitePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  ) : (
-                    <input id={`inv-${key}`} required type={type} minLength={key === "password" ? 8 : undefined}
-                      value={inviteFormData[key]} onChange={(e) => setInviteFormData({ ...inviteFormData, [key]: e.target.value })}
-                      placeholder={placeholder}
-                      className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none dark:text-white"
-                    />
-                  )}
+                  <label htmlFor={`cu-${key}`} className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">{label}</label>
+                  <input id={`cu-${key}`} required type={type}
+                    value={createUserFormData[key]} onChange={(e) => setCreateUserFormData({ ...createUserFormData, [key]: e.target.value })}
+                    placeholder={placeholder}
+                    className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none dark:text-white"
+                  />
                 </div>
               ))}
               <div>
-                <label htmlFor="inv-role" className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">Assign Role</label>
-                <select id="inv-role" value={inviteFormData.role} onChange={(e) => setInviteFormData({ ...inviteFormData, role: e.target.value })}
+                <label htmlFor="cu-password" className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">Password <span className="text-xs text-zinc-400 font-normal">(optional)</span></label>
+                <div className="relative">
+                  <input id="cu-password" type={showCreateUserPassword ? "text" : "password"} minLength={8}
+                    value={createUserFormData.password} onChange={(e) => setCreateUserFormData({ ...createUserFormData, password: e.target.value })}
+                    placeholder="Leave blank — user will set their own"
+                    className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none dark:text-white pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateUserPassword(!showCreateUserPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                  >
+                    {showCreateUserPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-zinc-400 mt-1.5">If left blank, a temporary password will be generated. The user will set their own password on first login.</p>
+              </div>
+              <div>
+                <label htmlFor="cu-role" className="block text-sm font-medium text-zinc-700 dark:text-zinc-200 mb-1">Assign Role</label>
+                <select id="cu-role" value={createUserFormData.role} onChange={(e) => setCreateUserFormData({ ...createUserFormData, role: e.target.value })}
                   className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 outline-none bg-white dark:bg-zinc-800 dark:text-white"
                 >
                 <option value="Admin">Admin (Full Access)</option>
@@ -663,10 +690,52 @@ export function Settings() {
                 </select>
               </div>
               <div className="pt-4 flex justify-end gap-3">
-                <button type="button" onClick={() => setIsInviteModalOpen(false)} className="px-4 py-2 text-zinc-600 dark:text-zinc-300 font-medium hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-lg transition-colors">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-primary-600 text-white font-medium hover:bg-primary-700 rounded-lg transition-colors flex items-center shadow-sm">Send Invite</button>
+                <button type="button" onClick={() => setIsCreateUserModalOpen(false)} className="px-4 py-2 text-zinc-600 dark:text-zinc-300 font-medium hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-lg transition-colors">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-primary-600 text-white font-medium hover:bg-primary-700 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"><UserPlus className="w-4 h-4" /> Create User</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Temp Password Display Modal */}
+      {generatedTempPassword && (
+        <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-zinc-800 rounded-2xl w-full max-w-md shadow-xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-zinc-100 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/50">
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2"><KeyRound className="w-5 h-5 text-amber-600" /> Temporary Password</h3>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                Share this temporary password with the new user. They will be asked to set their own password when they first sign in.
+              </p>
+              <div className="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-900/50 p-3 rounded-xl border border-zinc-200 dark:border-zinc-700">
+                <code className="flex-1 text-sm font-mono text-zinc-900 dark:text-white break-all select-all">{generatedTempPassword}</code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(generatedTempPassword).then(() => {
+                      setTempPasswordCopied(true);
+                      setTimeout(() => setTempPasswordCopied(false), 2000);
+                    });
+                  }}
+                  className="shrink-0 p-2 text-zinc-500 hover:text-zinc-800 dark:hover:text-white transition-colors rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                  title="Copy to clipboard"
+                >
+                  {tempPasswordCopied ? <CheckIcon className="w-4 h-4 text-primary-600" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                <p className="text-xs text-amber-700 dark:text-amber-300"><strong>Important:</strong> This password will not be shown again. Make sure to share it with the user before closing this dialog.</p>
+              </div>
+              <div className="pt-2 flex justify-end">
+                <button
+                  onClick={() => { setGeneratedTempPassword(null); setIsCreateUserModalOpen(false); }}
+                  className="px-4 py-2 bg-primary-600 text-white font-medium hover:bg-primary-700 rounded-lg transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

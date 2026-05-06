@@ -160,6 +160,8 @@ export interface UserAccount {
   role: UserRole;
   status: "Active" | "Inactive";
   permissions?: UserPermissions;
+  /** When true, the user must set their own password on first login. */
+  mustChangePassword?: boolean;
 }
 
 // ---------------------------------------------------------------------------

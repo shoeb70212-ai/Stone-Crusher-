@@ -8,6 +8,7 @@
  * Routes:
  *   POST   /api/admin-users   — create user (or bootstrap first admin)
  *   PATCH  /api/admin-users   — update role / status / reset password
+ *   PUT    /api/admin-users   — self-service: set own password (first-time login)
  *   DELETE /api/admin-users   — delete user by id (query param)
  */
 
@@ -42,12 +43,16 @@ async function resolveCallerRole(
 
   const settings = await readSettings();
   const users = (settings.users ?? []) as UserAccount[];
+
   const callerUser = users.find(
     (u) => u.id === caller.userId || u.email.toLowerCase() === (caller.email || '').toLowerCase(),
   );
-  if (!callerUser || callerUser.status !== 'Active') return null;
 
-  return { isAdmin: callerUser.role === 'Admin', userId: caller.userId };
+  if (!callerUser) return null;
+  if (callerUser.status !== 'Active') return null;
+
+  const isAdmin = callerUser.role === 'Admin';
+  return { isAdmin, userId: caller.userId };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -55,7 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', corsOrigin);
   res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Methods', 'POST,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'POST,PATCH,PUT,DELETE,OPTIONS');
   res.setHeader(
     'Access-Control-Allow-Headers',
     'Accept, Content-Type, Authorization',
@@ -94,12 +99,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'POST') {
     const { email, password, name, role, bootstrap } = req.body ?? {};
 
-    if (!email || !password || !name || !role) {
-      return res.status(400).json({ error: 'email, password, name, and role are required.' });
+    if (!email || !name || !role) {
+      return res.status(400).json({ error: 'email, name, and role are required.' });
     }
     if (!isValidRole(role)) {
       return res.status(400).json({ error: 'Invalid role.' });
     }
+
+    // When no password is provided by the admin, generate a secure temporary
+    // password and flag the account so the user must set their own on first login.
+    const isTempPassword = !password;
+    const finalPassword: string = password || generateTempPassword();
 
     const settings = await readSettings();
     const existingUsers = (settings.users ?? []) as UserAccount[];
@@ -129,10 +139,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(403).json({ error: 'Bootstrap is not allowed after users exist.' });
       }
     } else {
-      // All non-bootstrap requests require an authenticated Admin.
+      // All non-bootstrap requests require an authenticated.
       const caller = await resolveCallerRole(req);
-      if (!caller?.isAdmin) {
-        return res.status(403).json({ error: 'Only Admins can create users.' });
+      if (!caller) {
+        return res.status(401).json({ error: 'Unauthenticated. Please sign in again.' });
+      }
+      if (!caller.isAdmin) {
+        return res.status(403).json({ error: 'Only Admins can create new users.' });
       }
     }
 
@@ -147,10 +160,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Create the user in Supabase Auth.
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: (email as string).toLowerCase(),
-      password,
+      password: finalPassword,
       email_confirm: true,
       user_metadata: { name },
-      app_metadata: { role, status: 'Active' },
+      app_metadata: { role, status: 'Active', mustChangePassword: isTempPassword },
     });
 
     if (authError) {
@@ -165,6 +178,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       email: (email as string).toLowerCase(),
       role: role as UserAccount['role'],
       status: 'Active',
+      ...(isTempPassword ? { mustChangePassword: true } : {}),
     };
 
     const updatedSettings = {
@@ -175,8 +189,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Atomic safety: if writeSettings fails, roll back the Supabase Auth user
     // so we don't end up with an orphaned Auth entry that can never log in
     // (because resolveCaller requires the user to exist in companySettings).
+    let result;
     try {
-      await writeSettings(updatedSettings);
+      result = await writeSettings(updatedSettings);
     } catch (settingsError) {
       Sentry.captureException(settingsError, {
         extra: { context: 'writeSettings rollback', userId: authData.user.id },
@@ -194,15 +209,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    return res.status(201).json({ user: newUser });
+    return res.status(201).json({
+      user: newUser,
+      currentVersion: result.currentVersion,
+      ...(isTempPassword ? { tempPassword: finalPassword } : {}),
+    });
   }
 
   // -----------------------------------------------------------------------
-  // PATCH — Update role, status, or reset password for an existing user
+  // PATCH — Update user details or reset password
   // -----------------------------------------------------------------------
   if (req.method === 'PATCH') {
     const caller = await resolveCallerRole(req);
-    if (!caller?.isAdmin) {
+    
+    if (!caller) {
+      return res.status(401).json({ error: 'Unauthenticated. Please sign in again.' });
+    }
+    if (!caller.isAdmin) {
       return res.status(403).json({ error: 'Only Admins can update users.' });
     }
 
@@ -266,17 +289,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Update companySettings.users.
-    await writeSettings({ ...settings, users: updatedUsers });
+    const result = await writeSettings({ ...settings, users: updatedUsers });
 
-    return res.status(200).json({ user: updatedUsers.find((u) => u.id === id) });
+    return res.status(200).json({ user: updatedUsers.find((u) => u.id === id), currentVersion: result.currentVersion });
   }
 
   // -----------------------------------------------------------------------
-  // DELETE — Remove a user from Supabase Auth and companySettings
+  // DELETE — Remove a user
   // -----------------------------------------------------------------------
   if (req.method === 'DELETE') {
     const caller = await resolveCallerRole(req);
-    if (!caller?.isAdmin) {
+    if (!caller) {
+      return res.status(401).json({ error: 'Unauthenticated. Please sign in again.' });
+    }
+    if (!caller.isAdmin) {
       return res.status(403).json({ error: 'Only Admins can delete users.' });
     }
 
@@ -304,10 +330,62 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: delError.message });
     }
 
-    await writeSettings({ ...settings, users: remainingUsers });
+    const result = await writeSettings({ ...settings, users: remainingUsers });
 
-    return res.status(200).json({ success: true });
+    return res.status(200).json({ success: true, currentVersion: result.currentVersion });
+  }
+
+  // -----------------------------------------------------------------------
+  // PUT — Self-service: set own password on first login
+  // -----------------------------------------------------------------------
+  if (req.method === 'PUT') {
+    const { newPassword } = req.body ?? {};
+    if (!newPassword || (newPassword as string).length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    }
+
+    const caller = await verifyBearerToken(req);
+    if (!caller) {
+      return res.status(401).json({ error: 'Unauthenticated. Please sign in again.' });
+    }
+
+    const settings = await readSettings();
+    const users = (settings.users ?? []) as UserAccount[];
+    const target = users.find(
+      (u) => u.id === caller.userId || u.email.toLowerCase() === (caller.email || '').toLowerCase(),
+    );
+    if (!target) {
+      return res.status(404).json({ error: 'User not found in settings.' });
+    }
+    if (!target.mustChangePassword) {
+      return res.status(400).json({ error: 'Password change not required. Use the Change Password feature instead.' });
+    }
+
+    // Update password in Supabase Auth.
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(target.id, {
+      password: newPassword as string,
+      app_metadata: { mustChangePassword: false },
+    });
+    if (updateError) {
+      return res.status(500).json({ error: updateError.message });
+    }
+
+    // Clear the flag in companySettings.
+    const updatedUsers = users.map((u) =>
+      u.id === target.id ? { ...u, mustChangePassword: false } : u,
+    );
+    const result = await writeSettings({ ...settings, users: updatedUsers });
+
+    return res.status(200).json({ success: true, currentVersion: result.currentVersion });
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
+}
+
+/** Generates a cryptographically random temporary password. */
+function generateTempPassword(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => chars[b % chars.length]).join('');
 }

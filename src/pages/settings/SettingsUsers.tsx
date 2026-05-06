@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Save, Check, Mail, Lock, KeyRound, Shield, X } from "lucide-react";
+import { Save, Check, UserPlus, Lock, KeyRound, Shield, X } from "lucide-react";
 import { CompanySettings } from "../../types";
 import { useErp } from "../../context/ErpContext";
 
@@ -81,8 +81,8 @@ export function SettingsUsers({
               onClick={onOpenInvite}
               className="text-sm font-medium text-primary-600 hover:text-primary-700 bg-primary-50 dark:bg-primary-900/30 dark:text-primary-400 px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5"
             >
-              <Mail className="w-4 h-4" />
-              Invite User
+              <UserPlus className="w-4 h-4" />
+              Create User
             </button>
           )}
         </div>

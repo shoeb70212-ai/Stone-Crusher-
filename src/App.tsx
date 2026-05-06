@@ -6,6 +6,7 @@ import { OfflineIndicator } from "./components/ui/OfflineIndicator";
 import { Layout } from "./components/Layout";
 import { Login } from "./components/Login";
 import { SetupAdminScreen } from "./components/SetupAdminScreen";
+import { SetPasswordScreen } from "./components/SetPasswordScreen";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { ResetPasswordScreen } from "./components/ResetPasswordScreen";
 import MasterKeyScreen from "./components/MasterKeyScreen";
@@ -25,12 +26,14 @@ function AppShell({ isAuthenticated, isVaultUnlocked, onLogin, onVaultUnlocked }
   onLogin: () => void;
   onVaultUnlocked: () => void;
 }) {
-  const { flushSync, bootstrapRequired, isLoading, syncStatus, retryCountRef } = useErp();
+  const { flushSync, bootstrapRequired, isLoading, syncStatus, retryCountRef, companySettings, session } = useErp();
 
   // Show the welcome wizard once after the very first account creation.
   const [showWelcome, setShowWelcome] = useState(
     () => isAuthenticated && localStorage.getItem('crushtrack_welcome_seen') === 'pending',
   );
+  // Track whether the user has completed the first-time password setup.
+  const [passwordSetDone, setPasswordSetDone] = useState(false);
 
   const handleWelcomeDone = () => {
     setShowWelcome(false);
@@ -38,6 +41,11 @@ function AppShell({ isAuthenticated, isVaultUnlocked, onLogin, onVaultUnlocked }
 
   // No users configured yet — show the first-run admin setup screen.
   const isFirstRun = !isLoading && bootstrapRequired === true;
+
+  // Check if the current user must change their password (created by admin without a password).
+  const currentUserId = session?.user?.id;
+  const currentUserRecord = (companySettings.users || []).find((u) => u.id === currentUserId);
+  const mustSetPassword = isAuthenticated && !isLoading && currentUserRecord?.mustChangePassword === true && !passwordSetDone;
 
   return (
     <>
@@ -50,7 +58,12 @@ function AppShell({ isAuthenticated, isVaultUnlocked, onLogin, onVaultUnlocked }
         }}
       />
       {isAuthenticated ? (
-        !isVaultUnlocked ? (
+        mustSetPassword ? (
+          <SetPasswordScreen
+            userName={currentUserRecord?.name}
+            onPasswordSet={() => setPasswordSetDone(true)}
+          />
+        ) : !isVaultUnlocked ? (
           <MasterKeyScreen onUnlocked={onVaultUnlocked} />
         ) : showWelcome ? (
           <WelcomeScreen onDone={handleWelcomeDone} />
