@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { LoginPage } from './pages/LoginPage';
 
 
-const TEST_ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@admin.com';
+const TEST_ADMIN_USERNAME = process.env.E2E_ADMIN_USERNAME ?? 'admin';
 const TEST_ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'CrushTrack@123';
 
 /**
@@ -35,7 +35,7 @@ test.describe('Login flow', () => {
   });
 
   test('valid credentials redirect to dashboard', async ({ page }) => {
-    await loginPage.login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+    await loginPage.login(TEST_ADMIN_USERNAME, TEST_ADMIN_PASSWORD);
     // After successful login the sidebar should appear (app layout rendered)
     await expect(page.locator('aside')).toBeVisible({ timeout: 15_000 });
     // The Supabase auth session should now be in localStorage.
@@ -44,14 +44,14 @@ test.describe('Login flow', () => {
   });
 
   test('invalid password shows error alert', async ({ page: _page }) => {
-    await loginPage.login(TEST_ADMIN_EMAIL, 'wrongpassword');
+    await loginPage.login(TEST_ADMIN_USERNAME, 'wrongpassword');
     await loginPage.assertError('Invalid username or password');
     // Must stay on login page
     await expect(loginPage.usernameInput).toBeVisible();
   });
 
-  test('invalid email shows error alert', async ({ page: _page }) => {
-    await loginPage.login('notauser@example.com', TEST_ADMIN_PASSWORD);
+  test('invalid username shows error alert', async ({ page: _page }) => {
+    await loginPage.login('notauser', TEST_ADMIN_PASSWORD);
     await loginPage.assertError('Invalid username or password');
   });
 
@@ -71,7 +71,7 @@ test.describe('Login flow', () => {
   });
 
   test('submit button is disabled while submitting', async ({ page }) => {
-    await loginPage.usernameInput.fill(TEST_ADMIN_EMAIL);
+    await loginPage.usernameInput.fill(TEST_ADMIN_USERNAME);
     await loginPage.passwordInput.fill(TEST_ADMIN_PASSWORD);
     // Intercept the click but check the disabled state briefly
     // We assert the button becomes disabled immediately after click

@@ -19,7 +19,13 @@ interface LoginProps {
 export function Login({ onLogin }: LoginProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => {
+    // Show a reason if the user was signed out programmatically (e.g. account deactivated).
+    const reason = sessionStorage.getItem('crushtrack_signout_reason');
+    if (reason) sessionStorage.removeItem('crushtrack_signout_reason');
+    if (reason === 'inactive') return 'Your account has been deactivated. Please contact your administrator.';
+    return '';
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
   const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);

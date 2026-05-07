@@ -124,10 +124,10 @@ function InvoicesContent() {
       {/* Page header */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
+          <h2 className="text-lg md:text-2xl font-bold font-display text-foreground tracking-tight">
             Invoicing
           </h2>
-          <p className="hidden md:block text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
+          <p className="hidden md:block text-xs md:text-sm text-muted-foreground mt-0.5">
             Generate and manage invoices.
           </p>
         </div>
@@ -142,17 +142,17 @@ function InvoicesContent() {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 overflow-hidden">
+      <div className="bg-surface rounded-2xl shadow-sm border border-border overflow-hidden">
         {/* Type tabs (Desktop only) */}
-        <div className="hidden md:flex border-b border-zinc-100 dark:border-zinc-700 px-4 py-3 bg-zinc-50 dark:bg-zinc-900/50 overflow-x-auto no-scrollbar gap-2 text-sm font-medium whitespace-nowrap">
+        <div className="hidden md:flex border-b border-border px-4 py-3 bg-surface-2/50 overflow-x-auto no-scrollbar gap-2 text-sm font-medium whitespace-nowrap">
           {(["All", "GST", "Cash"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`px-4 py-1.5 rounded-lg transition-colors shrink-0 ${
                 activeTab === tab
-                  ? "bg-white dark:bg-zinc-800 text-primary-700 dark:text-primary-400 shadow-sm border border-zinc-200 dark:border-zinc-700"
-                  : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                  ? "bg-surface text-primary-700 dark:text-primary-400 shadow-sm border border-border"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {tab} Invoices
@@ -161,7 +161,7 @@ function InvoicesContent() {
         </div>
 
         {/* Mobile search + filter + type tabs bar */}
-        <div className="md:hidden border-b border-zinc-100 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2">
+        <div className="md:hidden border-b border-border bg-surface px-3 py-2">
           <div className="flex items-center gap-2">
             {!searchExpanded ? (
               <button
@@ -193,7 +193,7 @@ function InvoicesContent() {
                 className={`flex min-h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-semibold ${
                   hasInvoiceFilters
                     ? "border-primary-200 bg-primary-50 text-primary-700 dark:border-primary-500/30 dark:bg-primary-500/15 dark:text-primary-300"
-                    : "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                    : "border-border bg-surface-2 text-foreground"
                 }`}
               >
                 <Filter className="h-4 w-4" />
@@ -210,8 +210,8 @@ function InvoicesContent() {
                     onClick={() => setActiveTab(tab)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
                       activeTab === tab
-                        ? "bg-zinc-100 dark:bg-zinc-800 text-primary-700 dark:text-primary-400 border border-zinc-200 dark:border-zinc-700 shadow-sm"
-                        : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                        ? "bg-surface-2 text-primary-700 dark:text-primary-400 border border-border shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     {tab}
@@ -238,13 +238,13 @@ function InvoicesContent() {
         </div>
 
         {/* Desktop filter bar */}
-        <div className="hidden md:flex border-b border-zinc-100 dark:border-zinc-700 px-4 py-3 bg-white dark:bg-zinc-800 flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-4 items-start sm:items-center text-sm">
+        <div className="hidden md:flex border-b border-border px-4 py-3 bg-surface flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-4 items-start sm:items-center text-sm">
           <div className="flex items-center gap-2 w-full sm:flex-1 sm:min-w-50">
-            <span className="text-zinc-500 font-medium shrink-0">Customer:</span>
+            <span className="text-muted-foreground font-medium shrink-0">Customer:</span>
             <select
               value={filterCustomerId}
               onChange={(e) => setFilterCustomerId(e.target.value)}
-              className="flex-1 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-primary-500"
+              className="flex-1 bg-surface-2 border border-border text-foreground rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="All">All Customers</option>
               <option value="CASH">Cash Customer</option>
@@ -252,20 +252,20 @@ function InvoicesContent() {
             </select>
           </div>
           <div className="flex items-center gap-2 w-full sm:flex-1 sm:min-w-70">
-            <span className="text-zinc-500 font-medium shrink-0">Date:</span>
+            <span className="text-muted-foreground font-medium shrink-0">Date:</span>
             <div className="flex flex-wrap items-center gap-2 flex-1">
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="flex-1 min-w-0 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-primary-500"
+                className="flex-1 min-w-0 bg-surface-2 border border-border text-foreground rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-primary-500"
               />
-              <span className="text-zinc-400 shrink-0">to</span>
+              <span className="text-muted-foreground shrink-0">to</span>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="flex-1 min-w-0 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-primary-500"
+                className="flex-1 min-w-0 bg-surface-2 border border-border text-foreground rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>
           </div>
@@ -280,14 +280,14 @@ function InvoicesContent() {
         </div>
 
         {/* Mobile list */}
-        <div className={`md:hidden divide-y divide-zinc-100 dark:divide-zinc-700/50 ${companySettings.mobileLayout === "Compact" ? "mobile-compact-list" : ""}`}>
+        <div className={`md:hidden divide-y divide-border ${companySettings.mobileLayout === "Compact" ? "mobile-compact-list" : ""}`}>
           {filteredInvoices.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
-              <FileText className="mb-3 h-10 w-10 text-zinc-300 dark:text-zinc-600" />
-              <p className="text-sm font-semibold text-zinc-600 dark:text-zinc-300">
+              <FileText className="mb-3 h-10 w-10 text-muted-foreground/40" />
+              <p className="text-sm font-semibold text-foreground">
                 {hasInvoiceFilters ? "No invoices match these filters" : "No invoices found"}
               </p>
-              <p className="mt-1 max-w-xs text-xs text-zinc-500 dark:text-zinc-400">
+              <p className="mt-1 max-w-xs text-xs text-muted-foreground">
                 {hasInvoiceFilters ? "Reset filters to review the full invoice list." : "Generate an invoice when a customer is ready for billing."}
               </p>
               <button
@@ -301,32 +301,32 @@ function InvoicesContent() {
           ) : (
               <div className="space-y-1 pb-[calc(10rem+env(safe-area-inset-bottom))] md:pb-0 stagger-animation">
               {filteredInvoices.map((inv) => (
-                <div key={inv.id} className="p-2.5 bg-white dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700 rounded-xl shadow-sm active:scale-[0.98] transition-transform">
+                <div key={inv.id} className="p-2.5 bg-surface border-b border-border rounded-xl shadow-sm active:scale-[0.98] transition-transform">
                   <div className="flex justify-between items-start">
                     <div className="min-w-0">
-                      <div className="font-bold text-zinc-900 dark:text-white text-xs">
+                      <div className="font-bold text-foreground text-xs">
                         {inv.invoiceNo}
-                        <span className="ml-1.5 text-[10px] text-zinc-500 font-normal px-1.5 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-700/50">
+                        <span className="ml-1.5 text-[10px] text-muted-foreground font-normal px-1.5 py-0.5 rounded-full bg-muted">
                           {inv.type}
                         </span>
                       </div>
-                      <div className="text-[11px] text-zinc-500 mt-0.5">{new Date(inv.date).toLocaleDateString()}</div>
-                      <div className="text-[11px] text-zinc-500 truncate max-w-[140px]">
+                      <div className="text-[11px] text-muted-foreground mt-0.5">{new Date(inv.date).toLocaleDateString()}</div>
+                      <div className="text-[11px] text-muted-foreground truncate max-w-[140px]">
                         {customers.find((c) => c.id === inv.customerId)?.name || "Cash"}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      <span className="font-bold text-zinc-900 dark:text-white text-sm">₹{inv.total.toLocaleString()}</span>
+                      <span className="font-bold text-foreground text-sm">₹{inv.total.toLocaleString()}</span>
                       <button
                         type="button"
                         onClick={() => setStatusActionInvoice(inv)}
                         aria-label={`Change status for invoice ${inv.invoiceNo}`}
                         className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${
                           inv.status === "Paid"
-                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
+                            ? "bg-success-muted text-success-foreground"
                             : inv.status === "Cancelled"
-                              ? "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400"
-                              : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"
+                              ? "bg-danger-muted text-danger"
+                              : "bg-warning-muted text-warning-foreground"
                         }`}
                       >
                         {inv.status}
@@ -336,27 +336,27 @@ function InvoicesContent() {
                   <div className="mt-2 flex items-center gap-1.5">
                     <button
                       onClick={() => generator.openEditModal(inv)}
-                      className="flex-1 py-2 text-[11px] font-semibold bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 active:scale-[0.98] transition-all"
+                      className="flex-1 py-2 text-[11px] font-semibold bg-surface-2 text-foreground rounded-lg hover:bg-muted active:scale-[0.98] transition-all border border-border"
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => void handleInvoiceDocumentAction(inv, "download")}
-                      className="p-2.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
+                      className="p-2.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted active:scale-95 transition-all"
                       title="Download"
                     >
                       <Download className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => void handleInvoiceDocumentAction(inv, "print")}
-                      className="p-2.5 text-zinc-400 hover:text-primary-600 dark:hover:text-primary-400 rounded-lg hover:bg-primary-50 active:scale-95 transition-all"
+                      className="p-2.5 text-muted-foreground hover:text-primary-600 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-500/10 active:scale-95 transition-all"
                       title="Print"
                     >
                       <Printer className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => void handleInvoiceDocumentAction(inv, "whatsapp")}
-                      className="p-2.5 text-emerald-600 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 active:scale-95 transition-all"
+                      className="p-2.5 text-success-foreground hover:text-success-foreground/80 rounded-lg hover:bg-success-muted active:scale-95 transition-all"
                       title="WhatsApp"
                     >
                       <MessageCircle className="w-4 h-4" />
@@ -372,7 +372,7 @@ function InvoicesContent() {
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-white dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700 text-zinc-400 dark:text-zinc-500">
+              <tr className="bg-surface border-b border-border text-muted-foreground">
                 <th className="font-semibold text-sm py-4 px-6">Invoice #</th>
                 <th className="font-semibold text-sm py-4 px-6">Date</th>
                 <th className="font-semibold text-sm py-4 px-6">Customer</th>
@@ -381,22 +381,22 @@ function InvoicesContent() {
                 <th className="font-semibold text-sm py-4 px-6 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100 text-sm">
+            <tbody className="divide-y divide-border text-sm">
               {filteredInvoices.map((inv) => (
-                <tr key={inv.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800 dark:bg-zinc-900/50 transition-colors">
-                  <td className="py-4 px-6 font-medium text-zinc-900 dark:text-white">
+                <tr key={inv.id} className="hover:bg-surface-2/50 transition-colors">
+                  <td className="py-4 px-6 font-medium text-foreground">
                     {inv.invoiceNo}
-                    <span className="ml-2 text-xs text-zinc-500 dark:text-zinc-400 font-normal px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800">
+                    <span className="ml-2 text-xs text-muted-foreground font-normal px-2 py-0.5 rounded-full bg-muted">
                       {inv.type}
                     </span>
                   </td>
-                  <td className="py-4 px-6 text-zinc-500 dark:text-zinc-400">
+                  <td className="py-4 px-6 text-muted-foreground">
                     {new Date(inv.date).toLocaleDateString()}
                   </td>
-                  <td className="py-4 px-6">
+                  <td className="py-4 px-6 text-foreground">
                     {customers.find((c) => c.id === inv.customerId)?.name || "Cash Customer"}
                   </td>
-                  <td className="py-4 px-6 font-semibold text-zinc-900 dark:text-white text-right">
+                  <td className="py-4 px-6 font-semibold text-foreground text-right">
                     ₹{inv.total.toLocaleString()}
                   </td>
                   <td className="py-4 px-6 text-center">
@@ -407,10 +407,10 @@ function InvoicesContent() {
                         aria-label={`Change status for invoice ${inv.invoiceNo}`}
                         className={`inline-flex appearance-none rounded-full border-r-4 border-transparent py-1 pl-2.5 pr-7 text-xs font-semibold outline-none cursor-pointer focus:ring-2 focus:ring-primary-500 ${
                           inv.status === "Paid"
-                            ? "bg-primary-100 text-primary-700"
+                            ? "bg-success-muted text-success-foreground"
                             : inv.status === "Cancelled"
-                              ? "bg-rose-100 text-rose-700"
-                              : "bg-amber-100 text-amber-700"
+                              ? "bg-danger-muted text-danger"
+                              : "bg-warning-muted text-warning-foreground"
                         }`}
                       >
                         <option value="Pending">Pending</option>
@@ -424,12 +424,12 @@ function InvoicesContent() {
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <button
                         onClick={() => generator.openEditModal(inv)}
-                        className="inline-flex min-h-9 items-center justify-center rounded-lg px-2.5 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors dark:text-indigo-400 dark:hover:bg-indigo-900/30"
+                        className="inline-flex min-h-9 items-center justify-center rounded-lg px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-surface-2 border border-border transition-colors"
                       >
                         Edit
                       </button>
-                      <DocumentActionButton entityId={inv.id} entityLabel={`invoice ${inv.invoiceNo}`} action="download" label="Download" icon={<Download className="h-3.5 w-3.5" />} className="bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-50 dark:bg-zinc-800 dark:text-zinc-200 dark:border-zinc-700 dark:hover:bg-zinc-700" activeAction={activeInvoiceAction} onClick={(a) => void handleInvoiceDocumentAction(inv, a)} />
-                      <DocumentActionButton entityId={inv.id} entityLabel={`invoice ${inv.invoiceNo}`} action="whatsapp" label="WhatsApp" icon={<MessageCircle className="h-3.5 w-3.5" />} className="bg-emerald-600 text-white hover:bg-emerald-700" activeAction={activeInvoiceAction} onClick={(a) => void handleInvoiceDocumentAction(inv, a)} />
+                      <DocumentActionButton entityId={inv.id} entityLabel={`invoice ${inv.invoiceNo}`} action="download" label="Download" icon={<Download className="h-3.5 w-3.5" />} className="bg-surface text-foreground border border-border hover:bg-surface-2" activeAction={activeInvoiceAction} onClick={(a) => void handleInvoiceDocumentAction(inv, a)} />
+                      <DocumentActionButton entityId={inv.id} entityLabel={`invoice ${inv.invoiceNo}`} action="whatsapp" label="WhatsApp" icon={<MessageCircle className="h-3.5 w-3.5" />} className="bg-success-foreground text-white hover:bg-success-foreground/90" activeAction={activeInvoiceAction} onClick={(a) => void handleInvoiceDocumentAction(inv, a)} />
                       <DocumentActionButton entityId={inv.id} entityLabel={`invoice ${inv.invoiceNo}`} action="print" label="Print" icon={<Printer className="h-3.5 w-3.5" />} className="bg-primary-600 text-white hover:bg-primary-700" activeAction={activeInvoiceAction} onClick={(a) => void handleInvoiceDocumentAction(inv, a)} />
                     </div>
                   </td>
@@ -437,8 +437,8 @@ function InvoicesContent() {
               ))}
               {filteredInvoices.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-zinc-500 dark:text-zinc-400">
-                    <FileText className="w-12 h-12 text-zinc-300 mx-auto mb-3" />
+                  <td colSpan={6} className="py-12 text-center text-muted-foreground">
+                    <FileText className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
                     No invoices found. Generate one to get started.
                   </td>
                 </tr>

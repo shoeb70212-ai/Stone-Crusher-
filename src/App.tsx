@@ -215,9 +215,13 @@ export default function App() {
       <ToastProvider>
         <ResetPasswordScreen
           onDone={async () => {
-            await supabase.auth.signOut({ scope: 'global' }).catch(() => {});
+            // Sign out the recovery session so the user must log in fresh
+            // with their new password. We clear isPasswordRecovery first so
+            // the onAuthStateChange SIGNED_OUT event doesn't race with this
+            // and briefly show the main app.
             setIsPasswordRecovery(false);
-            setIsAuthenticated(true);
+            setIsAuthenticated(false);
+            await supabase.auth.signOut({ scope: 'global' }).catch(() => {});
           }}
         />
       </ToastProvider>

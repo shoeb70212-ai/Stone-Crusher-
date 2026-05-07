@@ -97,7 +97,7 @@ export function ResetPasswordScreen({ onDone }: ResetPasswordScreenProps) {
               <h2 className="text-2xl font-display font-bold text-foreground tracking-tight">
                 Password updated
               </h2>
-              <p className="text-sm text-muted-foreground">Signing you in…</p>
+              <p className="text-sm text-muted-foreground">Redirecting to sign in…</p>
             </div>
           ) : (
             <>

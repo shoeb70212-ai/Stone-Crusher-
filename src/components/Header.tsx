@@ -5,19 +5,35 @@ import { useErp } from "../context/ErpContext";
 import { clearAuthSession } from "../lib/session";
 import { NAVIGATE_EVENT } from "./Layout";
 
+const PAGE_TITLES: Record<string, string> = {
+  dashboard: "Dashboard",
+  dispatch: "Dispatch",
+  invoices: "Invoices",
+  quotations: "Quotations",
+  customers: "Customers",
+  employees: "Employees",
+  daybook: "Daybook",
+  ledger: "Ledger",
+  vehicles: "Vehicles",
+  settings: "Settings",
+  audit: "Audit Log",
+};
+
 interface HeaderProps {
   onMenuClick?: () => void;
+  currentView?: string;
 }
 
-export function Header({ onMenuClick }: HeaderProps) {
+export function Header({ onMenuClick: _onMenuClick, currentView: currentViewProp }: HeaderProps) {
   const { userRole, syncStatus, pendingSyncCount, companySettings, updateCompanySettings } = useErp();
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
-  const [currentView, setCurrentView] = useState("dashboard");
+  // eventView tracks navigation driven by the legacy NAVIGATE_EVENT custom event.
+  // When the caller passes currentViewProp (from wouter), that takes precedence.
+  const [eventView, setEventView] = useState("dashboard");
+  const currentView = currentViewProp ?? eventView;
 
   useEffect(() => {
-    const handler = (e: Event) => {
-      setCurrentView((e as CustomEvent<string>).detail);
-    };
+    const handler = (e: Event) => setEventView((e as CustomEvent<string>).detail);
     window.addEventListener(NAVIGATE_EVENT, handler);
     return () => window.removeEventListener(NAVIGATE_EVENT, handler);
   }, []);
@@ -36,7 +52,7 @@ export function Header({ onMenuClick }: HeaderProps) {
       className="flex h-14 md:h-16 bg-background/85 backdrop-blur-xl border-b border-border px-3 md:px-6 items-center justify-between shrink-0 transition-colors sticky top-0 z-30 mobile-header"
       style={{ paddingTop: 'max(4px, env(safe-area-inset-top))' }}
     >
-      {/* Left: date (desktop) / app name or back (mobile) */}
+      {/* Left: date (desktop) / page title or back (mobile) */}
       <div className="flex items-center gap-3 flex-1 min-w-0">
         {showBack ? (
           <button
@@ -44,13 +60,20 @@ export function Header({ onMenuClick }: HeaderProps) {
             className="sm:hidden flex items-center gap-1.5 text-sm font-display font-bold text-foreground tracking-tight active:scale-95 transition-transform"
             aria-label="Back to dashboard"
           >
-            <ArrowLeft className="w-5 h-5" />
-            <span className="mobile-header-title">CrushTrack</span>
+            <ArrowLeft className="w-5 h-5 shrink-0" />
+            <span className="mobile-header-title truncate">{PAGE_TITLES[currentView] ?? "CrushTrack"}</span>
           </button>
         ) : (
-          <span className="text-sm font-display font-bold text-foreground sm:hidden tracking-tight mobile-header-title">
-            CrushTrack
-          </span>
+          /* On the dashboard, show app name + today's date so mobile users
+             always have a temporal anchor without opening a calendar. */
+          <div className="sm:hidden flex flex-col leading-tight">
+            <span className="text-sm font-display font-bold text-foreground tracking-tight">
+              CrushTrack
+            </span>
+            <span className="text-[10px] text-muted-foreground tabular-nums">
+              {format(new Date(), "EEE, dd MMM")}
+            </span>
+          </div>
         )}
         {/* Desktop date — refined typography */}
         <div className="hidden sm:flex flex-col leading-tight">
@@ -96,22 +119,39 @@ export function Header({ onMenuClick }: HeaderProps) {
             Error ({pendingSyncCount})
           </span>
         )}
-        {/* Mobile-only compact sync indicator */}
+        {/* Mobile-only compact sync indicator — icon + badge only to preserve
+            header space. Full text label is shown on sm+ screens above. */}
         {pendingSyncCount > 0 && syncStatus !== 'syncing' && syncStatus !== 'error' && (
-          <span className="sm:hidden p-2 text-muted-foreground font-medium text-xs flex items-center" title={`${pendingSyncCount} pending`}>
-            {pendingSyncCount} pending
+          <span
+            className="sm:hidden relative w-10 h-10 inline-flex items-center justify-center"
+            title={`${pendingSyncCount} change${pendingSyncCount === 1 ? '' : 's'} pending sync`}
+          >
+            <Loader2 className="w-4 h-4 text-muted-foreground opacity-60" />
+            <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-primary-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none">
+              {pendingSyncCount > 9 ? '9+' : pendingSyncCount}
+            </span>
           </span>
         )}
         {syncStatus === 'syncing' && (
-          <span className="sm:hidden p-2 text-muted-foreground flex items-center gap-1" title={`Syncing ${pendingSyncCount}…`}>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            {pendingSyncCount > 0 && <span className="text-xs font-medium">{pendingSyncCount}</span>}
+          <span
+            className="sm:hidden relative w-10 h-10 inline-flex items-center justify-center"
+            title={`Syncing${pendingSyncCount > 0 ? ` ${pendingSyncCount} change${pendingSyncCount === 1 ? '' : 's'}` : ''}…`}
+          >
+            <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />
           </span>
         )}
         {syncStatus === 'error' && (
-          <span className="sm:hidden p-2 text-danger flex items-center gap-1" title={`Error ${pendingSyncCount}`} role="alert">
-            <AlertTriangle className="w-4 h-4" />
-            {pendingSyncCount > 0 && <span className="text-xs font-medium">{pendingSyncCount}</span>}
+          <span
+            className="sm:hidden relative w-10 h-10 inline-flex items-center justify-center"
+            title={`Sync error${pendingSyncCount > 0 ? ` — ${pendingSyncCount} change${pendingSyncCount === 1 ? '' : 's'} pending` : ''}`}
+            role="alert"
+          >
+            <AlertTriangle className="w-4 h-4 text-danger" />
+            {pendingSyncCount > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-danger text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none">
+                {pendingSyncCount > 9 ? '9+' : pendingSyncCount}
+              </span>
+            )}
           </span>
         )}
 

@@ -16,3 +16,16 @@ export function getStatusColor(status: SlipStatus | string): string {
       return "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300";
   }
 }
+
+/**
+ * Returns a Unicode symbol for the slip status, used alongside the colour
+ * badge so colorblind users can distinguish statuses without relying on hue.
+ */
+export function getStatusSymbol(status: SlipStatus | string): string {
+  switch (status) {
+    case "Tallied":   return "✓";
+    case "Loaded":    return "↑";
+    case "Cancelled": return "✕";
+    default:          return "○"; // Pending
+  }
+}

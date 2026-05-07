@@ -4,7 +4,6 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
-  Users,
   Plus,
   X,
   Phone,
@@ -40,6 +39,7 @@ export function Customers() {
   );
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isSharingWhatsApp, setIsSharingWhatsApp] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const canViewPending = hasPermission("viewPendingAmounts");
   const canViewLedger = hasPermission("viewCustomerLedger");
@@ -79,8 +79,9 @@ export function Customers() {
     openingBalance: "0",
   });
 
-  const handleCreateOrUpdate = (e: React.FormEvent) => {
+  const handleCreateOrUpdate = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (isSubmitting) return;
 
     const validation = customerSchema.safeParse({
       name: formData.name,
@@ -96,29 +97,34 @@ export function Customers() {
       return;
     }
 
-    if (editingDataId) {
-      updateCustomer({
-        id: editingDataId,
-        name: validation.data.name,
-        phone: validation.data.phone ?? "",
-        address: validation.data.address,
-        gstin: validation.data.gstin,
-        openingBalance: validation.data.openingBalance,
-      });
-    } else {
-      addCustomer({
-        id: generateId(),
-        name: validation.data.name,
-        phone: validation.data.phone ?? "",
-        address: validation.data.address,
-        gstin: validation.data.gstin,
-        openingBalance: validation.data.openingBalance,
-      });
-    }
+    setIsSubmitting(true);
+    try {
+      if (editingDataId) {
+        updateCustomer({
+          id: editingDataId,
+          name: validation.data.name,
+          phone: validation.data.phone ?? "",
+          address: validation.data.address,
+          gstin: validation.data.gstin,
+          openingBalance: validation.data.openingBalance,
+        });
+      } else {
+        addCustomer({
+          id: generateId(),
+          name: validation.data.name,
+          phone: validation.data.phone ?? "",
+          address: validation.data.address,
+          gstin: validation.data.gstin,
+          openingBalance: validation.data.openingBalance,
+        });
+      }
 
-    setIsModalOpen(false);
-    setFormData({ name: "", phone: "", address: "", gstin: "", openingBalance: "0" });
-    setEditingDataId(null);
+      setIsModalOpen(false);
+      setFormData({ name: "", phone: "", address: "", gstin: "", openingBalance: "0" });
+      setEditingDataId(null);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const openCreateModal = () => {
@@ -287,26 +293,26 @@ export function Customers() {
     <div className="space-y-4 md:space-y-6">
       <div className="flex flex-col gap-4">
         <div>
-          <h2 className="text-xl md:text-2xl font-bold font-display text-zinc-900 dark:text-white tracking-tight">
+          <h2 className="text-xl md:text-2xl font-bold font-display text-foreground tracking-tight">
             Customers Directory
           </h2>
-          <p className="text-zinc-500 dark:text-zinc-400 mt-1">
+          <p className="text-muted-foreground mt-1">
             Manage customer profiles and view their balances.
           </p>
         </div>
 
         {/* Search & Actions Row */}
-        <div className="flex items-center gap-2 bg-white dark:bg-zinc-800 p-2 sm:p-3 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700">
+        <div className="flex items-center gap-2 bg-surface p-2 sm:p-3 rounded-2xl shadow-sm border border-border">
           <div className="relative flex-1 min-w-0">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-400" />
+              <Search className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
             </div>
             <input
               type="text"
               placeholder="Search customers by name, phone..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 sm:pl-10 pr-4 py-2 border-none bg-transparent rounded-lg focus:ring-0 outline-none dark:text-white text-sm sm:text-base"
+              className="w-full pl-9 sm:pl-10 pr-4 py-2 border-none bg-transparent rounded-lg focus:ring-0 outline-none text-foreground text-sm sm:text-base"
             />
           </div>
           {canManageCustomers && (
@@ -322,9 +328,9 @@ export function Customers() {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-zinc-800 rounded-xl sm:rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-700 overflow-hidden divide-y divide-zinc-100 dark:divide-zinc-700/50">
+      <div className="bg-surface rounded-xl sm:rounded-2xl shadow-sm border border-border overflow-hidden divide-y divide-border">
         {filteredCustomers.length === 0 ? (
-          <div className="py-8 sm:py-12 text-center text-zinc-500 dark:text-zinc-400 text-sm">
+          <div className="py-8 sm:py-12 text-center text-muted-foreground text-sm">
              No customers found.
           </div>
         ) : (
@@ -334,21 +340,21 @@ export function Customers() {
               const isExpanded = expandedCustomerId === c.id;
 
               return (
-                <div key={c.id} className="flex flex-col transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                <div key={c.id} className="flex flex-col transition-colors hover:bg-surface-2/50">
                   {/* Header (Always Visible) - Compact for mobile */}
                   <button
                     type="button"
                     onClick={() => toggleExpand(c.id)}
                     aria-expanded={isExpanded}
-                    className="w-full p-3 sm:p-4 cursor-pointer flex items-center justify-between text-left active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors"
+                    className="w-full p-3 sm:p-4 cursor-pointer flex items-center justify-between text-left active:bg-surface-2 transition-colors"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-primary-100 to-primary-50 dark:from-primary-500/20 dark:to-primary-500/10 flex items-center justify-center text-primary-600 shrink-0">
                         <UserIcon className="w-4 h-4 sm:w-5 sm:h-5" />
                       </div>
                       <div className="min-w-0">
-                        <div className="font-bold text-zinc-900 dark:text-white text-sm truncate">{c.name}</div>
-                        <div className="flex items-center text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                        <div className="font-bold text-foreground text-sm truncate">{c.name}</div>
+                        <div className="flex items-center text-xs text-muted-foreground mt-0.5">
                           <Phone className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1 shrink-0" />
                           <span className="break-all">{c.phone || 'No phone'}</span>
                         </div>
@@ -358,53 +364,53 @@ export function Customers() {
                     <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                       {canViewPending && (
                         <div className="text-right">
-                          <div className="text-[10px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400 font-semibold">Bal</div>
+                          <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">Bal</div>
                           <span className={`font-bold tracking-tight text-xs sm:text-base ${
-                              bal > 0 ? "text-rose-600 dark:text-rose-400" : bal < 0 ? "text-primary-600 dark:text-primary-400" : "text-zinc-700 dark:text-zinc-200"
+                              bal > 0 ? "text-danger" : bal < 0 ? "text-primary-600" : "text-foreground"
                           }`}>
                             ₹{Math.abs(bal).toLocaleString()} {bal > 0 ? "Dr" : bal < 0 ? "Cr" : ""}
                           </span>
                         </div>
                       )}
-                      <span className={`px-1.5 py-0.5 sm:px-2 sm:py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${c.isActive !== false ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"}`}>
+                      <span className={`px-1.5 py-0.5 sm:px-2 sm:py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${c.isActive !== false ? "bg-success-muted text-success-foreground" : "bg-muted text-muted-foreground"}`}>
                         {c.isActive !== false ? "Active" : "Inactive"}
                       </span>
-                      {isExpanded ? <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-400" /> : <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-400" />}
+                      {isExpanded ? <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />}
                     </div>
                   </button>
 
                   {/* Expanded Details - Compact for mobile */}
                   {isExpanded && (
-                    <div className="px-3 pb-3 pt-2 sm:px-4 sm:pb-4 sm:pt-2 border-t border-zinc-100 dark:border-zinc-700/50 bg-zinc-50 dark:bg-zinc-900/20">
+                    <div className="px-3 pb-3 pt-2 sm:px-4 sm:pb-4 sm:pt-2 border-t border-border bg-surface-2/40">
                       <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4 mb-3 sm:mb-4">
                          {canViewPending && (
                            <div>
-                              <span className="text-[10px] uppercase tracking-wide text-zinc-500 font-semibold block">Opening</span>
-                              <span className="text-xs sm:text-sm font-medium dark:text-zinc-200">₹{c.openingBalance.toLocaleString()} {c.openingBalance > 0 ? "Dr" : c.openingBalance < 0 ? "Cr" : ""}</span>
+                              <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold block">Opening</span>
+                              <span className="text-xs sm:text-sm font-medium text-foreground">₹{c.openingBalance.toLocaleString()} {c.openingBalance > 0 ? "Dr" : c.openingBalance < 0 ? "Cr" : ""}</span>
                            </div>
                          )}
                          <div>
-                            <span className="text-[10px] uppercase tracking-wide text-zinc-500 font-semibold block">GSTIN</span>
-                            <span className="block text-xs sm:text-sm font-medium dark:text-zinc-200 uppercase break-words">{c.gstin || 'N/A'}</span>
+                            <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold block">GSTIN</span>
+                            <span className="block text-xs sm:text-sm font-medium text-foreground uppercase wrap-break-word">{c.gstin || 'N/A'}</span>
                          </div>
                          <div className="col-span-2 sm:col-span-2">
-                            <span className="text-[10px] uppercase tracking-wide text-zinc-500 font-semibold block">Address</span>
-                            <span className="block text-xs sm:text-sm font-medium dark:text-zinc-200 break-words">{c.address || 'N/A'}</span>
+                            <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold block">Address</span>
+                            <span className="block text-xs sm:text-sm font-medium text-foreground wrap-break-word">{c.address || 'N/A'}</span>
                          </div>
                       </div>
 
                       <div className="flex flex-wrap gap-1.5 sm:gap-2 justify-end">
                         {canViewLedger && (
-                          <button onClick={(e) => { e.stopPropagation(); setSelectedCustomer(c); }} className="text-xs sm:text-sm bg-primary-50 hover:bg-primary-100 text-primary-700 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-medium flex items-center active:scale-[0.98] transition-transform">
+                          <button onClick={(e) => { e.stopPropagation(); setSelectedCustomer(c); }} className="text-xs sm:text-sm bg-primary-50 hover:bg-primary-100 dark:bg-primary-500/10 dark:hover:bg-primary-500/20 text-primary-700 dark:text-primary-400 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-medium flex items-center active:scale-[0.98] transition-transform">
                             <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1" /> <span className="hidden sm:inline">Statement</span>
                           </button>
                         )}
                         {canManageCustomers && (
                           <>
-                            <button onClick={(e) => { e.stopPropagation(); openEditModal(c); }} className="text-xs sm:text-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-medium flex items-center border border-indigo-100 active:scale-[0.98] transition-transform">
+                            <button onClick={(e) => { e.stopPropagation(); openEditModal(c); }} className="text-xs sm:text-sm bg-surface hover:bg-surface-2 text-foreground px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-medium flex items-center border border-border active:scale-[0.98] transition-transform">
                               <Edit2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1" /> <span className="hidden sm:inline">Edit</span>
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); removeCustomer(c.id); }} className={`text-xs sm:text-sm px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-medium flex items-center border active:scale-[0.98] transition-transform ${c.isActive !== false ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-100" : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-100"}`}>
+                            <button onClick={(e) => { e.stopPropagation(); removeCustomer(c.id); }} className={`text-xs sm:text-sm px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-medium flex items-center border active:scale-[0.98] transition-transform ${c.isActive !== false ? "bg-danger-muted hover:bg-danger-muted/80 text-danger border-danger/20" : "bg-success-muted hover:bg-success-muted/80 text-success-foreground border-success/20"}`}>
                               {c.isActive !== false ? (<><Trash2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1" /><span className="hidden sm:inline">Deactivate</span></>) : (<><Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1" /><span className="hidden sm:inline">Reactivate</span></>)}
                             </button>
                           </>
@@ -420,15 +426,15 @@ export function Customers() {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center md:p-4 z-50 overflow-hidden">
-          <div className="bg-white dark:bg-zinc-800 md:rounded-2xl w-full h-full md:h-auto max-w-lg md:max-h-[90vh] overflow-y-auto shadow-xl flex flex-col">
-            <div className="px-4 py-3 md:px-6 md:py-4 border-b border-zinc-100 dark:border-zinc-700 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50 sticky top-0">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center md:p-4 z-50 overflow-hidden">
+          <div className="bg-surface md:rounded-2xl w-full h-full md:h-auto max-w-lg md:max-h-[90vh] overflow-y-auto shadow-xl flex flex-col border border-border">
+            <div className="px-4 py-3 md:px-6 md:py-4 border-b border-border flex justify-between items-center bg-surface-2/60 sticky top-0">
+              <h3 className="text-lg font-bold text-foreground">
                 {editingDataId ? "Edit Customer" : "Add New Customer"}
               </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                className="text-muted-foreground hover:text-foreground p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl hover:bg-muted transition-colors"
                 aria-label="Close modal"
               >
                 <X className="w-5 h-5" />
@@ -438,64 +444,56 @@ export function Customers() {
             <form onSubmit={handleCreateOrUpdate} className="p-3 md:p-5 space-y-6">
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                  <label className="text-sm font-medium text-foreground">
                     Customer Name
                   </label>
                   <input
                     required
                     value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     type="text"
-                    className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    className="w-full border border-border rounded-lg px-4 py-2 bg-surface-2 text-foreground focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
                     placeholder="e.g. Acme Constructions"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                  <label className="text-sm font-medium text-foreground">
                     Phone / Contact
                   </label>
                   <input
                     value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     type="text"
-                    className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    className="w-full border border-border rounded-lg px-4 py-2 bg-surface-2 text-foreground focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
                     placeholder="9876543210"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                  <label className="text-sm font-medium text-foreground">
                     Address
                   </label>
                   <textarea
                     value={formData.address}
-                    onChange={(e) =>
-                      setFormData({ ...formData, address: e.target.value })
-                    }
-                    className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    className="w-full border border-border rounded-lg px-4 py-2 bg-surface-2 text-foreground focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
                     placeholder="Customer Address"
                     rows={2}
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                  <label className="text-sm font-medium text-foreground">
                     GSTIN
                   </label>
                   <input
                     value={formData.gstin}
-                    onChange={(e) =>
-                      setFormData({ ...formData, gstin: e.target.value })
-                    }
+                    onChange={(e) => setFormData({ ...formData, gstin: e.target.value })}
                     type="text"
-                    className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none uppercase"
+                    className="w-full border border-border rounded-lg px-4 py-2 bg-surface-2 text-foreground focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none uppercase"
                     placeholder="e.g. 22AAAAA0000A1Z5"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                  <label className="text-sm font-medium text-foreground">
                     Opening Balance (₹)
                   </label>
                   <input
@@ -503,34 +501,30 @@ export function Customers() {
                     type="number"
                     step="0.01"
                     value={formData.openingBalance}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        openingBalance: e.target.value,
-                      })
-                    }
-                    className="w-full border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    onChange={(e) => setFormData({ ...formData, openingBalance: e.target.value })}
+                    className="w-full border border-border rounded-lg px-4 py-2 bg-surface-2 text-foreground focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
                   />
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    Positive if they owe money, negative if they paid an
-                    advance.
+                  <p className="text-xs text-muted-foreground">
+                    Positive if they owe money, negative if they paid an advance.
                   </p>
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-3 pt-6 border-t border-zinc-100 dark:border-zinc-700">
+              <div className="flex justify-end space-x-3 pt-6 border-t border-border">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-5 py-2 text-zinc-600 dark:text-zinc-300 font-medium hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+                  className="px-5 py-2 text-muted-foreground font-medium hover:bg-muted rounded-lg transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-primary-600 text-white font-medium hover:bg-primary-700 rounded-lg transition-colors shadow-sm"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 bg-primary-600 text-white font-medium hover:bg-primary-700 rounded-lg transition-colors shadow-sm disabled:opacity-60 flex items-center gap-2"
                 >
-                  Save Customer
+                  {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {isSubmitting ? "Saving…" : "Save Customer"}
                 </button>
               </div>
             </form>
@@ -539,16 +533,16 @@ export function Customers() {
       )}
 
       {selectedCustomer && (
-        <div className="fixed inset-0 bg-zinc-900/50 flex items-center justify-center md:p-4 z-50 overflow-hidden">
-          <div className="bg-[#f8fafc] md:rounded-2xl w-full h-full md:h-auto max-w-4xl md:max-h-[90vh] overflow-hidden shadow-xl flex flex-col relative">
-            <div className="px-4 py-3 md:px-6 md:py-4 border-b border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 flex flex-wrap justify-between items-center gap-3 shrink-0">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center md:p-4 z-50 overflow-hidden">
+          <div className="bg-surface md:rounded-2xl w-full h-full md:h-auto max-w-4xl md:max-h-[90vh] overflow-hidden shadow-xl flex flex-col relative border border-border">
+            <div className="px-4 py-3 md:px-6 md:py-4 border-b border-border bg-surface flex flex-wrap justify-between items-center gap-3 shrink-0">
               <div>
-                <h3 className="text-xl font-bold text-zinc-900 dark:text-white">
+                <h3 className="text-xl font-bold text-foreground">
                   {selectedCustomer.name} - Statement
                 </h3>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                <p className="text-sm text-muted-foreground">
                   Current Balance:{" "}
-                  <strong className="text-zinc-900 dark:text-white">
+                  <strong className="text-foreground">
                     ₹{getCustomerBalance(selectedCustomer.id).toLocaleString()}
                   </strong>
                 </p>
@@ -577,7 +571,7 @@ export function Customers() {
                     `;
                     printHtml(html);
                   }}
-                  className="flex items-center gap-1 px-2.5 py-1.5 bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-xs sm:text-sm font-semibold rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-surface-2 hover:bg-muted text-foreground text-xs sm:text-sm font-semibold rounded-lg transition-colors"
                 >
                   <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Print</span>
                 </button>
@@ -659,40 +653,40 @@ export function Customers() {
                      }
                   }}
                   disabled={isExportingPdf}
-                  className="flex items-center gap-1 px-2.5 py-1.5 bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-xs sm:text-sm font-semibold rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-surface-2 hover:bg-muted text-foreground text-xs sm:text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
                 >
                   {isExportingPdf ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} <span className="hidden sm:inline">{isExportingPdf ? 'Generating...' : 'PDF'}</span>
                 </button>
                 <button
                   onClick={() => setSelectedCustomer(null)}
-                  className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:text-zinc-300 p-1 ml-1"
+                  className="text-muted-foreground hover:text-foreground p-1 ml-1"
                 >
                   <X className="w-6 h-6" />
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-zinc-800">
-               <div className="p-3 md:p-4 border-b border-zinc-100 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/50 flex flex-wrap gap-3 items-end shrink-0">
+            <div className="flex-1 flex flex-col min-h-0 bg-surface">
+               <div className="p-3 md:p-4 border-b border-border bg-surface-2/50 flex flex-wrap gap-3 items-end shrink-0">
                   <div className="flex-1 min-w-[130px]">
-                     <label className="text-xs font-semibold text-zinc-500 uppercase mb-1 block">From</label>
-                     <input type="date" value={ledgerStartDate} onChange={e => setLedgerStartDate(e.target.value)} className="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500" />
+                     <label className="text-xs font-semibold text-muted-foreground uppercase mb-1 block">From</label>
+                     <input type="date" value={ledgerStartDate} onChange={e => setLedgerStartDate(e.target.value)} className="w-full text-sm border border-border bg-surface text-foreground rounded-lg px-3 py-2 outline-none focus:border-primary-500" />
                   </div>
                   <div className="flex-1 min-w-[130px]">
-                     <label className="text-xs font-semibold text-zinc-500 uppercase mb-1 block">To</label>
-                     <input type="date" value={ledgerEndDate} onChange={e => setLedgerEndDate(e.target.value)} className="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500" />
+                     <label className="text-xs font-semibold text-muted-foreground uppercase mb-1 block">To</label>
+                     <input type="date" value={ledgerEndDate} onChange={e => setLedgerEndDate(e.target.value)} className="w-full text-sm border border-border bg-surface text-foreground rounded-lg px-3 py-2 outline-none focus:border-primary-500" />
                   </div>
                   <div className="flex-1 min-w-[130px]">
-                     <label className="text-xs font-semibold text-zinc-500 uppercase mb-1 block">Type</label>
-                     <select value={ledgerTxType} onChange={e => setLedgerTxType(e.target.value)} className="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500">
+                     <label className="text-xs font-semibold text-muted-foreground uppercase mb-1 block">Type</label>
+                     <select value={ledgerTxType} onChange={e => setLedgerTxType(e.target.value)} className="w-full text-sm border border-border bg-surface text-foreground rounded-lg px-3 py-2 outline-none focus:border-primary-500">
                         <option value="All">All Impact</option>
                         <option value="Charge">Charges (Dr)</option>
                         <option value="Payment">Payments (Cr)</option>
                      </select>
                   </div>
                   <div className="flex-1 min-w-[130px]">
-                     <label className="text-xs font-semibold text-zinc-500 uppercase mb-1 block">Category</label>
-                     <select value={ledgerTxCategory} onChange={e => setLedgerTxCategory(e.target.value)} className="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500">
+                     <label className="text-xs font-semibold text-muted-foreground uppercase mb-1 block">Category</label>
+                     <select value={ledgerTxCategory} onChange={e => setLedgerTxCategory(e.target.value)} className="w-full text-sm border border-border bg-surface text-foreground rounded-lg px-3 py-2 outline-none focus:border-primary-500">
                         <option value="All">All Types</option>
                         <option value="Slip">Slips (Dispatch)</option>
                         <option value="Invoice">Invoices</option>
@@ -700,8 +694,8 @@ export function Customers() {
                      </select>
                   </div>
                   <div className="flex-1 min-w-[130px]">
-                     <label className="text-xs font-semibold text-zinc-500 uppercase mb-1 block">Sort By</label>
-                     <select value={ledgerSortDirection} onChange={e => setLedgerSortDirection(e.target.value)} className="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded-lg px-3 py-2 outline-none focus:border-primary-500">
+                     <label className="text-xs font-semibold text-muted-foreground uppercase mb-1 block">Sort By</label>
+                     <select value={ledgerSortDirection} onChange={e => setLedgerSortDirection(e.target.value)} className="w-full text-sm border border-border bg-surface text-foreground rounded-lg px-3 py-2 outline-none focus:border-primary-500">
                         <option value="desc">Date (Newest First)</option>
                         <option value="asc">Date (Oldest First)</option>
                      </select>
@@ -710,7 +704,7 @@ export function Customers() {
 
               <div className="flex-1 overflow-y-auto p-3 md:p-5">
                 <div className="relative">
-                <div className="absolute left-8 top-0 bottom-0 w-px bg-zinc-200 hidden md:block"></div>
+                <div className="absolute left-8 top-0 bottom-0 w-px bg-border hidden md:block"></div>
                 <div className="space-y-6 relative">
                   {customerHistory.map((item, idx) => (
                     <div
@@ -719,41 +713,38 @@ export function Customers() {
                     >
                       <div className="hidden md:flex items-center justify-center w-16 h-8 absolute -left-0">
                         <div
-                          className={`w-3 h-3 rounded-full border-2 border-white ring-4 ring-white ${item.isCharge ? "bg-rose-500" : "bg-primary-500"} z-10`}
+                          className={`w-3 h-3 rounded-full border-2 border-surface ring-4 ring-surface ${item.isCharge ? "bg-danger" : "bg-primary-500"} z-10`}
                         ></div>
                       </div>
-                      <div className="md:ml-16 bg-white dark:bg-zinc-800 p-4 rounded-xl border border-zinc-100 dark:border-zinc-700 shadow-sm w-full group-hover:border-zinc-200 dark:border-zinc-700 transition-colors">
+                      <div className="md:ml-16 bg-surface p-4 rounded-xl border border-border shadow-sm w-full hover:border-border-strong transition-colors">
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex items-center">
                             {item.isCharge ? (
-                              <ArrowUpRight className="w-4 h-4 text-rose-500 mr-2 md:hidden" />
+                              <ArrowUpRight className="w-4 h-4 text-danger mr-2 md:hidden" />
                             ) : (
                               <ArrowDownRight className="w-4 h-4 text-primary-500 mr-2 md:hidden" />
                             )}
-                            <span className="font-semibold text-zinc-900 dark:text-white">
+                            <span className="font-semibold text-foreground">
                               {item.type}
                             </span>
                           </div>
                           <span
-                            className={`font-bold tracking-tight ${item.isCharge ? "text-rose-600" : "text-primary-600"}`}
+                            className={`font-bold tracking-tight ${item.isCharge ? "text-danger" : "text-primary-600"}`}
                           >
                             {item.isCharge ? "+" : "-"} ₹{" "}
                             {item.amount.toLocaleString()}
                           </span>
                         </div>
-                        <p className="text-zinc-600 dark:text-zinc-300 text-sm mb-3">
+                        <p className="text-muted-foreground text-sm mb-3">
                           {item.description}
                         </p>
-                        <div className="flex justify-between items-center pt-3 border-t border-zinc-50 dark:border-zinc-700/50 text-xs text-zinc-500 dark:text-zinc-400">
+                        <div className="flex justify-between items-center pt-3 border-t border-border text-xs text-muted-foreground">
                           <span>
                             {item.date === new Date(0).toISOString()
                               ? "Opening"
-                              : format(
-                                  parseISO(item.date),
-                                  "dd MMM yyyy, hh:mm a",
-                                )}
+                              : format(parseISO(item.date), "dd MMM yyyy, hh:mm a")}
                           </span>
-                          <span className="font-medium bg-zinc-50 dark:bg-zinc-900/50 px-2 py-1 rounded">
+                          <span className="font-medium bg-surface-2 px-2 py-1 rounded">
                             Run Bal: ₹ {item.runningBalance.toLocaleString()}{" "}
                             {item.runningBalance > 0 ? "Dr" : "Cr"}
                           </span>
@@ -762,7 +753,7 @@ export function Customers() {
                     </div>
                   ))}
                   {customerHistory.length === 0 && (
-                    <div className="text-center text-zinc-500 dark:text-zinc-400 py-12">
+                    <div className="text-center text-muted-foreground py-12">
                       No history found for this customer.
                     </div>
                   )}
@@ -771,10 +762,10 @@ export function Customers() {
             </div>
             </div>
 
-            <div className="px-4 py-3 md:px-6 md:py-4 bg-zinc-50 dark:bg-zinc-900/50 border-t border-zinc-200 dark:border-zinc-700 shrink-0 flex justify-end">
+            <div className="px-4 py-3 md:px-6 md:py-4 bg-surface-2/60 border-t border-border shrink-0 flex justify-end">
               <button
                 onClick={() => setSelectedCustomer(null)}
-                className="px-5 py-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg transition-colors shadow-sm"
+                className="px-5 py-2 bg-surface border border-border text-foreground font-medium hover:bg-surface-2 rounded-lg transition-colors shadow-sm"
               >
                 Close Statement
               </button>

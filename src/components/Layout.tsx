@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { PageSkeleton } from "./ui/Skeleton";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { Plus } from "lucide-react";
 
 const Dashboard = lazy(() => import("../pages/Dashboard").then(m => ({ default: m.Dashboard })));
@@ -309,7 +310,7 @@ export function Layout() {
           setIsOpen={setIsSidebarOpen}
         />
         <div className="flex-1 flex flex-col min-h-0 w-full relative min-w-0">
-          <Header onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
+          <Header onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} currentView={currentView} />
           <main
             id="main-content"
             className="flex-1 overflow-y-auto overflow-x-hidden app-content smooth-scroll has-bottom-nav"
@@ -322,9 +323,11 @@ export function Layout() {
                 {isLoading ? (
                   <PageSkeleton />
                 ) : (
-                  <div key={currentView} className="animate-page-in">
-                    {content}
-                  </div>
+                  <ErrorBoundary key={currentView}>
+                    <div className="animate-page-in">
+                      {content}
+                    </div>
+                  </ErrorBoundary>
                 )}
               </Suspense>
             </div>

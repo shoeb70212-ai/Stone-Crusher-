@@ -351,9 +351,14 @@ h1, h2, h3, h4 {
     touch-action: pan-y;
   }
 
-  /* Smooth transitions for all interactive elements */
-  button, a, input, select, textarea {
-    transition: all 0.2s ease-in-out;
+  /* Scope transitions to GPU-composited properties only.
+     `transition: all` triggers layout/paint on every scroll-caused reflow
+     which causes visible jank on mid-range Android phones. */
+  button, a {
+    transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+  }
+  input, select, textarea {
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
   /* GPU-accelerated animation helpers */

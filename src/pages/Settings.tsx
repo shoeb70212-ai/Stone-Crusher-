@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useErp } from "../context/ErpContext";
-import { CompanySettings } from "../types";
-import { Building2, Users, Receipt, Palette, X, UserPlus, KeyRound, Lock, Database, Upload, Download, Eye, EyeOff, Copy, Check as CheckIcon } from "lucide-react";
+import { CompanySettings, Customer, Employee, EmployeeTransaction, Vehicle, Slip, Transaction, Invoice, Quotation, Task, AuditLog } from "../types";
+import { Building2, Users, Receipt, Palette, X, UserPlus, KeyRound, Lock, Database, Upload, Download, Eye, EyeOff, Copy, Check as CheckIcon, ShieldCheck, CloudUpload, AlertTriangle } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { downloadCSV } from "../lib/export-utils";
+import { pushFullDatasetToCloud, hasMasterKey } from "../lib/sync-engine";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { useToast } from "../components/ui/Toast";
 import { getDeviceSummary, type DeviceSummary } from "../lib/device-info";
@@ -27,7 +28,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
 ];
 
 export function Settings() {
-  const { userRole, companySettings, updateCompanySettings, purgeInactiveRecords, session, invoices, addInvoice } = useErp();
+  const { userRole, companySettings, updateCompanySettings, purgeInactiveRecords, session, invoices, addInvoice, customers, employees, employeeTransactions, vehicles, slips, transactions, tasks, auditLogs, quotations } = useErp();
   const { addToast } = useToast();
 
   const visibleTabs = useMemo(() => {
@@ -112,18 +113,17 @@ export function Settings() {
     const before = companySettings.users || [];
     const after = localSettings.users || [];
     let latestVersion: number | undefined;
-    const hasChanges =
-      before.length !== after.length ||
-      before.some((oldUser) => {
-        const nextUser = after.find((u) => u.id === oldUser.id);
-        return (
-          !nextUser ||
-          nextUser.name !== oldUser.name ||
+    // Only check for field edits — deletions are handled immediately by handleRemoveUser.
+    const hasChanges = before.some((oldUser) => {
+      const nextUser = after.find((u) => u.id === oldUser.id);
+      return (
+        nextUser &&
+        (nextUser.name !== oldUser.name ||
           nextUser.email !== oldUser.email ||
           nextUser.role !== oldUser.role ||
-          nextUser.status !== oldUser.status
-        );
-      });
+          nextUser.status !== oldUser.status)
+      );
+    });
 
     if (!hasChanges) return { synced: true };
     if (!session?.access_token) {
@@ -132,22 +132,6 @@ export function Settings() {
     }
 
     const API_URL = import.meta.env.VITE_API_URL as string || "";
-
-    for (const oldUser of before) {
-      if (!after.some((u) => u.id === oldUser.id)) {
-        const res = await fetch(`${API_URL}/api/admin-users?id=${encodeURIComponent(oldUser.id)}`, {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-        });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          addToast("error", body.error || `Could not remove ${oldUser.name}.`);
-          return { synced: false };
-        }
-        const body = await res.json();
-        latestVersion = body.currentVersion;
-      }
-    }
 
     for (const nextUser of after) {
       const oldUser = before.find((u) => u.id === nextUser.id);
@@ -400,6 +384,29 @@ export function Settings() {
     }
   };
 
+  const handleRemoveUser = async (userId: string) => {
+    if (!session?.access_token) { addToast("error", "You must be signed in to remove users."); return; }
+    const API_URL = import.meta.env.VITE_API_URL as string || "";
+    const res = await fetch(`${API_URL}/api/admin-users?id=${encodeURIComponent(userId)}`, {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      addToast("error", body.error || "Could not remove user.");
+      return;
+    }
+    const body = await res.json();
+    const updated = {
+      ...localSettings,
+      users: (localSettings.users || []).filter((u) => u.id !== userId),
+      ...(body.currentVersion !== undefined ? { version: body.currentVersion } : {}),
+    };
+    setLocalSettings(updated);
+    updateCompanySettings(updated);
+    addToast("success", "User removed.");
+  };
+
   const sharedProps = { localSettings, setLocalSettings, isSaved, onSave: handleSave };
 
   return (
@@ -425,15 +432,16 @@ export function Settings() {
                 onClick={() => setActiveTab(id)}
                 aria-current={activeTab === id ? "page" : undefined}
                 aria-selected={activeTab === id}
-                className={`flex items-center gap-1.5 px-3 md:px-4 py-2.5 md:py-3 text-xs md:text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0 min-h-[44px] ${
+                title={label}
+                className={`flex items-center gap-1.5 px-3 md:px-4 py-2.5 md:py-3 text-xs md:text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0 min-h-[44px] min-w-[44px] justify-center sm:justify-start ${
                   activeTab === id
                     ? "border-primary-600 text-foreground"
                     : "border-transparent text-muted-foreground hover:text-foreground hover:border-border-strong"
                 }`}
               >
                 <Icon className="w-4 h-4 shrink-0" />
+                {/* Icon-only on very small screens; full label on sm+ */}
                 <span className="hidden sm:inline">{label}</span>
-                <span className="sm:hidden">{label.split(' ')[0]}</span>
               </button>
             ))}
           </div>
@@ -459,99 +467,28 @@ export function Settings() {
               onOpenInvite={() => setIsCreateUserModalOpen(true)}
               onOpenChangePassword={() => setIsChangePasswordOpen(true)}
               onOpenResetPassword={(id) => { setResetTargetId(id); setResetPasswordValue(""); }}
+            onRemoveUser={handleRemoveUser}
             />
           )}
           {activeTab === "materials" && <SettingsMaterials {...sharedProps} />}
           {activeTab === "appearance" && <SettingsAppearance {...sharedProps} />}
           {activeTab === "invoicing" && <SettingsInvoicing {...sharedProps} />}
           {activeTab === "data" && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-xl font-display font-bold text-foreground tracking-tight">Data Management</h3>
-                <p className="text-sm text-muted-foreground mt-1">Import and export invoice records.</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="border border-border rounded-xl p-4 space-y-3 bg-surface">
-                  <div className="flex items-center gap-2">
-                    <Upload className="w-5 h-5 text-primary-600" />
-                    <h4 className="font-semibold text-foreground">Import Invoices</h4>
-                  </div>
-                  <p className="text-xs text-muted-foreground">Upload a JSON file containing invoice records.</p>
-                  <label className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg cursor-pointer hover:bg-primary-700 transition-colors active:scale-95">
-                    <Upload className="w-4 h-4" />
-                    Choose JSON File
-                    <input
-                      type="file"
-                      accept=".json"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        try {
-                          const text = await file.text();
-                          const data = JSON.parse(text);
-                          const items = Array.isArray(data) ? data : data.invoices;
-                          if (!Array.isArray(items)) {
-                            addToast("error", "Invalid file format. Expected an array of invoices.");
-                            return;
-                          }
-                          let imported = 0;
-                          for (const inv of items) {
-                            if (inv && inv.id && inv.invoiceNo) {
-                              addInvoice(inv);
-                              imported++;
-                            }
-                          }
-                          addToast("success", `Imported ${imported} invoice(s).`);
-                        } catch {
-                          addToast("error", "Failed to import invoices. Ensure the file is valid JSON.");
-                        } finally {
-                          if (e.target) e.target.value = "";
-                        }
-                      }}
-                    />
-                  </label>
-                </div>
-
-                <div className="border border-zinc-200 dark:border-zinc-700 rounded-xl p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Download className="w-5 h-5 text-primary-600" />
-                    <h4 className="font-semibold text-zinc-900 dark:text-white">Export Invoices</h4>
-                  </div>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Download all invoices as a CSV file.</p>
-                  <button
-                    onClick={async () => {
-                      try {
-                        const rows = invoices.map((inv) => ({
-                          invoiceNo: inv.invoiceNo,
-                          date: new Date(inv.date).toLocaleDateString(),
-                          type: inv.type,
-                          customerId: inv.customerId,
-                          total: inv.total,
-                          status: inv.status,
-                        }));
-                        await downloadCSV(rows, {
-                          invoiceNo: "Invoice No",
-                          date: "Date",
-                          type: "Type",
-                          customerId: "Customer ID",
-                          total: "Total (₹)",
-                          status: "Status",
-                        }, `Invoices_${new Date().toISOString().split("T")[0]}`);
-                        addToast("success", "Invoices exported successfully.");
-                      } catch {
-                        addToast("error", "Failed to export invoices.");
-                      }
-                    }}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-sm font-medium rounded-lg hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors active:scale-95"
-                  >
-                    <Download className="w-4 h-4" />
-                    Export CSV
-                  </button>
-                </div>
-              </div>
-            </div>
+            <DataTab
+              invoices={invoices}
+              customers={customers}
+              employees={employees}
+              employeeTransactions={employeeTransactions}
+              vehicles={vehicles}
+              slips={slips}
+              transactions={transactions}
+              tasks={tasks}
+              auditLogs={auditLogs}
+              quotations={quotations}
+              companySettings={companySettings}
+              addInvoice={addInvoice}
+              addToast={addToast}
+            />
           )}
         </div>
       </div>
@@ -768,5 +705,207 @@ export function Settings() {
         onCancel={() => setIsPurgeConfirmOpen(false)}
       />
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// DataTab — extracted so Settings stays under the 800-line limit
+// ---------------------------------------------------------------------------
+
+interface DataTabProps {
+  invoices: Invoice[];
+  customers: Customer[];
+  employees: Employee[];
+  employeeTransactions: EmployeeTransaction[];
+  vehicles: Vehicle[];
+  slips: Slip[];
+  transactions: Transaction[];
+  tasks: Task[];
+  auditLogs: AuditLog[];
+  quotations: Quotation[];
+  companySettings: CompanySettings;
+  addInvoice: (invoice: Invoice) => boolean;
+  addToast: (type: "success" | "error" | "warning" | "info", message: string) => void;
+}
+
+function DataTab({
+  invoices, customers, employees, employeeTransactions, vehicles,
+  slips, transactions, tasks, auditLogs, quotations, companySettings,
+  addInvoice, addToast,
+}: DataTabProps) {
+  const [migrating, setMigrating] = useState(false);
+  const [migrationDone, setMigrationDone] = useState(false);
+
+  const handleMigrateToCloud = async () => {
+    if (!hasMasterKey()) {
+      addToast("error", "Vault is locked. Please unlock the vault first (log out and log back in).");
+      return;
+    }
+
+    setMigrating(true);
+    try {
+      const payload: Record<string, unknown[]> & { companySettings?: CompanySettings } = {
+        customers,
+        employees,
+        employeeTransactions,
+        vehicles,
+        slips,
+        transactions,
+        invoices,
+        quotations,
+        tasks,
+        auditLogs,
+      };
+      payload.companySettings = companySettings;
+      await pushFullDatasetToCloud(payload as Parameters<typeof pushFullDatasetToCloud>[0]);
+      setMigrationDone(true);
+      addToast("success", "All data encrypted and pushed to cloud successfully.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      addToast("error", `Migration failed: ${msg}`);
+    } finally {
+      setMigrating(false);
+    }
+  };
+
+  const handleDownloadBackup = async () => {
+    try {
+      const data = {
+        customers, employees, employeeTransactions, vehicles,
+        slips, transactions, invoices, quotations, tasks, auditLogs,
+        companySettings,
+      };
+      const jsonStr = JSON.stringify(data, null, 2);
+      const filename = `crushtrack-backup-${new Date().toISOString().split("T")[0]}.json`;
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+      addToast("success", "Backup downloaded.");
+    } catch {
+      addToast("error", "Failed to download backup.");
+    }
+  };
+
+  const totalRecords =
+    customers.length + employees.length + employeeTransactions.length +
+    vehicles.length + slips.length + transactions.length +
+    invoices.length + quotations.length + tasks.length + auditLogs.length;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-xl font-display font-bold text-foreground tracking-tight">Data Management</h3>
+        <p className="text-sm text-muted-foreground mt-1">Encrypt and migrate all business data to the secure cloud vault.</p>
+      </div>
+
+      {/* Migrate to Encrypted Cloud */}
+      <div className="border border-amber-200 dark:border-amber-800 rounded-xl p-5 space-y-4 bg-amber-50 dark:bg-amber-950/30">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
+          <div>
+            <h4 className="font-semibold text-foreground">Migrate All Data to Encrypted Vault</h4>
+            <p className="text-xs text-muted-foreground mt-1">
+              This pushes every record ({totalRecords} total) from local storage into the encrypted cloud vault.
+              Run this once to ensure <strong>encrypted_records</strong> is the single source of truth.
+              The vault must be unlocked (master password entered after login).
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleMigrateToCloud}
+            disabled={migrating || migrationDone}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors active:scale-95"
+          >
+            {migrating ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Migrating…
+              </>
+            ) : migrationDone ? (
+              <>
+                <ShieldCheck className="w-4 h-4" />
+                Migration Complete
+              </>
+            ) : (
+              <>
+                <CloudUpload className="w-4 h-4" />
+                Encrypt &amp; Push All Data
+              </>
+            )}
+          </button>
+          {migrationDone && (
+            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+              All {totalRecords} records pushed to encrypted_records.
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Backup / Export */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="border border-border rounded-xl p-4 space-y-3 bg-surface">
+          <div className="flex items-center gap-2">
+            <Download className="w-5 h-5 text-primary-600" />
+            <h4 className="font-semibold text-foreground">Download Backup</h4>
+          </div>
+          <p className="text-xs text-muted-foreground">Save a full JSON backup of all business data.</p>
+          <button
+            onClick={handleDownloadBackup}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-sm font-medium rounded-lg hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors active:scale-95"
+          >
+            <Download className="w-4 h-4" />
+            Download JSON
+          </button>
+        </div>
+
+        <div className="border border-border rounded-xl p-4 space-y-3 bg-surface">
+          <div className="flex items-center gap-2">
+            <Upload className="w-5 h-5 text-primary-600" />
+            <h4 className="font-semibold text-foreground">Import Invoices</h4>
+          </div>
+          <p className="text-xs text-muted-foreground">Upload a JSON file containing invoice records.</p>
+          <label className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg cursor-pointer hover:bg-primary-700 transition-colors active:scale-95">
+            <Upload className="w-4 h-4" />
+            Choose JSON File
+            <input
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  const text = await file.text();
+                  const data = JSON.parse(text);
+                  const items: unknown[] = Array.isArray(data) ? data : data.invoices;
+                  if (!Array.isArray(items)) {
+                    addToast("error", "Invalid file format. Expected an array of invoices.");
+                    return;
+                  }
+                  let imported = 0;
+                  for (const inv of items) {
+                    if (inv && typeof inv === "object" && "id" in inv && "invoiceNo" in inv) {
+                      addInvoice(inv as Invoice);
+                      imported++;
+                    }
+                  }
+                  addToast("success", `Imported ${imported} invoice(s).`);
+                } catch {
+                  addToast("error", "Failed to import invoices. Ensure the file is valid JSON.");
+                } finally {
+                  if (e.target) e.target.value = "";
+                }
+              }}
+            />
+          </label>
+        </div>
+      </div>
+    </div>
   );
 }

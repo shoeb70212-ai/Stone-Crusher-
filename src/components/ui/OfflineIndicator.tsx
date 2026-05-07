@@ -65,7 +65,8 @@ export function OfflineIndicator({
   if (syncStatus === 'failed') {
     return (
       <div
-        className="fixed top-0 left-0 right-0 z-50 bg-rose-600 text-white py-2 px-4 flex items-center justify-center gap-3"
+        className="fixed top-0 left-0 right-0 z-50 bg-danger text-white px-4 flex items-center justify-center gap-3"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 8px)', paddingBottom: '8px' }}
         role="alert"
         aria-live="assertive"
       >
@@ -91,7 +92,8 @@ export function OfflineIndicator({
 
   return (
     <div
-      className="fixed top-0 left-0 right-0 z-50 bg-amber-500 text-white py-2 px-4 flex items-center justify-center gap-2"
+      className="fixed top-0 left-0 right-0 z-50 bg-warning text-white px-4 flex items-center justify-center gap-2"
+      style={{ paddingTop: 'calc(env(safe-area-inset-top) + 8px)', paddingBottom: '8px' }}
       role="status"
       aria-live="polite"
     >

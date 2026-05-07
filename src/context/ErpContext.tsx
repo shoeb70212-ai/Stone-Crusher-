@@ -34,27 +34,16 @@ import {
   getLocalCollectionRecent,
   saveLocalSingleton,
   getLocalSingleton,
-  setLocalCollection,
   deleteLocalRecord,
   isLocalEmpty,
   pushDeltaToCloud,
   pullAllFromCloud,
-  pushFullDatasetToCloud,
   hasMasterKey,
+  clearMasterKey,
 } from "../lib/sync-engine";
 
 // ---------------------------------------------------------------------------
-// API helpers
-// ---------------------------------------------------------------------------
 
-/** Returns headers for every /api/data request. */
-function apiHeaders(session?: Session | null, includeContentType = true): Record<string, string> {
-  const headers: Record<string, string> = includeContentType ? { 'Content-Type': 'application/json' } : {};
-  const key = import.meta.env.VITE_API_KEY as string | undefined;
-  if (key) headers['x-api-key'] = key;
-  if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
-  return headers;
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -354,84 +343,32 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
       try {
         const localEmpty = await isLocalEmpty();
         if (!localEmpty) {
-          console.log('[ErpContext] Loading from IndexedDB (offline cache)...');
           loaded = await loadFromIDB();
-          if (loaded) console.log('[ErpContext] IndexedDB load complete.');
         }
       } catch (e) {
-        console.warn('[ErpContext] IndexedDB initial check failed:', e);
+        console.warn('[ErpContext] IndexedDB load failed:', e);
       }
 
-      // ── Priority 2: Supabase cloud (if vault is unlocked) ──
+      // ── Priority 2: Supabase encrypted cloud (authoritative source) ──
+      // Always pull when the vault is unlocked so every device stays in sync.
       if (hasMasterKey() && isVaultUnlocked) {
         try {
-          console.log('[ErpContext] Pulling from Supabase (encrypted cloud)...');
           const cloudData = await pullAllFromCloud();
           if (cloudData) {
-            await loadFromIDB(); // Load paginated data from the newly updated IDB
+            // Re-load from IDB so paginated windowing is respected
+            await loadFromIDB();
             loaded = true;
-            console.log('[ErpContext] Cloud pull complete.');
           }
         } catch (e) {
           console.warn('[ErpContext] Cloud pull failed (offline?):', e);
         }
       }
 
-      // ── Priority 3: Legacy API fallback ──
-      // Always try the server API if neither IDB nor E2EE cloud provided data.
-      // The encrypted_records table may be empty if no E2EE migration has run yet.
+      // ── Fallback: localStorage snapshot (no network, no IDB) ──
       if (!loaded) {
-        try {
-          console.log('[ErpContext] Falling back to legacy server.ts...');
-          const API_URL = import.meta.env.VITE_API_URL || "";
-          const res = await fetch(`${API_URL}/api/data`, {
-            headers: apiHeaders(session, false),
-          });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const data = await res.json();
-          if (typeof data.bootstrapRequired === 'boolean') setBootstrapRequired(data.bootstrapRequired);
-          
-          // ── One-time migration: save to IndexedDB + push to Supabase ──
-          console.log('[ErpContext] Migrating legacy data to IndexedDB...');
-          const collections = [
-            'customers', 'employees', 'employeeTransactions', 'slips',
-            'transactions', 'vehicles', 'invoices', 'quotations', 'tasks', 'auditLogs',
-          ];
-          for (const col of collections) {
-            if (Array.isArray(data[col])) {
-              await setLocalCollection(col, data[col]);
-            }
-          }
-          if (data.companySettings) {
-            await saveLocalSingleton('companySettings', data.companySettings);
-          }
-
-          await loadFromIDB();
-          loaded = true;
-
-          // Push to Supabase (encrypted) if vault is unlocked
-          if (hasMasterKey()) {
-            try {
-              console.log('[ErpContext] Pushing legacy data to Supabase (encrypted)...');
-              const migrationPayload: any = {};
-              for (const col of collections) {
-                if (Array.isArray(data[col])) migrationPayload[col] = data[col];
-              }
-              if (data.companySettings) migrationPayload.companySettings = data.companySettings;
-              await pushFullDatasetToCloud(migrationPayload);
-              console.log('[ErpContext] Migration to Supabase complete!');
-            } catch (e) {
-              console.warn('[ErpContext] Migration push to Supabase failed (will retry):', e);
-            }
-          }
-        } catch {
-          // Server also unreachable — try localStorage as absolute last resort
-          const saved = localStorage.getItem(LOCAL_BACKUP_KEY);
-          if (saved) {
-            try {
-              applyDataToState(JSON.parse(saved));
-            } catch { /* corrupt backup — start fresh */ }
-          }
+        const saved = localStorage.getItem(LOCAL_BACKUP_KEY);
+        if (saved) {
+          try { applyDataToState(JSON.parse(saved)); } catch { /* corrupt — ignore */ }
         }
       }
 
@@ -585,18 +522,6 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
       // ── Step 2: Push encrypted delta to Supabase (if vault unlocked) ──
       if (hasMasterKey()) {
         await pushDeltaToCloud(payload.updates, payload.deletions);
-      }
-
-      // ── Step 3 (legacy): Also push to local server.ts if it's reachable ──
-      try {
-        const API_URL = import.meta.env.VITE_API_URL || "";
-        await fetch(`${API_URL}/api/data`, {
-          method: "PATCH",
-          headers: apiHeaders(session),
-          body: JSON.stringify(payload),
-        });
-      } catch {
-        // server.ts is optional now — ignore if unreachable
       }
 
       retryCountRef.current = 0;
@@ -763,6 +688,8 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
     );
 
     if (match?.status === 'Inactive') {
+      // Store the reason so the Login screen can display it after the redirect.
+      sessionStorage.setItem('crushtrack_signout_reason', 'inactive');
       supabase.auth.signOut();
       localStorage.removeItem('erp_auth_token');
       localStorage.removeItem('erp_user_role');
@@ -810,8 +737,9 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
     return { actorName: `${userRole ?? 'Unknown'} User`, actorRole: (userRole ?? 'System') as AuditLog['actorRole'] };
   }, [session, companySettings.users, userRole]);
 
-  /** Signs the current user out of Supabase Auth and clears local state. */
+  /** Signs the current user out of Supabase Auth, locks the vault, and clears local state. */
   const signOut = useCallback(async () => {
+    clearMasterKey();
     await supabase.auth.signOut();
     localStorage.removeItem('erp_auth_token');
     localStorage.removeItem('erp_user_role');
@@ -1607,17 +1535,17 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
   const loadHistoricalData = useCallback(async () => {
     try {
       const allSlips = await getLocalCollection('slips');
-      setSlips(allSlips);
+      setSlips(allSlips as unknown as Slip[]);
       const allInvoices = await getLocalCollection('invoices');
-      setInvoices(allInvoices);
+      setInvoices(allInvoices as unknown as Invoice[]);
       const allTransactions = await getLocalCollection('transactions');
-      setTransactions(allTransactions);
+      setTransactions(allTransactions as unknown as Transaction[]);
       const allQuotations = await getLocalCollection('quotations');
-      setQuotations(allQuotations);
+      setQuotations(allQuotations as unknown as Quotation[]);
       const allEmployeeTx = await getLocalCollection('employeeTransactions');
-      setEmployeeTransactions(allEmployeeTx);
+      setEmployeeTransactions(allEmployeeTx as unknown as EmployeeTransaction[]);
       const allAuditLogs = await getLocalCollection('auditLogs');
-      setAuditLogs(allAuditLogs);
+      setAuditLogs(allAuditLogs as unknown as AuditLog[]);
 
       // Reset historical balances since all data is now in state
       setHistoricalBalances({});
@@ -1630,9 +1558,9 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
   const loadInactiveCustomers = useCallback(async () => {
     try {
       const allCustomers = await getLocalCollection('customers');
-      setCustomers(allCustomers);
+      setCustomers(allCustomers as unknown as Customer[]);
       const allEmployees = await getLocalCollection('employees');
-      setEmployees(allEmployees);
+      setEmployees(allEmployees as unknown as Employee[]);
     } catch (e) {
       console.error('[ErpContext] Failed to load inactive customers:', e);
     }

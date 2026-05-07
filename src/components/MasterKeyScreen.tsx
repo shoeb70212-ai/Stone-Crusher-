@@ -59,8 +59,8 @@ export default function MasterKeyScreen({ onUnlocked }: MasterKeyScreenProps) {
   }, []);
 
   const handleSetup = useCallback(async () => {
-    if (!password || password.length < 6) {
-      setError('Master Password must be at least 6 characters.');
+    if (!password || password.length < 12) {
+      setError('Master Password must be at least 12 characters.');
       return;
     }
     if (password !== confirmPassword) {
@@ -214,7 +214,7 @@ export default function MasterKeyScreen({ onUnlocked }: MasterKeyScreenProps) {
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter master password"
+              placeholder="At least 12 characters"
               style={styles.input}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !isFirstTime) handleUnlock();

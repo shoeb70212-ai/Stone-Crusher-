@@ -13,11 +13,12 @@ interface Props {
   onOpenInvite: () => void;
   onOpenChangePassword: () => void;
   onOpenResetPassword: (userId: string) => void;
+  onRemoveUser: (userId: string) => void;
 }
 
 export function SettingsUsers({
   localSettings, setLocalSettings, isSaved, userRole,
-  onSave, onOpenInvite, onOpenChangePassword, onOpenResetPassword,
+  onSave, onOpenInvite, onOpenChangePassword, onOpenResetPassword, onRemoveUser,
 }: Props) {
   const { session } = useErp();
   // Identify the currently logged-in user so the Remove button is hidden for them.
@@ -161,12 +162,7 @@ export function SettingsUsers({
                       )}
                       {userRole === "Admin" && !isCurrentUser && (
                         <button
-                          onClick={() =>
-                            setLocalSettings({
-                              ...localSettings,
-                              users: (localSettings.users || []).filter((u) => u.id !== user.id),
-                            })
-                          }
+                          onClick={() => onRemoveUser(user.id)}
                           className="text-rose-600 hover:text-rose-900 dark:text-rose-400 dark:hover:text-rose-300 text-sm font-medium"
                         >
                           Remove
@@ -252,12 +248,7 @@ export function SettingsUsers({
                 )}
                 {userRole === "Admin" && !isCurrentUser && (
                   <button
-                    onClick={() =>
-                      setLocalSettings({
-                        ...localSettings,
-                        users: (localSettings.users || []).filter((u) => u.id !== user.id),
-                      })
-                    }
+                    onClick={() => onRemoveUser(user.id)}
                     className="text-rose-600 hover:text-rose-900 dark:text-rose-400 dark:hover:text-rose-300 text-xs font-medium"
                   >
                     Remove

@@ -14,6 +14,7 @@ import {
   X,
   MessageCircle,
   Search,
+  Loader2,
 } from "lucide-react";
 import { CreateSlipForm } from "../components/forms/CreateSlipForm";
 import { EditSlipForm } from "../components/forms/EditSlipForm";
@@ -23,7 +24,8 @@ import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { DocumentActionButton, type DocumentAction } from "../components/ui/DocumentActionButton";
 import { cn, formatVehicleNo, normalizeVehicleNo } from "../lib/utils";
 import { useHapticFeedback } from "../lib/use-haptic-feedback";
-import { getStatusColor } from "../lib/status-styles";
+import { usePullToRefresh } from "../lib/use-pull-to-refresh";
+import { getStatusColor, getStatusSymbol } from "../lib/status-styles";
 import { useDebounce } from "../lib/use-debounce";
 import { createSlipPdfBlob, downloadPdfBlob, printPdfBlob, sharePdfBlob } from "../lib/print-utils";
 import { buildSlipWhatsAppMessage, openWhatsAppMessage } from "../lib/whatsapp-share";
@@ -33,7 +35,7 @@ import { useToast } from "../components/ui/Toast";
 type SlipDocumentAction = DocumentAction;
 
 export function Dispatch() {
-  const { slips, customers, vehicles, updateSlipStatus, companySettings } =
+  const { slips, customers, vehicles, updateSlipStatus, companySettings, flushSync } =
     useErp();
   const { tap, success } = useHapticFeedback();
   const { addToast } = useToast();
@@ -52,6 +54,12 @@ export function Dispatch() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearch = useDebounce(searchQuery, 300);
+
+  // Pull-to-refresh — triggers a manual cloud sync on the mobile list
+  const { containerRef: pullRef, pullDistance, isRefreshing } = usePullToRefresh({
+    onRefresh: async () => { await flushSync(); },
+    disabled: isCreateOpen || !!editingSlip || isFilterOpen || searchOpen,
+  });
 
   // Filters
   const [filterDate, setFilterDate] = useState("");
@@ -644,11 +652,27 @@ export function Dispatch() {
         <div className="p-2 md:p-5">
           {/* ── Mobile card list ── */}
           <div
+            ref={pullRef}
             className={cn(
-              "md:hidden",
+              "md:hidden relative overflow-y-auto",
               companySettings.mobileLayout === "Compact" ? "mobile-compact-list" : "",
             )}
           >
+            {/* Pull-to-refresh indicator */}
+            {(pullDistance > 0 || isRefreshing) && (
+              <div
+                className="flex items-center justify-center overflow-hidden transition-all duration-150"
+                style={{ height: isRefreshing ? 48 : pullDistance }}
+              >
+                <Loader2
+                  className={cn(
+                    "w-5 h-5 text-primary-500 transition-transform duration-150",
+                    isRefreshing ? "animate-spin" : "",
+                  )}
+                  style={{ transform: isRefreshing ? undefined : `rotate(${(pullDistance / 72) * 180}deg)` }}
+                />
+              </div>
+            )}
             {filteredSlips.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-zinc-400 dark:text-zinc-600 text-center">
                 <Truck className="w-10 h-10 mb-3 opacity-30" />
@@ -686,8 +710,9 @@ export function Dispatch() {
                             >
                               {formatVehicleNo(slip.vehicleNo)}
                             </span>
-                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase shrink-0 ${getStatusColor(slip.status)}`}
+                            <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase shrink-0 ${getStatusColor(slip.status)}`}
                             >
+                              <span aria-hidden="true">{getStatusSymbol(slip.status)}</span>
                               {slip.status}
                             </span>
                           </div>
@@ -708,24 +733,21 @@ export function Dispatch() {
                         </div>
                       </div>
 
-                      {/* Swipe-like action row */}
-                      <div className="px-2 py-2 border-t border-zinc-100 dark:border-zinc-700/50 bg-zinc-50 dark:bg-zinc-800/50"
-                      >
-                        <div className="flex items-center gap-1.5"
-                        >
+                      {/* Action row — min 44 px touch targets on all icon buttons */}
+                      <div className="px-2 py-1.5 border-t border-zinc-100 dark:border-zinc-700/50 bg-zinc-50 dark:bg-zinc-800/50">
+                        <div className="flex items-center gap-1">
                           {slip.status === "Pending" && (
                             <>
                               <button
                                 onClick={() => { success(); updateSlipStatus(slip.id, "Loaded"); }}
-                                className="flex-1 py-2 text-[11px] font-semibold bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 rounded-lg hover:bg-blue-100 active:scale-[0.98] transition-all"
+                                className="flex-1 min-h-[44px] text-[11px] font-semibold bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 rounded-lg hover:bg-blue-100 active:scale-[0.98] transition-transform"
                                 aria-label={`Mark slip ${slip.id} as loaded`}
                               >
                                 Load
                               </button>
                               <button
                                 onClick={() => { tap(); setSlipToCancel(slip.id); }}
-                                className="p-2.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 active:scale-95 transition-all"
-                                title="Cancel"
+                                className="w-11 h-11 flex items-center justify-center text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 active:scale-95 transition-transform"
                                 aria-label={`Cancel slip ${slip.id}`}
                               >
                                 <Ban className="w-4 h-4" />
@@ -735,7 +757,7 @@ export function Dispatch() {
                           {slip.status === "Loaded" && (
                             <button
                               onClick={() => { success(); updateSlipStatus(slip.id, "Tallied"); }}
-                              className="flex-1 py-2 text-[11px] font-semibold bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400 rounded-lg hover:bg-primary-100 active:scale-[0.98] transition-all"
+                              className="flex-1 min-h-[44px] text-[11px] font-semibold bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400 rounded-lg hover:bg-primary-100 active:scale-[0.98] transition-transform"
                               aria-label={`Mark slip ${slip.id} as tallied`}
                             >
                               Tally
@@ -743,23 +765,24 @@ export function Dispatch() {
                           )}
                           <button
                             onClick={() => setEditingSlip(slip)}
-                            className="p-2.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
-                            title="Edit"
+                            className="w-11 h-11 flex items-center justify-center text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-transform"
                             aria-label={`Edit slip ${slip.id}`}
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => void handleSlipDocumentAction(slip, "download")}
-                            className="p-2.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
-                            title="Download"
+                            onClick={() => void handleSlipDocumentAction(slip, "whatsapp")}
+                            disabled={activeSlipAction?.id === slip.id && activeSlipAction?.action === "whatsapp"}
+                            className="w-11 h-11 flex items-center justify-center text-zinc-400 hover:text-green-600 dark:hover:text-green-400 rounded-lg hover:bg-green-50 dark:hover:bg-green-500/10 active:scale-95 transition-transform disabled:opacity-40"
+                            aria-label={`Share slip ${slip.id} via WhatsApp`}
                           >
-                            <Download className="w-4 h-4" />
+                            <MessageCircle className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => void handleSlipDocumentAction(slip, "print")}
-                            className="p-2.5 text-zinc-400 hover:text-primary-600 dark:hover:text-primary-400 rounded-lg hover:bg-primary-50 active:scale-95 transition-all"
-                            title="Print"
+                            disabled={activeSlipAction?.id === slip.id && activeSlipAction?.action === "print"}
+                            className="w-11 h-11 flex items-center justify-center text-zinc-400 hover:text-primary-600 dark:hover:text-primary-400 rounded-lg hover:bg-primary-50 active:scale-95 transition-transform disabled:opacity-40"
+                            aria-label={`Print slip ${slip.id}`}
                           >
                             <Printer className="w-4 h-4" />
                           </button>
@@ -866,10 +889,11 @@ export function Dispatch() {
                       <td className="px-4 py-4">
                         <span
                           className={cn(
-                            "px-2.5 py-1 rounded-full text-xs font-semibold",
+                            "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold",
                             getStatusColor(slip.status),
                           )}
                         >
+                          <span aria-hidden="true">{getStatusSymbol(slip.status)}</span>
                           {slip.status}
                         </span>
                       </td>
