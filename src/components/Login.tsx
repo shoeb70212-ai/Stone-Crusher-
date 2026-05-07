@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, User, AlertCircle, Fingerprint, Eye, EyeOff } from 'lucide-react';
 import { useErp } from '../context/ErpContext';
-import { loginSchema, type LoginInput } from '../lib/validation';
-import { supabase, isSupabaseConfigured, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { ForgotPasswordScreen } from './ForgotPasswordScreen';
 import {
   isBiometricAvailable,
@@ -22,7 +21,7 @@ export function Login({ onLogin }: LoginProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
   const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
   const [canUseBiometric, setCanUseBiometric] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
@@ -57,24 +56,42 @@ export function Login({ onLogin }: LoginProps) {
     }
 
     const cleanedUsername = username.trim();
-    const validation: LoginInput = { email: cleanedUsername, password };
-    const result = loginSchema.safeParse(validation);
 
-    if (!result.success) {
-      const errors: { email?: string; password?: string } = {};
-      result.error.issues.forEach((issue) => {
-        if (issue.path[0] === 'email') errors.email = issue.message;
-        if (issue.path[0] === 'password') errors.password = issue.message;
-      });
-      setFieldErrors(errors);
+    // Simple client-side validation
+    if (!cleanedUsername) {
+      setFieldErrors({ username: 'Username is required' });
+      setIsSubmitting(false);
+      return;
+    }
+    if (!password) {
+      setFieldErrors({ password: 'Password is required' });
       setIsSubmitting(false);
       return;
     }
 
     try {
-      // Resolve the email — the user may have typed their name instead.
+      // Resolve the email — the user may have typed their name instead of email.
+      let loginEmail = cleanedUsername.toLowerCase();
+
+      // If the input doesn't look like an email, try to find a matching user by name.
+      if (!loginEmail.includes('@')) {
+        const users = companySettings.users ?? [];
+        const match = users.find(
+          (u) => u.name.toLowerCase() === loginEmail ||
+                 u.name.toLowerCase().replace(/\s+/g, '') === loginEmail.replace(/\s+/g, ''),
+        );
+        if (match) {
+          loginEmail = match.email.toLowerCase();
+        } else {
+          // No matching user found by name — still try as-is (Supabase will reject).
+          setError('No account found with that username. Try your email instead.');
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       const { error: authError } = await supabase.auth.signInWithPassword({
-        email: cleanedUsername.toLowerCase(),
+        email: loginEmail,
         password,
       });
 
@@ -252,7 +269,7 @@ export function Login({ onLogin }: LoginProps) {
                 htmlFor="login-username"
                 className="block text-xs font-semibold text-foreground tracking-wide"
               >
-                Email address
+                Username
               </label>
               <div className="relative">
                 <User className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -262,16 +279,16 @@ export function Login({ onLogin }: LoginProps) {
                   required
                   autoCapitalize="none"
                   autoCorrect="off"
-                  aria-invalid={!!fieldErrors.email}
-                  aria-describedby={fieldErrors.email ? 'username-error' : undefined}
+                  aria-invalid={!!fieldErrors.username}
+                  aria-describedby={fieldErrors.username ? 'username-error' : undefined}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className={`w-full h-12 pl-11 pr-4 text-base md:text-sm bg-surface md:bg-surface-2 border border-border rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-colors text-foreground placeholder:text-muted-foreground ${fieldErrors.email ? 'border-danger ring-2 ring-danger/20' : ''}`}
-                  placeholder="you@company.com"
+                  className={`w-full h-12 pl-11 pr-4 text-base md:text-sm bg-surface md:bg-surface-2 border border-border rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-colors text-foreground placeholder:text-muted-foreground ${fieldErrors.username ? 'border-danger ring-2 ring-danger/20' : ''}`}
+                  placeholder="Your name or email"
                 />
               </div>
-              {fieldErrors.email && (
-                <p id="username-error" className="text-xs text-danger ml-0.5" role="alert">{fieldErrors.email}</p>
+              {fieldErrors.username && (
+                <p id="username-error" className="text-xs text-danger ml-0.5" role="alert">{fieldErrors.username}</p>
               )}
             </div>
 
