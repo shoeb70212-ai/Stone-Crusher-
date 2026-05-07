@@ -39,6 +39,7 @@ export function SetPasswordScreen({ onPasswordSet, userName }: SetPasswordScreen
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
+      const userEmail = sessionData.session?.user?.email;
       if (!token) {
         setError('Your session has expired. Please sign in again.');
         return;
@@ -53,8 +54,25 @@ export function SetPasswordScreen({ onPasswordSet, userName }: SetPasswordScreen
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
+        // If the server says password change is not required, the user already
+        // set their password (stale local cache issue). Treat as success.
+        if (res.status === 400 && body.error?.includes('not required')) {
+          // Password was already set — re-sign in with the new password
+          if (userEmail) {
+            await supabase.auth.signInWithPassword({ email: userEmail, password });
+          }
+          onPasswordSet();
+          return;
+        }
         setError(body.error || 'Failed to set password. Please try again.');
         return;
+      }
+
+      // Re-sign in with the new password so the session's app_metadata refreshes
+      // (the server cleared mustChangePassword in app_metadata, but the current
+      // JWT still has the old value until the token is refreshed).
+      if (userEmail) {
+        await supabase.auth.signInWithPassword({ email: userEmail, password });
       }
 
       onPasswordSet();
@@ -63,8 +81,10 @@ export function SetPasswordScreen({ onPasswordSet, userName }: SetPasswordScreen
     }
   };
 
-  const inputCls =
-    "w-full h-12 px-4 text-sm bg-surface md:bg-surface-2 border border-border rounded-xl outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-colors text-foreground placeholder:text-muted-foreground";
+  const wrapperCls =
+    "flex items-center w-full h-12 bg-surface md:bg-surface-2 border border-border rounded-xl transition-colors focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-500/20";
+  const innerInputCls =
+    "flex-1 min-w-0 h-full bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground";
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
@@ -126,8 +146,8 @@ export function SetPasswordScreen({ onPasswordSet, userName }: SetPasswordScreen
               </div>
             )}
 
-            <div className="relative">
-              <KeyRound className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <div className={wrapperCls}>
+              <KeyRound className="w-5 h-5 text-muted-foreground ml-3.5 shrink-0" />
               <input
                 required
                 type={showPassword ? "text" : "password"}
@@ -135,20 +155,20 @@ export function SetPasswordScreen({ onPasswordSet, userName }: SetPasswordScreen
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 minLength={8}
-                className={`${inputCls} pl-11 pr-10`}
+                className={`${innerInputCls} px-3`}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                className="p-2 mr-1 text-muted-foreground hover:text-foreground transition-colors shrink-0"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
 
-            <div className="relative">
-              <KeyRound className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <div className={wrapperCls}>
+              <KeyRound className="w-5 h-5 text-muted-foreground ml-3.5 shrink-0" />
               <input
                 required
                 type={showConfirm ? "text" : "password"}
@@ -156,12 +176,12 @@ export function SetPasswordScreen({ onPasswordSet, userName }: SetPasswordScreen
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 minLength={8}
-                className={`${inputCls} pl-11 pr-10`}
+                className={`${innerInputCls} px-3`}
               />
               <button
                 type="button"
                 onClick={() => setShowConfirm(!showConfirm)}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                className="p-2 mr-1 text-muted-foreground hover:text-foreground transition-colors shrink-0"
                 aria-label={showConfirm ? "Hide password" : "Show password"}
               >
                 {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}

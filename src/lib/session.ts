@@ -6,5 +6,6 @@ export async function clearAuthSession(): Promise<void> {
   await supabase.auth.signOut();
   localStorage.removeItem("erp_auth_token");
   localStorage.removeItem("erp_user_role");
+  localStorage.removeItem("crushtrack_vault_key");
   await clearBiometricCredentials();
 }

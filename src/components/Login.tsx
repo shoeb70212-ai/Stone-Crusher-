@@ -309,8 +309,8 @@ export function Login({ onLogin }: LoginProps) {
                   Forgot password?
                 </button>
               </div>
-              <div className="relative">
-                <Lock className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <div className={`flex items-center w-full h-12 bg-surface md:bg-surface-2 border rounded-xl transition-colors focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-500/20 ${fieldErrors.password ? 'border-danger ring-2 ring-danger/20' : 'border-border'}`}>
+                <Lock className="w-5 h-5 text-muted-foreground ml-3.5 shrink-0" />
                 <input
                   id="login-password"
                   type={showPassword ? "text" : "password"}
@@ -319,14 +319,13 @@ export function Login({ onLogin }: LoginProps) {
                   aria-describedby={fieldErrors.password ? 'password-error' : undefined}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className={`w-full h-12 pl-11 pr-12 text-base md:text-sm bg-surface md:bg-surface-2 border border-border rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-colors text-foreground placeholder:text-muted-foreground [&::-ms-reveal]:hidden [&::-webkit-credentials-auto-fill-button]:hidden ${fieldErrors.password ? 'border-danger ring-2 ring-danger/20' : ''}`}
+                  className="flex-1 min-w-0 h-full bg-transparent text-base md:text-sm outline-none text-foreground placeholder:text-muted-foreground px-3 [&::-ms-reveal]:hidden [&::-webkit-credentials-auto-fill-button]:hidden"
                   placeholder="Enter your password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="w-10 h-10 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors rounded-lg active:bg-surface"
-                  style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', zIndex: 10 }}
+                  className="p-2 mr-1 text-muted-foreground hover:text-foreground transition-colors rounded-lg shrink-0"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}

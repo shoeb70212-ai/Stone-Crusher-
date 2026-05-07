@@ -39,7 +39,7 @@ export function DocumentActionButton({
       disabled={isBusy}
       aria-label={`${label} ${entityLabel}`}
       title={label}
-      className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors active:scale-95 disabled:cursor-wait disabled:opacity-60 ${className}`}
+      className={`inline-flex min-h-7 items-center justify-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold whitespace-nowrap transition-colors active:scale-95 disabled:cursor-wait disabled:opacity-60 ${className}`}
     >
       {isActive ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : icon}
       <span>{label}</span>

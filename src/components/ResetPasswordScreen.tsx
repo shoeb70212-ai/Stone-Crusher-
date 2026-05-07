@@ -55,9 +55,10 @@ export function ResetPasswordScreen({ onDone }: ResetPasswordScreenProps) {
     }
   };
 
-  /** Shared input style — semantic tokens, accessible focus ring. */
-  const inputCls =
-    "w-full h-12 pl-10 pr-11 text-sm bg-surface md:bg-surface-2 border border-border rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-colors text-foreground placeholder:text-muted-foreground";
+  const wrapperCls =
+    "flex items-center w-full h-12 bg-surface md:bg-surface-2 border rounded-xl transition-colors focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-500/20";
+  const innerInputCls =
+    "flex-1 min-w-0 h-full bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground px-3";
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
@@ -126,8 +127,8 @@ export function ResetPasswordScreen({ onDone }: ResetPasswordScreenProps) {
                   >
                     New password
                   </label>
-                  <div className="relative">
-                    <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <div className={`${wrapperCls} ${fieldErrors.password ? 'border-danger ring-2 ring-danger/20' : 'border-border'}`}>
+                    <Lock className="w-4 h-4 text-muted-foreground ml-3.5 shrink-0" />
                     <input
                       id="reset-password"
                       type={showPassword ? 'text' : 'password'}
@@ -136,14 +137,14 @@ export function ResetPasswordScreen({ onDone }: ResetPasswordScreenProps) {
                       aria-describedby={fieldErrors.password ? 'reset-password-error' : undefined}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className={`${inputCls} ${fieldErrors.password ? 'border-danger ring-2 ring-danger/20' : ''}`}
+                      className={innerInputCls}
                       placeholder="At least 8 characters"
                     />
                     <button
                       type="button"
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                       onClick={() => setShowPassword((v) => !v)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      className="p-2 mr-1 text-muted-foreground hover:text-foreground transition-colors shrink-0"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -168,8 +169,8 @@ export function ResetPasswordScreen({ onDone }: ResetPasswordScreenProps) {
                   >
                     Confirm password
                   </label>
-                  <div className="relative">
-                    <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <div className={`${wrapperCls} ${fieldErrors.confirmPassword ? 'border-danger ring-2 ring-danger/20' : 'border-border'}`}>
+                    <Lock className="w-4 h-4 text-muted-foreground ml-3.5 shrink-0" />
                     <input
                       id="reset-confirm-password"
                       type={showPassword ? 'text' : 'password'}
@@ -178,7 +179,7 @@ export function ResetPasswordScreen({ onDone }: ResetPasswordScreenProps) {
                       aria-describedby={fieldErrors.confirmPassword ? 'reset-confirm-error' : undefined}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className={`${inputCls} ${fieldErrors.confirmPassword ? 'border-danger ring-2 ring-danger/20' : ''}`}
+                      className={innerInputCls}
                       placeholder="Re-enter your new password"
                     />
                   </div>

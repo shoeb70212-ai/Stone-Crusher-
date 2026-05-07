@@ -278,19 +278,19 @@ function QuotationsContent() {
                       <ChevronDown className="pointer-events-none absolute right-2 h-3 w-3 text-current opacity-70" />
                     </div>
                   </td>
-                  <td className="py-4 px-6 text-right">
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      <button onClick={() => generator.openEditModal(q)} className="inline-flex min-h-9 items-center justify-center rounded-lg px-2.5 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors dark:text-indigo-400 dark:hover:bg-indigo-900/30">Edit</button>
+                  <td className="py-4 px-4 text-right">
+                    <div className="flex flex-nowrap items-center justify-end gap-1">
+                      <button onClick={() => generator.openEditModal(q)} className="inline-flex items-center justify-center rounded-lg px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors dark:text-indigo-400 dark:hover:bg-indigo-900/30 whitespace-nowrap">Edit</button>
                       <DocumentActionButton entityId={q.id} entityLabel={`quotation ${q.quotationNo}`} action="download" label="Download" icon={<Download className="h-3.5 w-3.5" />} className="bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-50 dark:bg-zinc-800 dark:text-zinc-200 dark:border-zinc-700 dark:hover:bg-zinc-700" activeAction={activeQuotationAction} onClick={(a) => void handleQuotationDocumentAction(q, a)} />
                       <DocumentActionButton entityId={q.id} entityLabel={`quotation ${q.quotationNo}`} action="whatsapp" label="WhatsApp" icon={<MessageCircle className="h-3.5 w-3.5" />} className="bg-emerald-600 text-white hover:bg-emerald-700" activeAction={activeQuotationAction} onClick={(a) => void handleQuotationDocumentAction(q, a)} />
                       <DocumentActionButton entityId={q.id} entityLabel={`quotation ${q.quotationNo}`} action="print" label="Print" icon={<Printer className="h-3.5 w-3.5" />} className="bg-primary-600 text-white hover:bg-primary-700" activeAction={activeQuotationAction} onClick={(a) => void handleQuotationDocumentAction(q, a)} />
                       {q.status !== "Accepted" && !q.convertedInvoiceId && (
-                        <button onClick={() => setConvertConfirm(q)} className="inline-flex min-h-9 items-center gap-1.5 justify-center rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-primary-600 text-white hover:bg-primary-700 transition-colors">
-                          <ArrowRightCircle className="h-3.5 w-3.5" />Convert
+                        <button onClick={() => setConvertConfirm(q)} className="inline-flex items-center gap-1 justify-center rounded-lg px-2 py-1 text-[11px] font-semibold bg-primary-600 text-white hover:bg-primary-700 transition-colors whitespace-nowrap">
+                          <ArrowRightCircle className="h-3 w-3" />Convert
                         </button>
                       )}
                       {q.convertedInvoiceId && (
-                        <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Invoiced ✓</span>
+                        <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium whitespace-nowrap">Invoiced ✓</span>
                       )}
                     </div>
                   </td>

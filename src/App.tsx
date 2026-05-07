@@ -43,9 +43,31 @@ function AppShell({ isAuthenticated, isVaultUnlocked, onLogin, onVaultUnlocked }
   const isFirstRun = !isLoading && bootstrapRequired === true;
 
   // Check if the current user must change their password (created by admin without a password).
+  // We check BOTH the local companySettings flag AND the Supabase app_metadata flag.
+  // The server-side app_metadata is the source of truth — if the PUT /api/admin-users
+  // endpoint already cleared it but the local cache is stale, skip the prompt.
   const currentUserId = session?.user?.id;
   const currentUserRecord = (companySettings.users || []).find((u) => u.id === currentUserId);
-  const mustSetPassword = isAuthenticated && !isLoading && currentUserRecord?.mustChangePassword === true && !passwordSetDone;
+  const appMetaMustChange = session?.user?.app_metadata?.mustChangePassword === true;
+  const localMustChange = currentUserRecord?.mustChangePassword === true;
+  // Only show SetPasswordScreen if the server-side app_metadata flag is explicitly true.
+  // The local flag alone is unreliable (can be stale from cached data). When the PUT
+  // endpoint clears the flag server-side, we must respect that even if the local cache
+  // hasn't caught up yet. If app_metadata is clean, also auto-fix the stale local flag.
+  const mustSetPassword = isAuthenticated && !isLoading && appMetaMustChange && !passwordSetDone;
+
+  // Auto-fix: if the server already cleared the flag but the local cache is stale, fix it.
+  React.useEffect(() => {
+    if (!isLoading && !appMetaMustChange && localMustChange && currentUserRecord && currentUserId) {
+      const updatedSettings = {
+        ...companySettings,
+        users: (companySettings.users || []).map((u) =>
+          u.id === currentUserId ? { ...u, mustChangePassword: false } : u
+        ),
+      };
+      updateCompanySettings(updatedSettings);
+    }
+  }, [isLoading, appMetaMustChange, localMustChange, currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
