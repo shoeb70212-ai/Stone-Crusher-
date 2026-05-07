@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
-import { Database, ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
-import { supabaseUrl, supabaseAnonKey } from '../lib/supabase';
+import { Database, ArrowLeft, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 interface ServerSettingsScreenProps {
   onBack: () => void;
 }
 
 export function ServerSettingsScreen({ onBack }: ServerSettingsScreenProps) {
-  const [url, setUrl] = useState(supabaseUrl || '');
-  const [key, setKey] = useState(supabaseAnonKey || '');
+  const [url, setUrl] = useState(localStorage.getItem('supabaseUrl') || '');
+  const [key, setKey] = useState(localStorage.getItem('supabaseAnonKey') || '');
+  const [showKey, setShowKey] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
@@ -56,7 +56,7 @@ export function ServerSettingsScreen({ onBack }: ServerSettingsScreenProps) {
             Connection Details
           </h2>
           <p className="text-sm text-muted-foreground mt-1.5 mb-7">
-            Enter your custom database credentials below. These are stored locally on this device.
+            Enter your custom database credentials below to override the built-in configuration. These are stored locally on this device.
           </p>
 
           <form onSubmit={handleSave} className="flex flex-col gap-4">
@@ -65,7 +65,7 @@ export function ServerSettingsScreen({ onBack }: ServerSettingsScreenProps) {
                 htmlFor="supabaseUrl"
                 className="block text-xs font-semibold text-foreground tracking-wide"
               >
-                Supabase Project URL
+                Supabase Project URL (Local Override)
               </label>
               <input
                 id="supabaseUrl"
@@ -73,8 +73,7 @@ export function ServerSettingsScreen({ onBack }: ServerSettingsScreenProps) {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 className="w-full h-12 px-4 text-sm bg-surface md:bg-surface-2 border border-border rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-colors text-foreground placeholder:text-muted-foreground"
-                placeholder="https://your-project.supabase.co"
-                required
+                placeholder="Leave blank to use default"
               />
             </div>
 
@@ -83,16 +82,26 @@ export function ServerSettingsScreen({ onBack }: ServerSettingsScreenProps) {
                 htmlFor="supabaseAnonKey"
                 className="block text-xs font-semibold text-foreground tracking-wide"
               >
-                Supabase Anon Key
+                Supabase Anon Key (Local Override)
               </label>
-              <textarea
-                id="supabaseAnonKey"
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                className="w-full h-24 p-4 text-sm bg-surface md:bg-surface-2 border border-border rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-colors text-foreground placeholder:text-muted-foreground resize-none"
-                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                required
-              />
+              <div className="relative">
+                <input
+                  id="supabaseAnonKey"
+                  type={showKey ? "text" : "password"}
+                  value={key}
+                  onChange={(e) => setKey(e.target.value)}
+                  className="w-full h-12 pl-4 pr-12 text-sm bg-surface md:bg-surface-2 border border-border rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none transition-colors text-foreground placeholder:text-muted-foreground [&::-ms-reveal]:hidden [&::-webkit-credentials-auto-fill-button]:hidden"
+                  placeholder="Leave blank to use default"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey(!showKey)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors rounded-lg active:bg-surface"
+                  aria-label={showKey ? "Hide key" : "Show key"}
+                >
+                  {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
 
             <div className="bg-warning-muted text-warning-foreground p-3 rounded-xl text-xs flex items-start gap-2 mt-2">
