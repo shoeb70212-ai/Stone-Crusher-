@@ -17,9 +17,9 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import { format, parseISO, startOfMonth } from "date-fns";
-import { downloadCSV, downloadLedgerStatementPdf } from "../lib/export-utils";
-import { printHtml } from "../lib/print-utils";
-import { buildLedgerWhatsAppMessage, openWhatsAppMessage } from "../lib/whatsapp-share";
+import { createLedgerPdfBlob } from "../lib/export-utils";
+import { printHtml, downloadPdfBlob, sharePdfBlob } from "../lib/print-utils";
+import { openWhatsAppMessage } from "../lib/whatsapp-share";
 import { useToast } from "../components/ui/Toast";
 import { generateId } from "../lib/utils";
 
@@ -30,6 +30,7 @@ export function Ledger() {
   const [isPeriodModalOpen, setIsPeriodModalOpen] = useState(false);
   const [isCustModalOpen, setIsCustModalOpen] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isSharingWhatsApp, setIsSharingWhatsApp] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [viewCustomerLedger, setViewCustomerLedger] = useState<Customer | null>(
     null,
@@ -91,71 +92,93 @@ export function Ledger() {
 
 
 
-  /** Export the filtered transactions as a CSV file */
+  /** Export the filtered transactions as a PDF file */
   const handleExportTransactions = async () => {
-    try {
-      await downloadCSV(
-        filteredTransactions.map((tx) => {
-          const cust = customers.find((c) => c.id === tx.customerId);
-          return {
-            date: new Date(tx.date).toLocaleDateString(),
-            time: new Date(tx.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            type: tx.type,
-            category: tx.category,
-            description: tx.description,
-            customer: cust?.name || "-",
-            amount: tx.amount,
-          };
-        }),
-        {
-          date: "Date",
-          time: "Time",
-          type: "Type",
-          category: "Category",
-          description: "Description",
-          customer: "Customer",
-          amount: "Amount (₹)",
-        },
-        `Transactions_${txStartDate}_to_${txEndDate}`,
-      );
-    } catch (err) {
-      addToast("error", err instanceof Error ? err.message : "Export failed.");
-    }
-  };
-
-  /** Export the customer ledger statement as a CSV file */
-  const handleExportCustomerCSV = async (cust: Customer, entries: Array<{ date: Date; desc: string; debit: number; credit: number }>) => {
-    let running = cust.openingBalance;
-    const rows = [
-      { date: "-", particulars: "Opening Balance", debit: cust.openingBalance > 0 ? cust.openingBalance : "", credit: cust.openingBalance < 0 ? Math.abs(cust.openingBalance) : "", balance: `${Math.abs(cust.openingBalance)} ${cust.openingBalance < 0 ? "Cr" : "Dr"}` },
-      ...entries.map((e) => {
-        running = running + e.debit - e.credit;
-        return {
-          date: e.date.toLocaleDateString(),
-          particulars: e.desc,
-          debit: e.debit > 0 ? e.debit : "",
-          credit: e.credit > 0 ? e.credit : "",
-          balance: `${Math.abs(running)} ${running < 0 ? "Cr" : running > 0 ? "Dr" : ""}`,
-        };
-      }),
-    ];
-    try {
-      await downloadCSV(rows, { date: "Date", particulars: "Particulars", debit: "Debit (₹)", credit: "Credit (₹)", balance: "Balance (₹)" }, `Ledger_${cust.name.replace(/\s+/g, "_")}`);
-    } catch (err) {
-      addToast("error", err instanceof Error ? err.message : "Export failed.");
-    }
-  };
-
-  /** Download the customer ledger statement as a PDF */
-  const handleExportCustomerPDF = async (custName: string) => {
-    if (!statementRef.current) return;
     setIsExportingPdf(true);
     try {
-      await downloadLedgerStatementPdf(custName, statementRef.current.innerHTML);
+      const html = `
+        <div style="font-family:'Inter','Segoe UI',sans-serif;padding:24px;">
+          <h2 style="margin:0 0 4px;">Transactions Report</h2>
+          <p style="margin:0 0 12px;color:#666;">Period: ${txStartDate} to ${txEndDate}</p>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr style="background:#f4f4f5;"><th style="padding:8px;text-align:left;">Date</th><th style="padding:8px;text-align:left;">Type</th><th style="padding:8px;text-align:left;">Category</th><th style="padding:8px;text-align:left;">Description</th><th style="padding:8px;text-align:left;">Customer</th><th style="padding:8px;text-align:right;">Amount (₹)</th></tr></thead>
+            <tbody>
+              ${filteredTransactions.map(tx => {
+                const cust = customers.find(c => c.id === tx.customerId);
+                return `<tr><td style="padding:8px;border-bottom:1px solid #eee;">${new Date(tx.date).toLocaleDateString()}</td><td style="padding:8px;border-bottom:1px solid #eee;">${tx.type}</td><td style="padding:8px;border-bottom:1px solid #eee;">${tx.category}</td><td style="padding:8px;border-bottom:1px solid #eee;">${tx.description}</td><td style="padding:8px;border-bottom:1px solid #eee;">${cust?.name || '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${tx.amount.toLocaleString()}</td></tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+      const blob = await createLedgerPdfBlob('Transactions', html);
+      const filename = `Transactions_${txStartDate}_to_${txEndDate}.pdf`;
+      downloadPdfBlob(blob, filename);
+      addToast("success", "Transactions PDF downloaded.");
+    } catch (err) {
+      addToast("error", err instanceof Error ? err.message : "Export failed.");
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
+  /** Build the HTML used for PDF generation of a customer ledger statement */
+  const buildLedgerHtml = (
+    cust: Customer,
+    entries: Array<{ date: Date; desc: string; debit: number; credit: number; runningBalance: number }>,
+    openingBal: number,
+    closingBal: number,
+  ) => `
+    <div style="padding:24px;font-family:Inter,sans-serif;">
+      <h2 style="margin:0 0 4px;">${cust.name}</h2>
+      <p style="margin:0 0 12px;color:#666;">Phone: ${cust.phone || 'N/A'}${cust.address ? ` | ${cust.address}` : ''}${cust.gstin ? ` | GSTIN: ${cust.gstin}` : ''}</p>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="background:#f4f4f5;"><th style="padding:8px;text-align:left;">Date</th><th style="padding:8px;text-align:left;">Particulars</th><th style="padding:8px;text-align:right;">Debit</th><th style="padding:8px;text-align:right;">Credit</th><th style="padding:8px;text-align:right;">Balance</th></tr></thead>
+        <tbody>
+          <tr style="background:#fafafa;"><td style="padding:8px;border-bottom:1px solid #eee;">-</td><td style="padding:8px;border-bottom:1px solid #eee;">Opening Balance</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${openingBal > 0 ? openingBal.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${openingBal < 0 ? Math.abs(openingBal).toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;">${Math.abs(openingBal).toLocaleString()} ${openingBal < 0 ? 'Cr' : 'Dr'}</td></tr>
+          ${entries.map(e => `<tr><td style="padding:8px;border-bottom:1px solid #eee;">${e.date.toLocaleDateString()}</td><td style="padding:8px;border-bottom:1px solid #eee;">${e.desc}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#e11d48;">${e.debit > 0 ? e.debit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#059669;">${e.credit > 0 ? e.credit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;">${Math.abs(e.runningBalance).toLocaleString()} ${e.runningBalance < 0 ? 'Cr' : e.runningBalance > 0 ? 'Dr' : ''}</td></tr>`).join('')}
+        </tbody>
+      </table>
+      <p style="margin-top:12px;text-align:right;font-weight:bold;">Closing Balance: ₹${Math.abs(closingBal).toLocaleString()} ${closingBal < 0 ? 'Cr' : closingBal > 0 ? 'Dr' : ''}</p>
+    </div>
+  `;
+
+  /** Download the customer ledger statement as a PDF */
+  const handleExportCustomerPDF = async (cust: Customer, entries: Array<{ date: Date; desc: string; debit: number; credit: number; runningBalance: number }>, openingBal: number, closingBal: number) => {
+    setIsExportingPdf(true);
+    try {
+      const html = buildLedgerHtml(cust, entries, openingBal, closingBal);
+      const blob = await createLedgerPdfBlob(cust.name, html);
+      const filename = `Ledger_${cust.name.replace(/\s+/g, '_')}.pdf`;
+      downloadPdfBlob(blob, filename);
+      addToast('success', 'Ledger PDF downloaded.');
     } catch {
       addToast('error', 'PDF export failed. Please try again.');
     } finally {
       setIsExportingPdf(false);
+    }
+  };
+
+  /** Share the customer ledger statement PDF via WhatsApp / share sheet */
+  const handleShareLedgerWhatsApp = async (cust: Customer, entries: Array<{ date: Date; desc: string; debit: number; credit: number; runningBalance: number }>, openingBal: number, closingBal: number) => {
+    setIsSharingWhatsApp(true);
+    try {
+      const html = buildLedgerHtml(cust, entries, openingBal, closingBal);
+      const blob = await createLedgerPdfBlob(cust.name, html);
+      const filename = `Ledger_${cust.name.replace(/\s+/g, '_')}.pdf`;
+      const summaryText = `Ledger Statement: ${cust.name}\nClosing Balance: ₹${Math.abs(closingBal).toLocaleString()} ${closingBal < 0 ? 'Cr' : 'Dr'}`;
+      const result = await sharePdfBlob(blob, filename, `Ledger - ${cust.name}`, summaryText);
+
+      if (result === 'downloaded') {
+        openWhatsAppMessage(summaryText);
+        addToast('info', 'Ledger PDF downloaded. Attach it in WhatsApp.');
+      } else if (result === 'shared') {
+        addToast('success', 'Ledger PDF shared. Choose WhatsApp from the share sheet.');
+      }
+    } catch {
+      addToast('error', 'Failed to share ledger PDF.');
+    } finally {
+      setIsSharingWhatsApp(false);
     }
   };
 
@@ -354,8 +377,8 @@ export function Ledger() {
                 }}
                 className="w-full py-2 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-sm font-semibold rounded-lg hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors shadow-sm mt-2 flex items-center justify-center gap-2"
               >
-                <Download className="w-4 h-4" />
-                Export CSV
+                {isExportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                Export PDF
               </button>
             </div>
           </div>
@@ -605,26 +628,19 @@ export function Ledger() {
                   <Printer className="w-3.5 h-3.5" /> Print
                 </button>
                 <button
-                  onClick={() => {
-                    const message = buildLedgerWhatsAppMessage({ customer: viewCustomerLedger, entries: entriesWithBalance, closingBalance: statementClosingBalance });
-                    openWhatsAppMessage(message);
-                  }}
-                  className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
+                  onClick={() => handleShareLedgerWhatsApp(viewCustomerLedger, entriesWithBalance, periodOpeningBalance, statementClosingBalance)}
+                  disabled={isSharingWhatsApp}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
                 >
-                  <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                  {isSharingWhatsApp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MessageCircle className="w-3.5 h-3.5" />}
+                  {isSharingWhatsApp ? 'Sharing…' : 'WhatsApp'}
                 </button>
                 <button
-                  onClick={() => handleExportCustomerCSV(viewCustomerLedger, filteredEntries)}
-                  className="flex items-center gap-1 px-2.5 py-1 bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-xs font-semibold rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5" /> CSV
-                </button>
-                <button
-                  onClick={() => handleExportCustomerPDF(viewCustomerLedger.name)}
+                  onClick={() => handleExportCustomerPDF(viewCustomerLedger, entriesWithBalance, periodOpeningBalance, statementClosingBalance)}
                   disabled={isExportingPdf}
                   className="flex items-center gap-1 px-2.5 py-1 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs font-semibold rounded-lg hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors disabled:opacity-50"
                 >
-                  {isExportingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                  {isExportingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                   {isExportingPdf ? 'Generating…' : 'PDF'}
                 </button>
               </div>

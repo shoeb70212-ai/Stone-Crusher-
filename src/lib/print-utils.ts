@@ -570,7 +570,7 @@ export async function createInvoicePdfBlob(
   const boxH = pageHeight - boxY - 18;
   const isGst = invoice.type === 'GST';
   const title = isGst ? 'TAX INVOICE' : 'INVOICE';
-  const customerName = customer?.name || (invoice.customerId === 'CASH' ? 'Cash Customer' : invoice.customerId);
+  const customerName = customer?.name || (invoice.customerId === 'CASH' ? 'Cash Customer' : invoice.customerId) || 'Unknown Customer';
   const invoiceDate = new Date(invoice.date).toLocaleDateString('en-GB');
   const totalQty = invoice.items.reduce((sum, item) => sum + safeNumber(item.quantity), 0);
   const totalTax = safeNumber(invoice.cgst) + safeNumber(invoice.sgst);
@@ -702,7 +702,7 @@ export async function createInvoicePdfBlob(
     const leftX = boxX + 4;
     const rightX = boxX + boxW / 2 + 6;
     const contentY = y + 14;
-    drawLabelValue('M/S', customerName, leftX, contentY, 24, 56, true);
+    drawLabelValue('M/S', customerName || '-', leftX, contentY, 24, 56, true);
     drawLabelValue('Address', customer?.address || '-', leftX, contentY + 7, 24, 56);
     drawLabelValue('Phone', customer?.phone || '-', leftX, contentY + 14, 24, 56);
     if (isGst) drawLabelValue('GSTIN', customer?.gstin || '-', leftX, contentY + 21, 24, 56);
@@ -729,7 +729,7 @@ export async function createInvoicePdfBlob(
     const leftX = boxX + 4;
     const rightX = boxX + boxW / 2 + 4;
     const contentY = y + 13;
-    drawLabelValue('Name', customerName, leftX, contentY, 22, 58, true);
+    drawLabelValue('Name', customerName || '-', leftX, contentY, 22, 58, true);
     drawLabelValue('Address', customer?.address || '-', leftX, contentY + 7, 22, 58);
     drawLabelValue('Phone', customer?.phone || '-', leftX, contentY + 14, 22, 58);
     if (isGst) drawLabelValue('GSTIN', customer?.gstin || '-', leftX, contentY + 21, 22, 58);
@@ -1454,7 +1454,8 @@ export async function sharePdf(
   title = 'Share Document',
   text?: string,
 ): Promise<PdfShareResult> {
-  const blob = await createPdfBlob(source, filename);
+  const htmlContent = typeof source === 'string' ? source : source.innerHTML;
+  const blob = await generatePdfBlob(htmlContent, filename);
   return sharePdfBlob(blob, filename, title, text);
 }
 
@@ -1478,7 +1479,8 @@ export async function saveNativePdf(
   if (!htmlContent) return;
 
   if (!isNative()) {
-    await downloadPdf(source, filename);
+    const blob = await generatePdfBlob(htmlContent, filename);
+    triggerBlobDownload(blob, filename);
     return;
   }
 
@@ -1498,7 +1500,8 @@ export async function saveNativePdf(
     return result.uri;
   } catch (error) {
     console.error('Native file save failed, falling back to download:', error);
-    await downloadPdf(source, filename);
+    const blob = await generatePdfBlob(htmlContent, filename);
+    triggerBlobDownload(blob, filename);
     return;
   }
 }
@@ -1565,3 +1568,683 @@ async function blobToBase64(blob: Blob): Promise<string> {
     reader.readAsDataURL(blob);
   });
 }
+
+
+export async function createQuotationPdfBlob(
+  quotation: import("../types").Quotation,
+  customer: Customer | undefined,
+  companySettings: CompanySettings,
+): Promise<Blob> {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 14;
+  const boxX = margin;
+  const boxY = 14;
+  const boxW = pageWidth - margin * 2;
+  const boxH = pageHeight - boxY - 18;
+  const isGst = quotation.type === 'GST';
+  const title = isGst ? 'PROFORMA INVOICE' : 'QUOTATION';
+  const customerName = customer?.name || (quotation.customerId === 'CASH' ? 'Cash Customer' : quotation.customerId) || 'Unknown Customer';
+  const invoiceDate = new Date(quotation.date).toLocaleDateString('en-GB');
+  const totalQty = quotation.items.reduce((sum, item) => sum + safeNumber(item.quantity), 0);
+  const totalTax = safeNumber(quotation.cgst) + safeNumber(quotation.sgst);
+  const amountInWords = toWords.convert(safeNumber(quotation.total)).toUpperCase();
+  const primary =
+    PRIMARY_COLORS[companySettings.primaryColor || 'emerald'] ||
+    companySettings.invoiceColor ||
+    '#10b981';
+
+  const black: PdfColor = [0, 0, 0];
+  const textDark: PdfColor = [20, 20, 20];
+  const textMuted: PdfColor = [65, 72, 86];
+  const lightFill: PdfColor = [248, 249, 250];
+  const totalFill: PdfColor = [243, 244, 246];
+
+  const { setFillColor, setTextColor, setFont, rect, line, writeText, drawCell, drawLabelValue } =
+    createPainter(doc, textDark);
+
+  const drawWatermark = () => {
+    if (!companySettings.invoiceWatermark || companySettings.invoiceWatermark === 'None') return;
+    const watermarkText =
+      companySettings.invoiceWatermark === 'Company Name'
+        ? companySettings.name
+        : companySettings.invoiceWatermark === 'Status'
+          ? quotation.status || 'PENDING'
+          : companySettings.invoiceWatermarkText;
+    if (!watermarkText) return;
+    doc.saveGraphicsState();
+    setTextColor([235, 235, 235]);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(42);
+    doc.text(watermarkText.toUpperCase(), pageWidth / 2, pageHeight / 2, {
+      align: 'center',
+      angle: -35,
+    });
+    doc.restoreGraphicsState();
+  };
+
+  const terms = companySettings.termsAndConditions
+    ? companySettings.termsAndConditions.split('\n').map(term => term.trim()).filter(Boolean)
+    : DEFAULT_INVOICE_TERMS;
+
+  const drawHeader = (headerH: number, splitRight = false, headerY = boxY) => {
+    if (splitRight) {
+      const rightW = 54;
+      line(boxX + boxW - rightW, headerY, boxX + boxW - rightW, headerY + headerH, 0.45);
+      drawCell(boxX + boxW - rightW, headerY, rightW, 13, title, {
+        align: 'center',
+        valign: 'middle',
+        fill: totalFill,
+        size: 10,
+        style: 'bold',
+      });
+      const detailY = headerY + 13;
+      const labelW = 22;
+      const rowH = companySettings.invoiceShowDueDate ? 8.4 : 10.5;
+      const rows = [
+        ['Inv No.', quotation.quotationNo],
+        ['Date', invoiceDate],
+        ...(companySettings.invoiceShowDueDate
+          ? [['Due Date', new Date(new Date(quotation.date).getTime() + DEFAULT_PAYMENT_TERM_MS).toLocaleDateString('en-GB')]]
+          : []),
+      ];
+      rows.forEach(([labelText, valueText], index) => {
+        const rowY = detailY + index * rowH;
+        drawCell(boxX + boxW - rightW, rowY, labelW, rowH, labelText, {
+          size: 7.5,
+          style: 'bold',
+          color: textMuted,
+        });
+        drawCell(boxX + boxW - rightW + labelW, rowY, rightW - labelW, rowH, valueText, {
+          size: 7.5,
+          style: 'bold',
+        });
+      });
+    }
+
+    const nameMaxWidth = splitRight ? 116 : 126;
+    writeText((companySettings.name || 'COMPANY NAME').toUpperCase(), boxX + 6, headerY + 18, {
+      size: 22,
+      style: 'bold',
+      color: splitRight ? black : primary,
+      maxWidth: nameMaxWidth,
+    });
+    if (companySettings.address) {
+      writeText(companySettings.address, boxX + 6, headerY + 32, {
+        size: 8.3,
+        color: textDark,
+        maxWidth: 78,
+      });
+    }
+    if (!splitRight) {
+      const rightX = boxX + boxW - 6;
+      if (companySettings.phone) {
+        writeText(`Tel : ${companySettings.phone}`, rightX, headerY + 32, {
+          size: 8.5,
+          style: 'bold',
+          align: 'right',
+        });
+      }
+      if (companySettings.gstin) {
+        writeText(`GSTIN : ${companySettings.gstin}`, rightX, headerY + 39, {
+          size: 8.5,
+          style: 'bold',
+          align: 'right',
+        });
+      }
+    } else {
+      const inlineDetails = [
+        companySettings.phone ? `Phone: ${companySettings.phone}` : '',
+        companySettings.gstin && isGst ? `GSTIN: ${companySettings.gstin}` : '',
+      ].filter(Boolean).join('    ');
+      if (inlineDetails) {
+        writeText(inlineDetails, boxX + 6, headerY + 43, { size: 7.8, color: textMuted, maxWidth: 116 });
+      }
+    }
+    line(boxX, headerY + headerH, boxX + boxW, headerY + headerH, 0.45);
+  };
+
+  const drawClassicDetails = (y: number, h: number) => {
+    line(boxX + boxW / 2, y, boxX + boxW / 2, y + h);
+    drawCell(boxX, y, boxW / 2, 9, 'Customer Detail', {
+      align: 'center',
+      valign: 'middle',
+      fill: lightFill,
+      size: 8.5,
+      style: 'bold',
+    });
+    const leftX = boxX + 4;
+    const rightX = boxX + boxW / 2 + 6;
+    const contentY = y + 14;
+    drawLabelValue('M/S', customerName || '-', leftX, contentY, 24, 56, true);
+    drawLabelValue('Address', customer?.address || '-', leftX, contentY + 7, 24, 56);
+    drawLabelValue('Phone', customer?.phone || '-', leftX, contentY + 14, 24, 56);
+    if (isGst) drawLabelValue('GSTIN', customer?.gstin || '-', leftX, contentY + 21, 24, 56);
+    drawLabelValue('Invoice No.', quotation.quotationNo, rightX, contentY + 1, 32, 46, true);
+    drawLabelValue('Invoice Date', invoiceDate, rightX, contentY + 14, 32, 46);
+  };
+
+  const drawMinimalDetails = (y: number, h: number) => {
+    line(boxX + boxW / 2, y, boxX + boxW / 2, y + h);
+    drawCell(boxX, y, boxW / 2, 8, 'Billed To', {
+      align: 'center',
+      valign: 'middle',
+      fill: lightFill,
+      size: 8,
+      style: 'bold',
+    });
+    drawCell(boxX + boxW / 2, y, boxW / 2, 8, 'Invoice / Payment Details', {
+      align: 'center',
+      valign: 'middle',
+      fill: lightFill,
+      size: 8,
+      style: 'bold',
+    });
+    const leftX = boxX + 4;
+    const rightX = boxX + boxW / 2 + 4;
+    const contentY = y + 13;
+    drawLabelValue('Name', customerName || '-', leftX, contentY, 22, 58, true);
+    drawLabelValue('Address', customer?.address || '-', leftX, contentY + 7, 22, 58);
+    drawLabelValue('Phone', customer?.phone || '-', leftX, contentY + 14, 22, 58);
+    if (isGst) drawLabelValue('GSTIN', customer?.gstin || '-', leftX, contentY + 21, 22, 58);
+    const rightRows: [string, string, boolean][] = [
+      ['Invoice No.', quotation.quotationNo, true],
+      ['Invoice Date', invoiceDate, false],
+      ['Status', quotation.status, false],
+      ['Type', quotation.type, false],
+      ['Bank', companySettings.bankName || '-', false],
+    ];
+    if (companySettings.invoiceShowDueDate) {
+      const dueDate = new Date(new Date(quotation.date).getTime() + DEFAULT_PAYMENT_TERM_MS).toLocaleDateString('en-GB');
+      rightRows.splice(2, 0, ['Due Date', dueDate, false]);
+    }
+    rightRows.slice(0, 5).forEach(([label, value, bold], index) => {
+      drawLabelValue(label, value, rightX, contentY + index * 6.5, 30, 54, bold);
+    });
+  };
+
+  const drawInvoiceTable = (y: number, h: number, mode: 'classic' | 'minimal') => {
+    const headerH = mode === 'classic' ? 17 : 15;
+    const totalH = 12;
+    const bodyH = h - headerH - totalH;
+    const rowCount = Math.max(8, quotation.items.length);
+    const rowH = bodyH / rowCount;
+    const columns = mode === 'minimal'
+      ? [
+          { label: 'Sr.', w: 12, align: 'center' as TextAlign },
+          { label: 'Description', w: 70, align: 'left' as TextAlign },
+          { label: 'HSN / SAC', w: 25, align: 'center' as TextAlign },
+          { label: 'Qty', w: 18, align: 'center' as TextAlign },
+          { label: 'Rate', w: 25, align: 'right' as TextAlign },
+          { label: 'Amount', w: 32, align: 'right' as TextAlign },
+        ]
+      : isGst
+        ? [
+            { label: 'Sr.\nNo.', w: 10, align: 'center' as TextAlign },
+            { label: 'Name of Product / Service', w: 48, align: 'left' as TextAlign },
+            { label: 'HSN / SAC', w: 18, align: 'center' as TextAlign },
+            { label: 'Qty', w: 13, align: 'center' as TextAlign },
+            { label: 'Rate', w: 17, align: 'right' as TextAlign },
+            { label: 'Taxable\nValue', w: 23, align: 'right' as TextAlign },
+            { label: 'CGST', w: 16, align: 'right' as TextAlign },
+            { label: 'SGST', w: 16, align: 'right' as TextAlign },
+            { label: 'Total', w: 21, align: 'right' as TextAlign },
+          ]
+        : [
+            { label: 'Sr.\nNo.', w: 12, align: 'center' as TextAlign },
+            { label: 'Name of Product / Service', w: 62, align: 'left' as TextAlign },
+            { label: 'HSN / SAC', w: 22, align: 'center' as TextAlign },
+            { label: 'Qty', w: 16, align: 'center' as TextAlign },
+            { label: 'Rate', w: 23, align: 'right' as TextAlign },
+            { label: 'Taxable\nValue', w: 28, align: 'right' as TextAlign },
+            { label: 'Total', w: 19, align: 'right' as TextAlign },
+          ];
+
+    rect(boxX, y, boxW, h);
+    rect(boxX, y, boxW, headerH, lightFill);
+    rect(boxX, y + h - totalH, boxW, totalH, totalFill);
+
+    let x = boxX;
+    columns.forEach((column, index) => {
+      if (index > 0) line(x, y, x, y + h);
+      drawCell(x, y, column.w, headerH, column.label, {
+        align: column.align,
+        valign: 'middle',
+        size: 8,
+        style: 'bold',
+        fill: lightFill,
+        pad: 1.5,
+      });
+      x += column.w;
+    });
+    line(boxX, y + headerH, boxX + boxW, y + headerH, 0.45);
+    line(boxX, y + h - totalH, boxX + boxW, y + h - totalH, 0.45);
+
+    quotation.items.forEach((item, index) => {
+      const itemY = y + headerH + index * rowH;
+      const taxable = safeNumber(item.amount);
+      const gstRate = safeNumber(item.gstRate || 5);
+      const itemCgst = isGst ? (taxable * (gstRate / 2)) / 100 : 0;
+      const itemSgst = isGst ? (taxable * (gstRate / 2)) / 100 : 0;
+      const itemTotal = mode === 'minimal' ? taxable : taxable + itemCgst + itemSgst;
+      const values = mode === 'minimal'
+        ? [
+            String(index + 1),
+            item.materialType || '-',
+            item.hsnCode || '-',
+            safeNumber(item.quantity).toLocaleString('en-IN'),
+            safeNumber(item.rate).toFixed(2),
+            itemTotal.toFixed(2),
+          ]
+        : isGst
+          ? [
+              String(index + 1),
+              item.materialType || '-',
+              item.hsnCode || '-',
+              safeNumber(item.quantity).toLocaleString('en-IN'),
+              safeNumber(item.rate).toFixed(2),
+              taxable.toFixed(2),
+              itemCgst.toFixed(2),
+              itemSgst.toFixed(2),
+              itemTotal.toFixed(2),
+            ]
+          : [
+              String(index + 1),
+              item.materialType || '-',
+              item.hsnCode || '-',
+              safeNumber(item.quantity).toLocaleString('en-IN'),
+              safeNumber(item.rate).toFixed(2),
+              taxable.toFixed(2),
+              itemTotal.toFixed(2),
+            ];
+      let cellX = boxX;
+      values.forEach((value, valueIndex) => {
+        const column = columns[valueIndex];
+        if (!column) return;
+        writeText(value, column.align === 'right' ? cellX + column.w - 2 : column.align === 'center' ? cellX + column.w / 2 : cellX + 2, itemY + 5.5, {
+          size: 8,
+          style: valueIndex === 1 || valueIndex === values.length - 1 ? 'bold' : 'normal',
+          align: column.align,
+          maxWidth: column.w - 4,
+        });
+        cellX += column.w;
+      });
+    });
+
+    let footerX = boxX;
+    columns.forEach((column, index) => {
+      if (index > 0) line(footerX, y + h - totalH, footerX, y + h);
+      footerX += column.w;
+    });
+
+    const totalY = y + h - totalH + 7.5;
+    if (mode === 'minimal') {
+      writeText('Total', boxX + columns[0].w + columns[1].w + columns[2].w - 2, totalY, {
+        size: 8,
+        style: 'bold',
+        align: 'right',
+      });
+      writeText(totalQty.toFixed(2), boxX + columns[0].w + columns[1].w + columns[2].w + columns[3].w / 2, totalY, {
+        size: 8,
+        style: 'bold',
+        align: 'center',
+      });
+      writeText(safeNumber(quotation.subTotal).toFixed(2), boxX + boxW - 2, totalY, {
+        size: 8.5,
+        style: 'bold',
+        align: 'right',
+      });
+      return;
+    }
+
+    // Named references replace magic indices — the GST and non-GST column sets
+    // have different lengths so index-based access is fragile if columns change.
+    const columnRight = (index: number) =>
+      boxX + columns.slice(0, index + 1).reduce((sum, column) => sum + column.w, 0);
+
+    const qtyIndex = 3;
+    const subtotalIndex = columns.length - (isGst ? 4 : 2);
+    const cgstIndex = isGst ? columns.length - 3 : -1;
+    const sgstIndex = isGst ? columns.length - 2 : -1;
+    const totalIndex = columns.length - 1;
+
+    const labelEnd = columnRight(2) - 2;
+    const qtyCenter = columnRight(2) + columns[qtyIndex].w / 2;
+    writeText('TOTAL', labelEnd, totalY, { size: 8, style: 'bold', align: 'right' });
+    writeText(totalQty.toFixed(2), qtyCenter, totalY, { size: 8, style: 'bold', align: 'center' });
+    writeText(safeNumber(quotation.subTotal).toFixed(2), columnRight(subtotalIndex) - 2, totalY, {
+      size: 8,
+      style: 'bold',
+      align: 'right',
+    });
+    if (isGst) {
+      writeText(safeNumber(quotation.cgst).toFixed(2), columnRight(cgstIndex) - 2, totalY, {
+        size: 8,
+        style: 'bold',
+        align: 'right',
+      });
+      writeText(safeNumber(quotation.sgst).toFixed(2), columnRight(sgstIndex) - 2, totalY, {
+        size: 8,
+        style: 'bold',
+        align: 'right',
+      });
+    }
+    writeText(safeNumber(quotation.total).toFixed(2), columnRight(totalIndex) - 2, totalY, {
+      size: 8.8,
+      style: 'bold',
+      align: 'right',
+    });
+  };
+
+  const drawClassicFooter = (y: number, h: number, compact = false) => {
+    const rightW = compact ? 62 : 61;
+    const leftW = boxW - rightW;
+    rect(boxX, y, boxW, h);
+    line(boxX + leftW, y, boxX + leftW, y + h, 0.45);
+
+    // --- Left column: words → bank → terms ---
+    // Fixed heights that always sum to exactly h (no overflow, no gap).
+    // bank section = header(8) + 4 rows at 6mm each (24) + 3mm buffer = 35
+    // words section = 16mm
+    // terms gets all remaining space
+    const wordsH = 16;
+    const bankSectionH = 35;
+    const termsH = h - wordsH - bankSectionH;
+
+    drawCell(boxX, y, leftW, wordsH, `Total in words\n${amountInWords}`, {
+      size: 7.5,
+      style: 'bold',
+      pad: 2.5,
+      lineHeight: 4.0,
+    });
+
+    const bankY = y + wordsH;
+    drawCell(boxX, bankY, leftW, 8, 'Bank Details', {
+      align: 'center',
+      valign: 'middle',
+      fill: lightFill,
+      size: 8,
+      style: 'bold',
+    });
+    const bankRowH = 6;
+    const bankTextY = bankY + 11;
+    drawLabelValue('Bank Name',   companySettings.bankName      || '-', boxX + 4, bankTextY,              34, 74);
+    drawLabelValue('Branch',      companySettings.branchName    || '-', boxX + 4, bankTextY + bankRowH,   34, 74);
+    drawLabelValue('Acc. Number', companySettings.accountNumber || '-', boxX + 4, bankTextY + bankRowH*2, 34, 74);
+    drawLabelValue('IFSC',        companySettings.ifscCode      || '-', boxX + 4, bankTextY + bankRowH*3, 34, 74);
+
+    const termsY = bankY + bankSectionH;
+    if (termsH >= 8) {
+      drawCell(boxX, termsY, leftW, 7, 'Terms and Conditions', {
+        align: 'center',
+        valign: 'middle',
+        fill: lightFill,
+        size: 7.8,
+        style: 'bold',
+      });
+      // Fit as many term lines as the remaining space allows
+      const termLineH = 4.5;
+      const maxTerms = Math.floor((termsH - 7 - 4) / termLineH);
+      terms.slice(0, Math.max(1, maxTerms)).forEach((term, index) => {
+        writeText(`- ${term}`, boxX + 4, termsY + 11 + index * termLineH, {
+          size: 6.8,
+          color: textMuted,
+          maxWidth: leftW - 8,
+        });
+      });
+    }
+
+    // --- Right column: tax summary rows ---
+    // Calculate how tall the summary rows will be so the remaining space
+    // can be given to the signature block that sits below them.
+    const rightX = boxX + leftW;
+    const taxRowH = 9;       // fixed height for each summary row
+    const totalRowH = 12;    // slightly taller for the grand total row
+    const sigH = 32;         // fixed height reserved for the signature block
+
+    // Rows: Taxable Amount + (CGST + SGST if GST) + Total Tax + Total Amount
+    const taxRowCount = isGst ? 4 : 2;  // non-GST: Taxable + Total Tax
+    const summaryH = taxRowCount * taxRowH + totalRowH;
+
+    // If summary + signature overflows h, shrink taxRowH proportionally
+    const available = h - sigH;
+    const effectiveTaxRowH = summaryH <= available ? taxRowH : Math.max(7, (available - totalRowH) / taxRowCount);
+    const effectiveTotalRowH = summaryH <= available ? totalRowH : Math.max(10, available - effectiveTaxRowH * taxRowCount);
+
+    const drawSummaryRow = (
+      rowY: number,
+      rowH: number,
+      label: string,
+      value: string,
+      fill?: PdfColor,
+      valueSize = 7.8,
+    ) => {
+      rect(rightX, rowY, rightW, rowH, fill);
+      const baselineY = rowY + rowH / 2 + 1.4;
+      writeText(label, rightX + 3, baselineY, {
+        size: 7.4,
+        style: 'bold',
+        color: textMuted,
+        maxWidth: rightW - 24,
+      });
+      writeText(value, rightX + rightW - 3, baselineY, {
+        size: valueSize,
+        style: 'bold',
+        align: 'right',
+        maxWidth: 22,
+      });
+    };
+
+    const drawGrandTotalRow = (rowY: number, rowH: number) => {
+      rect(rightX, rowY, rightW, rowH, totalFill);
+      const labelLines = doc.splitTextToSize('Total Amount After Tax', 32);
+      const lineHeight = 4.1;
+      const labelY = rowY + rowH / 2 - ((labelLines.length - 1) * lineHeight) / 2 + 1.5;
+      setFont(8, 'bold', textDark);
+      doc.text(labelLines, rightX + 3, labelY, { align: 'left', lineHeightFactor: 1.2 });
+      writeText(`Rs. ${safeNumber(quotation.total).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`, rightX + rightW - 3, rowY + rowH / 2 + 1.6, {
+        size: 8.9,
+        style: 'bold',
+        align: 'right',
+        maxWidth: 25,
+      });
+    };
+
+    drawSummaryRow(y, effectiveTaxRowH, 'Taxable Amount', safeNumber(quotation.subTotal).toFixed(2), lightFill);
+    let rightY = y + effectiveTaxRowH;
+    if (isGst) {
+      drawSummaryRow(rightY, effectiveTaxRowH, 'Add : CGST', safeNumber(quotation.cgst).toFixed(2));
+      rightY += effectiveTaxRowH;
+      drawSummaryRow(rightY, effectiveTaxRowH, 'Add : SGST', safeNumber(quotation.sgst).toFixed(2));
+      rightY += effectiveTaxRowH;
+    }
+    drawSummaryRow(rightY, effectiveTaxRowH, 'Total Tax', totalTax.toFixed(2), lightFill, 8.8);
+    rightY += effectiveTaxRowH;
+    drawGrandTotalRow(rightY, effectiveTotalRowH);
+    rightY += effectiveTotalRowH;
+
+    // --- Signature block anchored immediately below summary rows ---
+    // Distribute the remaining space: company name at top, signature line + signatory at bottom.
+    const sigBottom = y + h;
+    writeText(`For ${companySettings.name || 'Company'}`.toUpperCase(), rightX + rightW / 2, rightY + 9, {
+      size: 7.5,
+      style: 'bold',
+      color: primary,
+      align: 'center',
+      maxWidth: rightW - 6,
+    });
+    line(rightX + 10, sigBottom - 10, rightX + rightW - 10, sigBottom - 10);
+    writeText('Authorised Signatory', rightX + rightW / 2, sigBottom - 5, {
+      size: 6.5,
+      style: 'bold',
+      align: 'center',
+    });
+  };
+
+  const drawMinimalFooter = (y: number, h: number) => {
+    // Guard against negative/zero height if invoice table overflows page.
+    const safeH = Math.max(20, h);
+    if (h !== safeH) h = safeH;
+    const rightW = 64;
+    const leftW = boxW - rightW;
+    rect(boxX, y, boxW, h);
+    line(boxX + leftW, y, boxX + leftW, y + h, 0.45);
+    drawCell(boxX, y, leftW, 18, `Amount in words\n${amountInWords}`, {
+      size: 8,
+      style: 'bold',
+      lineHeight: 4.5,
+    });
+    let leftY = y + 18;
+    if (companySettings.termsAndConditions) {
+      drawCell(boxX, leftY, leftW, 20, `Terms and Conditions\n${companySettings.termsAndConditions}`, {
+        size: 7,
+        color: textMuted,
+        lineHeight: 4.1,
+      });
+      leftY += 20;
+    }
+    drawCell(boxX, leftY, leftW, y + h - leftY, `Payment Details\n${[companySettings.bankName, companySettings.accountNumber ? `A/C: ${companySettings.accountNumber}` : '', companySettings.ifscCode ? `IFSC: ${companySettings.ifscCode}` : ''].filter(Boolean).join('  ') || '-'}`, {
+      size: 7.3,
+      color: textMuted,
+      lineHeight: 4.2,
+    });
+
+    const rightX = boxX + leftW;
+    const rows = [
+      ['Subtotal', safeNumber(quotation.subTotal).toFixed(2), false],
+      ...(isGst
+        ? [
+            ['CGST', safeNumber(quotation.cgst).toFixed(2), false],
+            ['SGST', safeNumber(quotation.sgst).toFixed(2), false],
+          ] as [string, string, boolean][]
+        : []),
+      ['Total', `Rs. ${safeNumber(quotation.total).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`, true],
+    ] as [string, string, boolean][];
+    const rowH = Math.max(1, h) / Math.max(1, rows.length);
+    rows.forEach(([label, value, bold], index) => {
+      const rowY = y + index * rowH;
+      drawCell(rightX, rowY, rightW, rowH, `${label}\n${value}`, {
+        fill: bold ? totalFill : undefined,
+        size: bold ? 10 : 8,
+        style: bold ? 'bold' : 'normal',
+        align: 'right',
+        valign: 'middle',
+        lineHeight: bold ? 5 : 4.4,
+      });
+    });
+  };
+
+  const renderClassic = () => {
+    drawWatermark();
+    rect(boxX, boxY, boxW, boxH, undefined, 0.45);
+    const headerH = 48;
+    const titleH = 11;
+    drawCell(boxX, boxY, boxW, titleH, title, {
+      align: 'center',
+      valign: 'middle',
+      fill: lightFill,
+      size: 11,
+      style: 'bold',
+    });
+    const headerY = boxY + titleH;
+    drawHeader(headerH, false, headerY);
+    const detailsY = headerY + headerH;
+    const detailsH = 44;
+    const tableH = 84;
+    drawClassicDetails(detailsY, detailsH);
+    const tableY = detailsY + detailsH;
+    drawInvoiceTable(tableY, tableH, 'classic');
+    drawClassicFooter(tableY + tableH, boxY + boxH - (tableY + tableH));
+  };
+
+  const renderMinimal = () => {
+    drawWatermark();
+    rect(boxX, boxY, boxW, boxH, undefined, 0.45);
+    const headerH = 48;
+    const titleH = 11;
+    const detailsH = 46;
+    const tableH = 96;
+    drawCell(boxX, boxY, boxW, titleH, title, {
+      align: 'center',
+      valign: 'middle',
+      fill: lightFill,
+      size: 11,
+      style: 'bold',
+    });
+    const headerY = boxY + titleH;
+    drawHeader(headerH, false, headerY);
+    const detailsY = headerY + headerH;
+    drawMinimalDetails(detailsY, detailsH);
+    const tableY = detailsY + detailsH;
+    drawInvoiceTable(tableY, tableH, 'minimal');
+    drawMinimalFooter(tableY + tableH, boxY + boxH - (tableY + tableH));
+  };
+
+  const renderModern = () => {
+    const headerH = 39;
+    drawWatermark();
+    setFillColor(primary);
+    doc.rect(0, 0, pageWidth, headerH, 'F');
+    writeText((companySettings.name || 'COMPANY NAME').toUpperCase(), margin, 15, {
+      size: 18,
+      style: 'bold',
+      color: [255, 255, 255],
+      maxWidth: 112,
+    });
+    if (companySettings.address) {
+      writeText(companySettings.address, margin, 24, {
+        size: 8,
+        color: [255, 255, 255],
+        maxWidth: 96,
+      });
+    }
+    writeText(title, pageWidth - margin, 14, {
+      size: 15,
+      style: 'bold',
+      color: [255, 255, 255],
+      align: 'right',
+    });
+    if (companySettings.phone) writeText(`Tel: ${companySettings.phone}`, pageWidth - margin, 23, { size: 8, color: [255, 255, 255], align: 'right' });
+    if (companySettings.gstin) writeText(`GSTIN: ${companySettings.gstin}`, pageWidth - margin, 29, { size: 8, color: [255, 255, 255], align: 'right' });
+
+    const detailsY = 50;
+    drawCell(margin, detailsY, 82, 36, `Billed To\n${customerName}\n${customer?.address || '-'}\n${customer?.phone || '-'}`, {
+      size: 8,
+      style: 'bold',
+      lineHeight: 4.5,
+    });
+    drawCell(pageWidth - margin - 82, detailsY, 82, 36, `Invoice No: ${quotation.quotationNo}\nDate: ${invoiceDate}\nStatus: ${quotation.status}`, {
+      size: 8.5,
+      style: 'bold',
+      lineHeight: 6,
+      align: 'right',
+    });
+    const tableY = detailsY + 46;
+    drawInvoiceTable(tableY, 102, 'classic');
+    drawClassicFooter(tableY + 102, pageHeight - margin - (tableY + 102), true);
+  };
+
+  if (companySettings.invoiceTemplate === 'Modern') {
+    renderModern();
+  } else if (companySettings.invoiceTemplate === 'Minimal') {
+    renderMinimal();
+  } else {
+    renderClassic();
+  }
+
+  return doc.output('blob');
+}
+
+export async function downloadQuotationPdf(
+  quotation: import("../types").Quotation,
+  customer: import("../types").Customer | undefined,
+  companySettings: import("../types").CompanySettings,
+  filename: string,
+): Promise<void> {
+  const blob = await createQuotationPdfBlob(quotation, customer, companySettings);
+  triggerBlobDownload(blob, filename);
+}
+

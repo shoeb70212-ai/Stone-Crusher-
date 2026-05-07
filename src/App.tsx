@@ -26,7 +26,7 @@ function AppShell({ isAuthenticated, isVaultUnlocked, onLogin, onVaultUnlocked }
   onLogin: () => void;
   onVaultUnlocked: () => void;
 }) {
-  const { flushSync, bootstrapRequired, isLoading, syncStatus, retryCountRef, companySettings, session } = useErp();
+  const { flushSync, bootstrapRequired, isLoading, syncStatus, pendingSyncCount, retryCountRef, companySettings, session, updateCompanySettings } = useErp();
 
   // Show the welcome wizard once after the very first account creation.
   const [showWelcome, setShowWelcome] = useState(
@@ -52,6 +52,7 @@ function AppShell({ isAuthenticated, isVaultUnlocked, onLogin, onVaultUnlocked }
       <OfflineIndicator
         onReconnect={flushSync}
         syncStatus={syncStatus}
+        pendingCount={pendingSyncCount}
         onRetry={() => {
           retryCountRef.current = 0;
           flushSync();
@@ -61,7 +62,18 @@ function AppShell({ isAuthenticated, isVaultUnlocked, onLogin, onVaultUnlocked }
         mustSetPassword ? (
           <SetPasswordScreen
             userName={currentUserRecord?.name}
-            onPasswordSet={() => setPasswordSetDone(true)}
+            onPasswordSet={() => {
+              if (currentUserRecord) {
+                const updatedSettings = {
+                  ...companySettings,
+                  users: (companySettings.users || []).map((u) =>
+                    u.id === currentUserId ? { ...u, mustChangePassword: false } : u
+                  ),
+                };
+                updateCompanySettings(updatedSettings);
+              }
+              setPasswordSetDone(true);
+            }}
           />
         ) : !isVaultUnlocked ? (
           <MasterKeyScreen onUnlocked={onVaultUnlocked} />

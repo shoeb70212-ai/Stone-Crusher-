@@ -10,8 +10,14 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const envUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+
+const localUrl = localStorage.getItem('supabaseUrl');
+const localKey = localStorage.getItem('supabaseAnonKey');
+
+export const supabaseUrl = localUrl || envUrl;
+export const supabaseAnonKey = localKey || envKey;
 
 const missingKeys =
   !supabaseUrl ||
@@ -20,10 +26,9 @@ const missingKeys =
   supabaseAnonKey === 'YOUR_SUPABASE_ANON_KEY';
 
 if (missingKeys) {
-  console.error(
+  console.warn(
     '[CrushTrack] Supabase is not configured.\n' +
-    'Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your .env file.\n' +
-    'Get them from: supabase.com/dashboard → Project → Settings → API',
+    'Please configure the connection URL and Anon Key in Server Settings on the login page, or add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your .env file.',
   );
 }
 

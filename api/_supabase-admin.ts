@@ -48,17 +48,32 @@ export async function verifyBearerToken(
   req: VercelRequest,
 ): Promise<{ userId: string; email: string; appMetadata: Record<string, unknown> } | null> {
   const auth = req.headers['authorization'];
-  if (!auth?.startsWith('Bearer ')) return null;
+  if (!auth?.startsWith('Bearer ')) {
+    console.log('[DEBUG-AUTH] verifyBearerToken: Missing or invalid Authorization header');
+    return null;
+  }
   const token = auth.slice('Bearer '.length);
 
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !data.user) return null;
+  try {
+    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    if (error) {
+      console.log('[DEBUG-AUTH] verifyBearerToken: getUser error:', error.message);
+      return null;
+    }
+    if (!data.user) {
+      console.log('[DEBUG-AUTH] verifyBearerToken: getUser returned no user');
+      return null;
+    }
 
-  return {
-    userId: data.user.id,
-    email: data.user.email ?? '',
-    appMetadata: data.user.app_metadata ?? {},
-  };
+    return {
+      userId: data.user.id,
+      email: data.user.email ?? '',
+      appMetadata: data.user.app_metadata ?? {},
+    };
+  } catch (err) {
+    console.log('[DEBUG-AUTH] verifyBearerToken: Exception caught:', err);
+    return null;
+  }
 }
 
 /** Returns the userId only (no PII) for Sentry and logging. */

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Lock, User, AlertCircle, Fingerprint, Eye, EyeOff } from 'lucide-react';
 import { useErp } from '../context/ErpContext';
 import { loginSchema, type LoginInput } from '../lib/validation';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { ForgotPasswordScreen } from './ForgotPasswordScreen';
 import {
   isBiometricAvailable,
@@ -10,6 +10,7 @@ import {
   saveBiometricCredentials,
   clearBiometricCredentials,
 } from '../lib/biometrics';
+import { ServerSettingsScreen } from './ServerSettingsScreen';
 import logoSvg from '../assets/logo.svg';
 
 interface LoginProps {
@@ -26,6 +27,7 @@ export function Login({ onLogin }: LoginProps) {
   const [canUseBiometric, setCanUseBiometric] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showServerSettings, setShowServerSettings] = useState(!isSupabaseConfigured);
 
   const { companySettings, isLoading, recordAuditEvent, session, userRole } = useErp();
 
@@ -147,6 +149,10 @@ export function Login({ onLogin }: LoginProps) {
     return <ForgotPasswordScreen onBack={() => setShowForgotPassword(false)} />;
   }
 
+  if (showServerSettings) {
+    return <ServerSettingsScreen onBack={() => setShowServerSettings(false)} />;
+  }
+
   // Biometric enrollment prompt shown after a successful password login
   if (showBiometricPrompt) {
     return (
@@ -179,11 +185,11 @@ export function Login({ onLogin }: LoginProps) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-background">
+    <div className="min-h-[100dvh] flex flex-col md:flex-row bg-background">
       {/* ── Brand panel ────────────────────────────────────────────
-          Mobile: compact top hero (1/3 of viewport).
+          Mobile: compact top hero.
           Desktop: full-height left column with editorial typography. */}
-      <div className="md:flex-1 md:min-h-screen relative bg-primary-600 dark:bg-primary-700 flex flex-col items-center md:items-start justify-center px-6 md:px-12 lg:px-16 py-10 md:py-12">
+      <div className="md:flex-1 relative bg-primary-600 dark:bg-primary-700 flex flex-col items-center md:items-start justify-center px-6 md:px-12 lg:px-16 py-8 md:py-12 shrink-0 md:min-h-screen">
         {/* Subtle decorative grid for desktop hero */}
         <div
           aria-hidden="true"
@@ -219,9 +225,9 @@ export function Login({ onLogin }: LoginProps) {
       </div>
 
       {/* ── Form panel ─────────────────────────────────────────────
-          Mobile: rounded-top card overlapping hero.
+          Mobile: rounded-top card overlapping hero, scrollable.
           Desktop: clean right column. */}
-      <div className="flex-1 bg-surface md:bg-background rounded-t-3xl md:rounded-none -mt-5 md:mt-0 px-6 pt-8 md:pt-0 pb-6 md:px-12 lg:px-16 flex flex-col justify-center">
+      <div className="flex-1 bg-surface md:bg-background rounded-t-3xl md:rounded-none -mt-5 md:mt-0 px-6 pt-8 pb-8 md:pt-0 md:pb-6 md:px-12 lg:px-16 flex flex-col justify-center overflow-y-auto">
         <div className="w-full max-w-sm md:max-w-md mx-auto">
           <h2 className="text-2xl md:text-3xl font-display font-bold text-foreground tracking-tight">
             Welcome back
@@ -341,6 +347,16 @@ export function Login({ onLogin }: LoginProps) {
                 </button>
               </>
             )}
+
+            <div className="mt-4 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setShowServerSettings(true)}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Database Connection Settings
+              </button>
+            </div>
           </form>
         </div>
       </div>

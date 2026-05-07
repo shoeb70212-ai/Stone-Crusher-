@@ -254,7 +254,7 @@ export function InvoiceCreateModal({
           </div>
               
               <div className="space-y-2">
-                {newInvoice.items.map((it, idx) => {
+                {newInvoice.items?.map((it, idx) => {
                   const gstAmount = newInvoice.type === "GST" ? it.amount * ((it.gstRate || 0) / 100) : 0;
                   const total = Math.round(it.amount + gstAmount);
                   return (

@@ -293,7 +293,7 @@ export function SettingsUsers({
               </p>
               
               <div className="space-y-3">
-                {PERMISSIONS_CONFIG.map(({ key, label, desc }) => {
+                {PERMISSIONS_CONFIG.map(({ key, label }) => {
                   const isChecked = editingUser.permissions?.[key] ?? getDefaultPermission(editingUser.role, key);
                   return (
                     <label key={key} className="flex items-start gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer transition-colors">
@@ -307,7 +307,6 @@ export function SettingsUsers({
                       </div>
                       <div className="flex flex-col">
                         <span className="text-sm font-medium text-zinc-900 dark:text-white">{label}</span>
-                        {desc && <span className="text-xs text-zinc-500 dark:text-zinc-400">{desc}</span>}
                       </div>
                     </label>
                   );

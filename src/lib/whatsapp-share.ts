@@ -148,3 +148,29 @@ export function buildSlipWhatsAppMessage({
     `Status: ${slip.status}`,
   ].filter(Boolean).join("\n");
 }
+
+export function buildQuotationWhatsAppMessage({
+  quotation,
+  customer,
+  companySettings,
+}: {
+  quotation: import("../types").Quotation;
+  customer?: Customer;
+  companySettings: CompanySettings;
+}): string {
+  const customerName = getCustomerName(customer, quotation.customerId || "");
+  const itemSummary =
+    quotation.items.length === 1
+      ? quotation.items[0]?.materialType ?? "1 item"
+      : `${quotation.items.length} items`;
+
+  return [
+    companySettings.name || "CrushTrack",
+    `Quotation: ${quotation.quotationNo}`,
+    `Date: ${formatDate(quotation.date)}`,
+    `Customer: ${customerName}`,
+    `Items: ${itemSummary}`,
+    `Total: ${formatMoney(quotation.total)}`,
+    `Status: ${quotation.status}`,
+  ].join("\n");
+}

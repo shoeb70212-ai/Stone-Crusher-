@@ -25,9 +25,9 @@ import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { customerSchema } from "../lib/validation";
 import { useToast } from "../components/ui/Toast";
 import { generateId, formatVehicleNo } from "../lib/utils";
-import { downloadCSV, downloadLedgerStatementPdf } from "../lib/export-utils";
-import { printHtml } from "../lib/print-utils";
-import { buildLedgerWhatsAppMessage, openWhatsAppMessage } from "../lib/whatsapp-share";
+import { createLedgerPdfBlob } from "../lib/export-utils";
+import { printHtml, downloadPdfBlob, sharePdfBlob } from "../lib/print-utils";
+import { openWhatsAppMessage } from "../lib/whatsapp-share";
 
 export function Customers() {
   const { customers, addCustomer, updateCustomer, deleteCustomer, slips, transactions, getCustomerBalance, invoices, hasPermission } = useErp();
@@ -39,6 +39,7 @@ export function Customers() {
     null,
   );
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isSharingWhatsApp, setIsSharingWhatsApp] = useState(false);
   
   const canViewPending = hasPermission("viewPendingAmounts");
   const canViewLedger = hasPermission("viewCustomerLedger");
@@ -581,77 +582,86 @@ export function Customers() {
                   <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Print</span>
                 </button>
                 <button
-                  onClick={() => {
-                    const entries = customerHistory.map(h => ({
-                       date: new Date(h.date),
-                       desc: h.description,
-                       debit: h.isCharge ? h.amount : 0,
-                       credit: !h.isCharge ? h.amount : 0
-                    }));
-                    const message = buildLedgerWhatsAppMessage({ customer: selectedCustomer, entries, closingBalance: getCustomerBalance(selectedCustomer.id) });
-                    openWhatsAppMessage(message);
-                  }}
-                  className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 text-white text-xs sm:text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
-                >
-                  <MessageCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">WhatsApp</span>
-                </button>
-                <button
                   onClick={async () => {
-                    const rows = customerHistory.map(h => {
-                       const debit = h.isCharge ? h.amount : 0;
-                       const credit = !h.isCharge ? h.amount : 0;
-                       return {
-                          date: h.date === new Date(0).toISOString() ? "-" : new Date(h.date).toLocaleDateString(),
-                          particulars: h.description,
-                          debit: debit > 0 ? debit : "",
-                          credit: credit > 0 ? credit : "",
-                          balance: `${Math.abs(h.runningBalance)} ${h.runningBalance < 0 ? "Cr" : h.runningBalance > 0 ? "Dr" : ""}`,
-                       }
-                    });
+                    setIsSharingWhatsApp(true);
                     try {
-                      await downloadCSV(rows, { date: "Date", particulars: "Particulars", debit: "Debit (₹)", credit: "Credit (₹)", balance: "Balance (₹)" }, `Ledger_${selectedCustomer.name.replace(/\s+/g, "_")}`);
-                    } catch (err) {
-                      addToast("error", err instanceof Error ? err.message : "Export failed.");
+                      const html = `
+                       <div style="padding:24px;font-family:Inter,sans-serif;">
+                         <h2 style="margin:0 0 4px;">${selectedCustomer.name}</h2>
+                         <p style="margin:0 0 12px;color:#666;">Phone: ${selectedCustomer.phone || 'N/A'}${selectedCustomer.address ? ` | ${selectedCustomer.address}` : ''}${selectedCustomer.gstin ? ` | GSTIN: ${selectedCustomer.gstin}` : ''}</p>
+                         <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                           <thead><tr style="background:#f4f4f5;"><th style="padding:8px;text-align:left;">Date</th><th style="padding:8px;text-align:left;">Particulars</th><th style="padding:8px;text-align:right;">Debit</th><th style="padding:8px;text-align:right;">Credit</th><th style="padding:8px;text-align:right;">Balance</th></tr></thead>
+                           <tbody>
+                             ${customerHistory.map(e => {
+                               const dateStr = e.date === new Date(0).toISOString() ? "-" : new Date(e.date).toLocaleDateString();
+                               const debit = e.isCharge ? e.amount : 0;
+                               const credit = !e.isCharge ? e.amount : 0;
+                               return `<tr><td style="padding:8px;border-bottom:1px solid #eee;">${dateStr}</td><td style="padding:8px;border-bottom:1px solid #eee;">${e.description}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#e11d48;">${debit > 0 ? debit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#059669;">${credit > 0 ? credit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;">${Math.abs(e.runningBalance).toLocaleString()} ${e.runningBalance < 0 ? 'Cr' : e.runningBalance > 0 ? 'Dr' : ''}</td></tr>`;
+                             }).join('')}
+                           </tbody>
+                         </table>
+                         <p style="margin-top:12px;text-align:right;font-weight:bold;">Closing Balance: \u20b9${Math.abs(getCustomerBalance(selectedCustomer.id)).toLocaleString()} ${getCustomerBalance(selectedCustomer.id) < 0 ? 'Cr' : getCustomerBalance(selectedCustomer.id) > 0 ? 'Dr' : ''}</p>
+                       </div>
+                     `;
+                      const blob = await createLedgerPdfBlob(selectedCustomer.name, html);
+                      const filename = `Ledger_${selectedCustomer.name.replace(/\s+/g, '_')}.pdf`;
+                      const closingBal = getCustomerBalance(selectedCustomer.id);
+                      const summaryText = `Ledger Statement: ${selectedCustomer.name}\nClosing Balance: \u20b9${Math.abs(closingBal).toLocaleString()} ${closingBal < 0 ? 'Cr' : 'Dr'}`;
+                      const result = await sharePdfBlob(blob, filename, `Ledger - ${selectedCustomer.name}`, summaryText);
+
+                      if (result === 'downloaded') {
+                        openWhatsAppMessage(summaryText);
+                        addToast('info', 'Ledger PDF downloaded. Attach it in WhatsApp.');
+                      } else if (result === 'shared') {
+                        addToast('success', 'Ledger PDF shared. Choose WhatsApp from the share sheet.');
+                      }
+                    } catch {
+                      addToast('error', 'Failed to share ledger PDF.');
+                    } finally {
+                      setIsSharingWhatsApp(false);
                     }
                   }}
-                  className="flex items-center gap-1 px-2.5 py-1.5 bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-xs sm:text-sm font-semibold rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors"
+                  disabled={isSharingWhatsApp}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 text-white text-xs sm:text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
                 >
-                  <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">CSV</span>
+                  {isSharingWhatsApp ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : <MessageCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} <span className="hidden sm:inline">{isSharingWhatsApp ? 'Sharing...' : 'WhatsApp'}</span>
                 </button>
                 <button
                   onClick={async () => {
                      const html = `
-                      <div style="padding:24px;font-family:Inter,sans-serif;">
-                        <h2 style="margin:0 0 4px;">${selectedCustomer.name}</h2>
-                        <p style="margin:0 0 12px;color:#666;">Phone: ${selectedCustomer.phone || 'N/A'}${selectedCustomer.address ? ` | ${selectedCustomer.address}` : ''}${selectedCustomer.gstin ? ` | GSTIN: ${selectedCustomer.gstin}` : ''}</p>
-                        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-                          <thead><tr style="background:#f4f4f5;"><th style="padding:8px;text-align:left;">Date</th><th style="padding:8px;text-align:left;">Particulars</th><th style="padding:8px;text-align:right;">Debit</th><th style="padding:8px;text-align:right;">Credit</th><th style="padding:8px;text-align:right;">Balance</th></tr></thead>
-                          <tbody>
-                            ${customerHistory.map(e => {
-                              const dateStr = e.date === new Date(0).toISOString() ? "-" : new Date(e.date).toLocaleDateString();
-                              const debit = e.isCharge ? e.amount : 0;
-                              const credit = !e.isCharge ? e.amount : 0;
-                              return `<tr><td style="padding:8px;border-bottom:1px solid #eee;">${dateStr}</td><td style="padding:8px;border-bottom:1px solid #eee;">${e.description}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#e11d48;">${debit > 0 ? debit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#059669;">${credit > 0 ? credit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;">${Math.abs(e.runningBalance).toLocaleString()} ${e.runningBalance < 0 ? 'Cr' : e.runningBalance > 0 ? 'Dr' : ''}</td></tr>`;
-                            }).join('')}
-                          </tbody>
-                        </table>
-                        <p style="margin-top:12px;text-align:right;font-weight:bold;">Closing Balance: ₹${Math.abs(getCustomerBalance(selectedCustomer.id)).toLocaleString()} ${getCustomerBalance(selectedCustomer.id) < 0 ? 'Cr' : getCustomerBalance(selectedCustomer.id) > 0 ? 'Dr' : ''}</p>
-                      </div>
-                    `;
+                       <div style="padding:24px;font-family:Inter,sans-serif;">
+                         <h2 style="margin:0 0 4px;">${selectedCustomer.name}</h2>
+                         <p style="margin:0 0 12px;color:#666;">Phone: ${selectedCustomer.phone || 'N/A'}${selectedCustomer.address ? ` | ${selectedCustomer.address}` : ''}${selectedCustomer.gstin ? ` | GSTIN: ${selectedCustomer.gstin}` : ''}</p>
+                         <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                           <thead><tr style="background:#f4f4f5;"><th style="padding:8px;text-align:left;">Date</th><th style="padding:8px;text-align:left;">Particulars</th><th style="padding:8px;text-align:right;">Debit</th><th style="padding:8px;text-align:right;">Credit</th><th style="padding:8px;text-align:right;">Balance</th></tr></thead>
+                           <tbody>
+                             ${customerHistory.map(e => {
+                               const dateStr = e.date === new Date(0).toISOString() ? "-" : new Date(e.date).toLocaleDateString();
+                               const debit = e.isCharge ? e.amount : 0;
+                               const credit = !e.isCharge ? e.amount : 0;
+                               return `<tr><td style="padding:8px;border-bottom:1px solid #eee;">${dateStr}</td><td style="padding:8px;border-bottom:1px solid #eee;">${e.description}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#e11d48;">${debit > 0 ? debit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#059669;">${credit > 0 ? credit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;">${Math.abs(e.runningBalance).toLocaleString()} ${e.runningBalance < 0 ? 'Cr' : e.runningBalance > 0 ? 'Dr' : ''}</td></tr>`;
+                             }).join('')}
+                           </tbody>
+                         </table>
+                         <p style="margin-top:12px;text-align:right;font-weight:bold;">Closing Balance: \u20b9${Math.abs(getCustomerBalance(selectedCustomer.id)).toLocaleString()} ${getCustomerBalance(selectedCustomer.id) < 0 ? 'Cr' : getCustomerBalance(selectedCustomer.id) > 0 ? 'Dr' : ''}</p>
+                       </div>
+                     `;
                      setIsExportingPdf(true);
                      try {
-                        await downloadLedgerStatementPdf(selectedCustomer.name, html);
-                     } catch (err) {
-                        addToast('error', 'PDF export failed.');
+                       const blob = await createLedgerPdfBlob(selectedCustomer.name, html);
+                       const filename = `Ledger_${selectedCustomer.name.replace(/\s+/g, '_')}.pdf`;
+                       downloadPdfBlob(blob, filename);
+                       addToast('success', 'Ledger PDF downloaded.');
+                     } catch {
+                       addToast('error', 'PDF export failed.');
                      } finally {
-                        setIsExportingPdf(false);
+                       setIsExportingPdf(false);
                      }
                   }}
                   disabled={isExportingPdf}
-                  className="flex items-center gap-1 px-2.5 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs sm:text-sm font-semibold rounded-lg hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-xs sm:text-sm font-semibold rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors disabled:opacity-50"
                 >
-                  {isExportingPdf ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
-                  <span className="hidden sm:inline">{isExportingPdf ? 'Generating...' : 'PDF'}</span>
+                  {isExportingPdf ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} <span className="hidden sm:inline">{isExportingPdf ? 'Generating...' : 'PDF'}</span>
                 </button>
                 <button
                   onClick={() => setSelectedCustomer(null)}

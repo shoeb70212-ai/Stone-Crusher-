@@ -100,7 +100,8 @@ export const resetPasswordSchema = z.object({
   path: ["confirmPassword"],
 });
 
-
+export type LoginInput = z.infer<typeof loginSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 
 
 

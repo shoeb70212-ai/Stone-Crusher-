@@ -10,7 +10,7 @@ interface HeaderProps {
 }
 
 export function Header({ onMenuClick }: HeaderProps) {
-  const { userRole, syncStatus, companySettings, updateCompanySettings } = useErp();
+  const { userRole, syncStatus, pendingSyncCount, companySettings, updateCompanySettings } = useErp();
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
   const [currentView, setCurrentView] = useState("dashboard");
 
@@ -68,36 +68,50 @@ export function Header({ onMenuClick }: HeaderProps) {
 
         {/* Sync status — only renders when syncing/error so it doesn't take
             up space when idle. Now sits inline with the icon row. */}
+        {pendingSyncCount > 0 && syncStatus !== 'syncing' && syncStatus !== 'error' && (
+          <span
+            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 h-8 rounded-full bg-muted text-muted-foreground text-xs font-medium"
+            title={`${pendingSyncCount} messages pending to sync`}
+          >
+            <Loader2 className="w-3.5 h-3.5 opacity-50" />
+            {pendingSyncCount} pending
+          </span>
+        )}
         {syncStatus === 'syncing' && (
           <span
             className="hidden sm:inline-flex items-center gap-1.5 px-2.5 h-8 rounded-full bg-muted text-muted-foreground text-xs font-medium"
-            aria-label="Saving changes…"
-            title="Saving changes…"
+            title={`Syncing ${pendingSyncCount} messages…`}
           >
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            Saving
+            {pendingSyncCount > 0 ? `Syncing ${pendingSyncCount}` : 'Saving'}
           </span>
         )}
         {syncStatus === 'error' && (
           <span
             className="hidden sm:inline-flex items-center gap-1.5 px-2.5 h-8 rounded-full bg-danger-muted text-danger text-xs font-semibold"
-            aria-label="Sync failed — changes may not be saved"
-            title="Sync failed — changes may not be saved"
+            title={`${pendingSyncCount} changes failed to sync`}
             role="alert"
           >
             <AlertTriangle className="w-3.5 h-3.5" />
-            Sync error
+            Error ({pendingSyncCount})
           </span>
         )}
         {/* Mobile-only compact sync indicator */}
+        {pendingSyncCount > 0 && syncStatus !== 'syncing' && syncStatus !== 'error' && (
+          <span className="sm:hidden p-2 text-muted-foreground font-medium text-xs flex items-center" title={`${pendingSyncCount} pending`}>
+            {pendingSyncCount} pending
+          </span>
+        )}
         {syncStatus === 'syncing' && (
-          <span className="sm:hidden p-2 text-muted-foreground" aria-label="Saving" title="Saving…">
+          <span className="sm:hidden p-2 text-muted-foreground flex items-center gap-1" title={`Syncing ${pendingSyncCount}…`}>
             <Loader2 className="w-4 h-4 animate-spin" />
+            {pendingSyncCount > 0 && <span className="text-xs font-medium">{pendingSyncCount}</span>}
           </span>
         )}
         {syncStatus === 'error' && (
-          <span className="sm:hidden p-2 text-danger" aria-label="Sync error" title="Sync error" role="alert">
+          <span className="sm:hidden p-2 text-danger flex items-center gap-1" title={`Error ${pendingSyncCount}`} role="alert">
             <AlertTriangle className="w-4 h-4" />
+            {pendingSyncCount > 0 && <span className="text-xs font-medium">{pendingSyncCount}</span>}
           </span>
         )}
 

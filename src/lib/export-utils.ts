@@ -69,15 +69,17 @@ export async function downloadCSV(
 }
 
 /**
- * Generates a PDF from the Customer Ledger Statement HTML and triggers a download.
+ * Creates a PDF Blob from the Customer Ledger Statement HTML.
+ * Callers can then download it via `downloadPdfBlob` or share it via `sharePdfBlob`.
  *
- * @param customerName  - Used to build the output filename.
+ * @param customerName  - Used for wrapper display; not embedded in the blob filename.
  * @param statementHtml - The rendered HTML string of the statement table.
+ * @returns A PDF Blob ready for download or sharing.
  */
-export async function downloadLedgerStatementPdf(
+export async function createLedgerPdfBlob(
   customerName: string,
   statementHtml: string,
-): Promise<void> {
+): Promise<Blob> {
   const html2pdfModule = await import('html2pdf.js');
   const html2pdf = (html2pdfModule.default || html2pdfModule) as typeof html2pdfModule.default;
 
@@ -111,8 +113,24 @@ export async function downloadLedgerStatementPdf(
   await yieldToMain();
 
   try {
-    await html2pdf().set(opt).from(wrapper).save();
+    return await html2pdf().set(opt).from(wrapper).outputPdf('blob');
   } finally {
     document.body.removeChild(wrapper);
   }
+}
+
+/**
+ * Generates a PDF from the Customer Ledger Statement HTML and triggers a download.
+ *
+ * @param customerName  - Used to build the output filename.
+ * @param statementHtml - The rendered HTML string of the statement table.
+ */
+export async function downloadLedgerStatementPdf(
+  customerName: string,
+  statementHtml: string,
+): Promise<void> {
+  const { downloadPdfBlob } = await import('./print-utils');
+  const blob = await createLedgerPdfBlob(customerName, statementHtml);
+  const filename = `Ledger_Statement_${customerName.replace(/\s+/g, '_')}.pdf`;
+  downloadPdfBlob(blob, filename);
 }

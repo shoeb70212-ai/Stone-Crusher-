@@ -85,6 +85,7 @@ interface ErpState {
   bootstrapRequired: boolean | null;
   isLoading: boolean;
   syncStatus: 'idle' | 'syncing' | 'error' | 'failed';
+  pendingSyncCount: number;
 
   // Auth
   userRole: UserRole | null;
@@ -229,12 +230,9 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
   });
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error' | 'failed'>('idle');
-  const [syncQueueV2Enabled, setSyncQueueV2Enabled] = useState(false);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [historicalBalances, setHistoricalBalances] = useState<Record<string, number>>({});
   const [historicalEmployeeBalances, setHistoricalEmployeeBalances] = useState<Record<string, number>>({});
-  useEffect(() => {
-    setSyncQueueV2Enabled(companySettings.flags?.syncQueueV2 ?? false);
-  }, [companySettings.flags]);
 
   // Subscribe to Supabase Auth state changes.  When the session transitions
   // the role is re-derived below (in the settings-load effect).
@@ -469,36 +467,19 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
   const MAX_RETRIES = 5;
   const syncInProgressRef = useRef(false);
 
-  const requeueFailedPayloadV0 = useCallback((payload: {
-    updates: Record<string, unknown[]> & { companySettings?: CompanySettings };
-    deletions: Record<string, string[]>;
-  }) => {
-    for (const [table, items] of Object.entries(payload.updates)) {
-      if (table === "companySettings") {
-        syncQueueRef.current.updates.companySettings =
-          syncQueueRef.current.updates.companySettings ?? (items as CompanySettings);
-      } else {
-        const existing = (syncQueueRef.current.updates[table] || []) as QueueItem[];
-        const retry = items as QueueItem[];
-        const existingIds = new Set(existing.map((item) => (item as { id?: string }).id).filter(Boolean));
-        const merged = [
-          ...retry.filter((item) => {
-            const id = (item as { id?: string }).id;
-            return !id || !existingIds.has(id);
-          }),
-          ...existing,
-        ];
-        syncQueueRef.current.updates[table] = merged;
-      }
+  const updatePendingCount = useCallback(() => {
+    let count = 0;
+    for (const items of Object.values(syncQueueRef.current.updates)) {
+      if (Array.isArray(items)) count += items.length;
+      else if (items) count += 1;
     }
-    for (const [table, ids] of Object.entries(payload.deletions)) {
-      const existing = syncQueueRef.current.deletions[table] || [];
-      const merged = Array.from(new Set([...existing, ...ids]));
-      syncQueueRef.current.deletions[table] = merged;
+    for (const ids of Object.values(syncQueueRef.current.deletions)) {
+      count += ids.length;
     }
+    setPendingSyncCount(count);
   }, []);
 
-  const requeueFailedPayloadV2 = useCallback((payload: {
+  const requeueFailedPayload = useCallback((payload: {
     updates: Record<string, unknown[]> & { companySettings?: CompanySettings };
     deletions: Record<string, string[]>;
   }) => {
@@ -551,9 +532,8 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
       const merged = Array.from(new Set([...existing, ...ids]));
       syncQueueRef.current.deletions[table] = merged;
     }
-  }, []);
-
-  const requeueFailedPayload = syncQueueV2Enabled ? requeueFailedPayloadV2 : requeueFailedPayloadV0;
+    updatePendingCount();
+  }, [updatePendingCount]);
 
   const flushSyncQueue = useCallback(async (): Promise<boolean> => {
     if (syncInProgressRef.current) return false;
@@ -577,6 +557,7 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
     // Reset queue before the async call so concurrent mutations that arrive
     // while this request is in-flight go into the next batch.
     syncQueueRef.current = { updates: {}, deletions: {} };
+    updatePendingCount();
     syncInProgressRef.current = true;
 
     setSyncStatus('syncing');
@@ -656,9 +637,7 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
    * `companySettings` is treated as a singleton; all other tables are arrays.
    */
   const queueUpdate = useCallback((table: string, item: any) => {
-    const stamped = syncQueueV2Enabled
-      ? { ...item, _updatedAt: Date.now(), clientOpId: item.id ? undefined : generateId() }
-      : item;
+    const stamped = { ...item, _updatedAt: Date.now(), clientOpId: item.id ? undefined : generateId() };
     if (table === "companySettings") {
       syncQueueRef.current.updates.companySettings = stamped;
     } else {
@@ -666,8 +645,9 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
       const filtered = existing.filter((i: any) => i.id !== item.id);
       syncQueueRef.current.updates[table] = [...filtered, stamped];
     }
+    updatePendingCount();
     triggerSync();
-  }, [triggerSync, syncQueueV2Enabled]);
+  }, [triggerSync, updatePendingCount]);
 
   /** Enqueues a hard-delete for a record by table name and ID. */
   const queueDelete = useCallback((table: string, id: string) => {
@@ -675,8 +655,9 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
     if (!existing.includes(id)) {
       syncQueueRef.current.deletions[table] = [...existing, id];
     }
+    updatePendingCount();
     triggerSync();
-  }, [triggerSync]);
+  }, [triggerSync, updatePendingCount]);
 
   // -----------------------------------------------------------------------
   // Local mirror — debounced backup to IndexedDB (replaces old localStorage).
@@ -1713,10 +1694,11 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
     purgeInactiveRecords,
     flushSync: flushSyncQueue,
     retryCountRef, historicalBalances, historicalEmployeeBalances, loadHistoricalData, loadInactiveCustomers,
+    pendingSyncCount,
   }), [
     customers, employees, employeeTransactions, slips, transactions, vehicles, invoices, quotations, tasks, auditLogs,
     companySettings, bootstrapRequired, isLoading, syncStatus, userRole, session, signOut,
-    recordAudit, hasPermission,
+    recordAudit, hasPermission, pendingSyncCount,
     updateCompanySettings, toggleMaterialActive,
     addCustomer, updateCustomer, deleteCustomer,
     addEmployee, updateEmployee, deleteEmployee,

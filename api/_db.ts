@@ -42,6 +42,7 @@ export const TABLE_NAMES: Record<string, string> = {
   slips: 'slips',
   transactions: 'transactions',
   invoices: 'invoices',
+  quotations: 'quotations',
   tasks: 'tasks',
   auditLogs: 'audit_logs',
 };
@@ -60,6 +61,7 @@ export const TABLE_COLUMNS: Record<string, Set<string>> = {
   slips: new Set(['id', 'date', 'vehicleNo', 'driverName', 'driverPhone', 'materialType', 'deliveryMode', 'measurementType', 'measurement', 'quantity', 'ratePerUnit', 'totalAmount', 'amountPaid', 'customerId', 'status', 'notes', 'operatorName', 'loaderName', 'invoiceId', 'attachmentUri', 'updatedAt']),
   transactions: new Set(['id', 'date', 'type', 'amount', 'category', 'description', 'customerId', 'slipId', 'updatedAt']),
   invoices: new Set(['id', 'invoiceNo', 'date', 'customerId', 'type', 'items', 'subTotal', 'cgst', 'sgst', 'total', 'status', 'slipIds', 'updatedAt']),
+  quotations: new Set(['id', 'quotationNo', 'date', 'validUntil', 'customerId', 'customerName', 'type', 'items', 'subTotal', 'cgst', 'sgst', 'total', 'status', 'notes', 'convertedInvoiceId', 'updatedAt']),
   tasks: new Set(['id', 'title', 'completed', 'createdAt', 'updatedAt']),
   audit_logs: new Set(['id', 'timestamp', 'actorId', 'actorName', 'actorRole', 'action', 'entityType', 'entityId', 'entityLabel', 'description', 'metadata', 'updatedAt']),
 };
@@ -282,6 +284,25 @@ export async function initDb(): Promise<void> {
       "updatedAt"   TIMESTAMPTZ DEFAULT now()
     );
 
+    CREATE TABLE IF NOT EXISTS quotations (
+      id                    TEXT PRIMARY KEY,
+      "quotationNo"         TEXT,
+      date                  TEXT,
+      "validUntil"          TEXT,
+      "customerId"          TEXT,
+      "customerName"        TEXT,
+      type                  TEXT,
+      items                 JSONB,
+      "subTotal"            DOUBLE PRECISION,
+      cgst                  DOUBLE PRECISION,
+      sgst                  DOUBLE PRECISION,
+      total                 DOUBLE PRECISION,
+      status                TEXT,
+      notes                 TEXT,
+      "convertedInvoiceId"  TEXT,
+      "updatedAt"           TIMESTAMPTZ DEFAULT now()
+    );
+
     CREATE TABLE IF NOT EXISTS tasks (
       id          TEXT PRIMARY KEY,
       title       TEXT,
@@ -363,6 +384,8 @@ export async function initDb(): Promise<void> {
     'CREATE INDEX IF NOT EXISTS idx_transactions_customer_id ON transactions ("customerId")',
     'CREATE INDEX IF NOT EXISTS idx_invoices_updated_at ON invoices ("updatedAt")',
     'CREATE INDEX IF NOT EXISTS idx_invoices_customer_id ON invoices ("customerId")',
+    'CREATE INDEX IF NOT EXISTS idx_quotations_updated_at ON quotations ("updatedAt")',
+    'CREATE INDEX IF NOT EXISTS idx_quotations_customer_id ON quotations ("customerId")',
     'CREATE INDEX IF NOT EXISTS idx_tasks_updated_at ON tasks ("updatedAt")',
     'CREATE INDEX IF NOT EXISTS idx_audit_logs_updated_at ON audit_logs ("updatedAt")',
     'CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs (timestamp DESC)',

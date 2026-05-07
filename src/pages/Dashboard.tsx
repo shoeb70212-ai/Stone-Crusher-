@@ -513,7 +513,7 @@ export function Dashboard() {
           {(
             Object.entries(companyVehicleTrips) as [
               string,
-              { trips: number; quantity: number },
+              { trips: number; quantity: number; displayNo: string },
             ][]
           ).map(([key, data]) => (
             <div

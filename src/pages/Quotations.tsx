@@ -10,6 +10,11 @@ import { QuotationCreateModal } from "./quotations/QuotationCreateModal";
 import { CREATE_EVENT } from "../components/Layout";
 import { useToast } from "../components/ui/Toast";
 import { useDebounce } from "../lib/use-debounce";
+import { DocumentActionButton, type DocumentAction } from "../components/ui/DocumentActionButton";
+import { createQuotationPdfBlob, downloadQuotationPdf, printPdfBlob, sharePdfBlob } from "../lib/print-utils";
+import { buildQuotationWhatsAppMessage, openWhatsAppMessage } from "../lib/whatsapp-share";
+
+type QuotationDocumentAction = DocumentAction;
 
 const statusColors: Record<string, string> = {
   Draft: "bg-zinc-100 text-zinc-700 dark:bg-zinc-700/50 dark:text-zinc-300",
@@ -25,6 +30,7 @@ function QuotationsContent() {
   const generator = useQuotationGenerator();
 
   const [statusActionQuotation, setStatusActionQuotation] = useState<Quotation | null>(null);
+  const [activeQuotationAction, setActiveQuotationAction] = useState<{ id: string; action: QuotationDocumentAction } | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"All" | "GST" | "Cash">("All");
   const [filterCustomerId, setFilterCustomerId] = useState("All");
@@ -61,6 +67,43 @@ function QuotationsContent() {
 
   const hasFilters = filterCustomerId !== "All" || !!startDate || !!endDate;
   const clearFilters = () => { setFilterCustomerId("All"); setStartDate(""); setEndDate(""); };
+
+  const handleQuotationDocumentAction = async (quotation: Quotation, action: QuotationDocumentAction) => {
+    const customer = customers.find((c) => c.id === quotation.customerId);
+    const filename = `Quotation-${quotation.quotationNo}.pdf`;
+    setActiveQuotationAction({ id: quotation.id, action });
+
+    try {
+      if (action === "download") {
+        await downloadQuotationPdf(quotation, customer, companySettings, filename);
+        addToast("success", "Quotation PDF downloaded successfully.");
+        return;
+      }
+
+      const blob = await createQuotationPdfBlob(quotation, customer, companySettings);
+
+      if (action === "whatsapp") {
+        const message = buildQuotationWhatsAppMessage({ quotation, customer, companySettings });
+        const result = await sharePdfBlob(blob, filename, `Quotation ${quotation.quotationNo}`, message);
+
+        if (result === "downloaded") {
+          openWhatsAppMessage(message);
+          addToast("info", "Quotation PDF downloaded. Attach it in WhatsApp.");
+        } else if (result === "shared") {
+          addToast("success", "Quotation PDF is ready to send. Choose WhatsApp from the share sheet.");
+        }
+        return;
+      }
+
+      await printPdfBlob(blob, `Quotation ${quotation.quotationNo}`);
+      addToast("success", "Quotation sent to print.");
+    } catch (error) {
+      console.error("Quotation document action failed:", error);
+      addToast("error", "Could not prepare the quotation PDF. Please try again.");
+    } finally {
+      setActiveQuotationAction(null);
+    }
+  };
 
   return (
     <div className="space-y-4 md:space-y-5">
@@ -167,6 +210,27 @@ function QuotationsContent() {
                   </div>
                   <div className="mt-2 flex items-center gap-1.5">
                     <button onClick={() => generator.openEditModal(q)} className="flex-1 py-2 text-[11px] font-semibold bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 active:scale-[0.98] transition-all">Edit</button>
+                    <button
+                      onClick={() => void handleQuotationDocumentAction(q, "download")}
+                      className="p-2.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 active:scale-95 transition-all"
+                      title="Download"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => void handleQuotationDocumentAction(q, "print")}
+                      className="p-2.5 text-zinc-400 hover:text-primary-600 dark:hover:text-primary-400 rounded-lg hover:bg-primary-50 active:scale-95 transition-all"
+                      title="Print"
+                    >
+                      <Printer className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => void handleQuotationDocumentAction(q, "whatsapp")}
+                      className="p-2.5 text-emerald-600 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 active:scale-95 transition-all"
+                      title="WhatsApp"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                    </button>
                     {q.status !== "Accepted" && !q.convertedInvoiceId && (
                       <button onClick={() => setConvertConfirm(q)} className="p-2.5 text-primary-600 hover:text-primary-700 rounded-lg hover:bg-primary-50 active:scale-95 transition-all" title="Convert to Invoice"><ArrowRightCircle className="w-4 h-4" /></button>
                     )}
@@ -217,6 +281,9 @@ function QuotationsContent() {
                   <td className="py-4 px-6 text-right">
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <button onClick={() => generator.openEditModal(q)} className="inline-flex min-h-9 items-center justify-center rounded-lg px-2.5 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors dark:text-indigo-400 dark:hover:bg-indigo-900/30">Edit</button>
+                      <DocumentActionButton entityId={q.id} entityLabel={`quotation ${q.quotationNo}`} action="download" label="Download" icon={<Download className="h-3.5 w-3.5" />} className="bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-50 dark:bg-zinc-800 dark:text-zinc-200 dark:border-zinc-700 dark:hover:bg-zinc-700" activeAction={activeQuotationAction} onClick={(a) => void handleQuotationDocumentAction(q, a)} />
+                      <DocumentActionButton entityId={q.id} entityLabel={`quotation ${q.quotationNo}`} action="whatsapp" label="WhatsApp" icon={<MessageCircle className="h-3.5 w-3.5" />} className="bg-emerald-600 text-white hover:bg-emerald-700" activeAction={activeQuotationAction} onClick={(a) => void handleQuotationDocumentAction(q, a)} />
+                      <DocumentActionButton entityId={q.id} entityLabel={`quotation ${q.quotationNo}`} action="print" label="Print" icon={<Printer className="h-3.5 w-3.5" />} className="bg-primary-600 text-white hover:bg-primary-700" activeAction={activeQuotationAction} onClick={(a) => void handleQuotationDocumentAction(q, a)} />
                       {q.status !== "Accepted" && !q.convertedInvoiceId && (
                         <button onClick={() => setConvertConfirm(q)} className="inline-flex min-h-9 items-center gap-1.5 justify-center rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-primary-600 text-white hover:bg-primary-700 transition-colors">
                           <ArrowRightCircle className="h-3.5 w-3.5" />Convert

@@ -24,7 +24,7 @@ const SLIP_SIZES = [
   { id: 'Thermal-80mm', label: '80mm' },
   { id: 'Thermal-76mm', label: '76mm' },
   { id: 'Thermal-58mm', label: '58mm' },
-];
+] as const;
 
 const PREVIEW_WIDTHS: Record<string, string> = {
   'A4': '794px',
@@ -38,7 +38,7 @@ const PREVIEW_WIDTHS: Record<string, string> = {
 export function PrintSlipModal({ slip, onClose }: { slip: Slip; onClose: () => void }) {
   const { companySettings, customers } = useErp();
   const { addToast } = useToast();
-  const [format, setFormat] = useState(companySettings.slipFormat || "Thermal-58mm");
+  const [format, setFormat] = useState<"A4" | "Thermal-58mm" | "Thermal-76mm" | "Thermal-80mm" | "Thermal-100mm" | "Thermal-110mm">(companySettings.slipFormat || "Thermal-58mm");
   const [btDevices, setBtDevices] = useState<BluetoothDevice[]>([]);
   const [btScanning, setBtScanning] = useState(false);
   const [btConnecting, setBtConnecting] = useState<string | null>(null);

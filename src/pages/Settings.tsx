@@ -326,6 +326,7 @@ export function Settings() {
       updated.version = currentVersion;
     }
     setLocalSettings(updated);
+    updateCompanySettings(updated);
 
     if (tempPassword) {
       // Show the generated temporary password so the admin can share it
