@@ -8,7 +8,7 @@
  */
 
 import { isNative } from './capacitor';
-import { saveNativeCsv, yieldToMain } from './print-utils';
+import { saveNativeCsv, yieldToMain, withTimeout } from './print-utils';
 
 /**
  * Converts an array of objects to CSV format and triggers a download.
@@ -113,7 +113,11 @@ export async function createLedgerPdfBlob(
   await yieldToMain();
 
   try {
-    return await html2pdf().set(opt).from(wrapper).outputPdf('blob');
+    return await withTimeout(
+      html2pdf().set(opt).from(wrapper).outputPdf('blob'),
+      15000,
+      'Ledger PDF generation',
+    );
   } finally {
     document.body.removeChild(wrapper);
   }

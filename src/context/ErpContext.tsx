@@ -30,12 +30,12 @@ import { clearBiometricCredentials } from "../lib/biometrics";
 import { generateId, formatVehicleNo } from "../lib/utils";
 import {
   saveLocalRecord,
-  getLocalCollection,
-  getLocalCollectionRecent,
   saveLocalSingleton,
   getLocalSingleton,
+  getLocalCollection,
   deleteLocalRecord,
   isLocalEmpty,
+  loadAllCollections,
   pushDeltaToCloud,
   pullAllFromCloud,
   hasMasterKey,
@@ -271,31 +271,31 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
   }, []);
 
   const loadFromIDB = useCallback(async () => {
-    const localData: any = {};
     try {
-      const allCustomers = await getLocalCollection('customers');
-      localData.customers = allCustomers.filter((c: any) => c.isActive !== false);
-      const allEmployees = await getLocalCollection('employees');
-      localData.employees = allEmployees.filter((e: any) => e.isActive !== false);
-      localData.vehicles = await getLocalCollection('vehicles');
-      localData.tasks = await getLocalCollection('tasks');
+      // Single keys() call covers all collections — much faster than one call per collection
+      const [{ simple, timed }, companySettingsData] = await Promise.all([
+        loadAllCollections(
+          ['customers', 'employees', 'vehicles', 'tasks'],
+          [
+            { name: 'slips', days: 60 },
+            { name: 'transactions', days: 60 },
+            { name: 'invoices', days: 60 },
+            { name: 'quotations', days: 60 },
+            { name: 'employeeTransactions', days: 60 },
+            { name: 'auditLogs', days: 60 },
+          ],
+        ),
+        getLocalSingleton('companySettings'),
+      ]);
 
-      const timedCollections = [
-        'slips', 'transactions', 'invoices',
-        'quotations', 'employeeTransactions', 'auditLogs',
-      ];
-      let olderSlips: any[] = [], olderInvoices: any[] = [], olderTransactions: any[] = [], olderEmployeeTransactions: any[] = [];
-      let totalSkipped = 0;
+      const olderSlips = timed.slips.older;
+      const olderInvoices = timed.invoices.older;
+      const olderTransactions = timed.transactions.older;
+      const olderEmployeeTransactions = timed.employeeTransactions.older;
 
-      for (const col of timedCollections) {
-        const { recent, older } = await getLocalCollectionRecent(col, 60);
-        localData[col] = recent;
-        totalSkipped += older.length;
-        if (col === 'slips') olderSlips = older;
-        if (col === 'invoices') olderInvoices = older;
-        if (col === 'transactions') olderTransactions = older;
-        if (col === 'employeeTransactions') olderEmployeeTransactions = older;
-      }
+      const totalSkipped =
+        olderSlips.length + olderInvoices.length + olderTransactions.length +
+        timed.quotations.older.length + olderEmployeeTransactions.length + timed.auditLogs.older.length;
 
       if (totalSkipped > 0) {
         console.log(`[ErpContext] Skipped ${totalSkipped} older records (load on demand).`);
@@ -305,29 +305,47 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
       const employeeBal: Record<string, number> = {};
       for (const s of olderSlips) {
         if (!s.invoiceId && (s.status === "Tallied" || s.status === "Pending" || s.status === "Loaded")) {
-          customerBal[s.customerId] = (customerBal[s.customerId] || 0) + (s.totalAmount - (s.amountPaid ?? 0));
+          const custId = s.customerId as string;
+          const totalAmount = Number(s.totalAmount) || 0;
+          const amountPaid = Number(s.amountPaid) || 0;
+          customerBal[custId] = (customerBal[custId] || 0) + (totalAmount - amountPaid);
         }
       }
       for (const inv of olderInvoices) {
         if (inv.status !== "Cancelled") {
-          customerBal[inv.customerId] = (customerBal[inv.customerId] || 0) + inv.total;
+          const custId = inv.customerId as string;
+          customerBal[custId] = (customerBal[custId] || 0) + (Number(inv.total) || 0);
         }
       }
       for (const t of olderTransactions) {
         if (t.customerId) {
-          if (t.type === "Income") customerBal[t.customerId] = (customerBal[t.customerId] || 0) - t.amount;
-          else if (t.type === "Expense") customerBal[t.customerId] = (customerBal[t.customerId] || 0) + t.amount;
+          const custId = t.customerId as string;
+          const amt = Number(t.amount) || 0;
+          if (t.type === "Income") customerBal[custId] = (customerBal[custId] || 0) - amt;
+          else if (t.type === "Expense") customerBal[custId] = (customerBal[custId] || 0) + amt;
         }
       }
       for (const tx of olderEmployeeTransactions) {
-        employeeBal[tx.employeeId] = (employeeBal[tx.employeeId] || 0) + getEmployeeTransactionImpact(tx);
+        const empId = tx.employeeId as string;
+        employeeBal[empId] = (employeeBal[empId] || 0) + getEmployeeTransactionImpact(tx as any);
       }
 
       setHistoricalBalances(customerBal);
       setHistoricalEmployeeBalances(employeeBal);
 
-      localData.companySettings = await getLocalSingleton('companySettings');
-      applyDataToState(localData);
+      applyDataToState({
+        customers: simple.customers.filter((c: any) => c.isActive !== false),
+        employees: simple.employees.filter((e: any) => e.isActive !== false),
+        vehicles: simple.vehicles,
+        tasks: simple.tasks,
+        slips: timed.slips.recent,
+        transactions: timed.transactions.recent,
+        invoices: timed.invoices.recent,
+        quotations: timed.quotations.recent,
+        employeeTransactions: timed.employeeTransactions.recent,
+        auditLogs: timed.auditLogs.recent,
+        companySettings: companySettingsData,
+      });
       return true;
     } catch (e) {
       console.warn('[ErpContext] loadFromIDB failed:', e);
@@ -351,13 +369,12 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
 
       // ── Priority 2: Supabase encrypted cloud (authoritative source) ──
       // Always pull when the vault is unlocked so every device stays in sync.
+      // pullAllFromCloud writes records to IDB, then we do a single loadFromIDB.
       if (hasMasterKey() && isVaultUnlocked) {
         try {
           const cloudData = await pullAllFromCloud();
           if (cloudData) {
-            // Re-load from IDB so paginated windowing is respected
-            await loadFromIDB();
-            loaded = true;
+            loaded = await loadFromIDB();
           }
         } catch (e) {
           console.warn('[ErpContext] Cloud pull failed (offline?):', e);
@@ -499,25 +516,27 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
 
     setSyncStatus('syncing');
     try {
-      // ── Step 1: Save to IndexedDB immediately (always works offline) ──
+      // ── Step 1: Save to IndexedDB immediately — all writes in parallel ──
+      const idbWrites: Promise<void>[] = [];
       for (const [table, items] of Object.entries(payload.updates)) {
         if (table === 'companySettings') {
-          await saveLocalSingleton('companySettings', items);
+          idbWrites.push(saveLocalSingleton('companySettings', items));
           continue;
         }
         if (Array.isArray(items)) {
           for (const item of items as any[]) {
-            if (item.id) await saveLocalRecord(table, item.id, item);
+            if (item.id) idbWrites.push(saveLocalRecord(table, item.id, item));
           }
         }
       }
       for (const [table, ids] of Object.entries(payload.deletions)) {
         if (Array.isArray(ids)) {
           for (const id of ids) {
-            await deleteLocalRecord(table, id);
+            idbWrites.push(deleteLocalRecord(table, id));
           }
         }
       }
+      await Promise.all(idbWrites);
 
       // ── Step 2: Push encrypted delta to Supabase (if vault unlocked) ──
       if (hasMasterKey()) {
@@ -596,17 +615,19 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
     if (backupTimeoutRef.current) clearTimeout(backupTimeoutRef.current);
     backupTimeoutRef.current = setTimeout(async () => {
       try {
-        // Save each collection to IndexedDB
+        // Save each collection to IndexedDB — all writes in parallel
         const collections: Record<string, any[]> = {
           customers, employees, employeeTransactions, slips,
           transactions, vehicles, invoices, quotations, tasks, auditLogs,
         };
+        const writes: Promise<void>[] = [];
         for (const [col, items] of Object.entries(collections)) {
           for (const item of items) {
-            if (item.id) await saveLocalRecord(col, item.id, item);
+            if (item.id) writes.push(saveLocalRecord(col, item.id, item));
           }
         }
-        await saveLocalSingleton('companySettings', companySettings);
+        writes.push(saveLocalSingleton('companySettings', companySettings));
+        await Promise.all(writes);
       } catch (e) {
         console.error('[ErpContext] IndexedDB backup failed:', e);
       }

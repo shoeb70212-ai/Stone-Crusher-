@@ -17,7 +17,7 @@ import { useDebounce } from "../lib/use-debounce";
 type InvoiceDocumentAction = DocumentAction;
 
 function InvoicesContent() {
-  const { invoices, customers, transactions, updateInvoice, updateSlip, deleteTransaction, companySettings } = useErp();
+  const { invoices, customers, slips, transactions, updateInvoice, updateSlip, deleteTransaction, companySettings } = useErp();
   const { addToast } = useToast();
 
   const [invoiceToCancel, setInvoiceToCancel] = useState<string | null>(null);
@@ -84,17 +84,20 @@ function InvoicesContent() {
 
   const handleInvoiceDocumentAction = async (invoice: Invoice, action: InvoiceDocumentAction) => {
     const customer = customers.find((c) => c.id === invoice.customerId);
+    const invoiceSlips = invoice.slipIds?.length
+      ? slips.filter((s) => invoice.slipIds!.includes(s.id))
+      : undefined;
     const filename = `Invoice-${invoice.invoiceNo}.pdf`;
     setActiveInvoiceAction({ id: invoice.id, action });
 
     try {
       if (action === "download") {
-        await downloadInvoicePdf(invoice, customer, companySettings, filename);
+        await downloadInvoicePdf(invoice, customer, companySettings, filename, invoiceSlips);
         addToast("success", "Invoice PDF downloaded successfully.");
         return;
       }
 
-      const blob = await createInvoicePdfBlob(invoice, customer, companySettings);
+      const blob = await createInvoicePdfBlob(invoice, customer, companySettings, invoiceSlips);
 
       if (action === "whatsapp") {
         const message = buildInvoiceWhatsAppMessage({ invoice, customer, companySettings });

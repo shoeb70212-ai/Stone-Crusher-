@@ -25,12 +25,13 @@
 - **Vehicle auto-fill** — owner, driver, and saved dimensions pre-populated
 - **Photo attachment** via device camera for challan/document capture
 - **NFC vehicle tag scan** & **QR/barcode scan** for rapid vehicle identification
+- **Slip print formats:** A4, Thermal-58mm, Thermal-76mm, Thermal-80mm, Thermal-100mm, Thermal-110mm
 - **Offline-first** — slips are saved locally and sync when connectivity returns
 
 ### 🧾 Billing & GST Invoicing
 - **GST** and **Cash** invoice modes with auto CGST + SGST breakdown
 - **Three invoice templates:** Classic, Modern, Minimal
-- **Three print formats:** A4, Thermal-80mm, Thermal-58mm
+- **Invoice print formats:** A4, Thermal-80mm, Thermal-58mm
 - **Amount-to-words** in Indian currency format
 - **WhatsApp share** — send PDF invoices directly from the print modal
 - **Invoice watermarks** — Company Name, Status, or Custom text
@@ -192,12 +193,14 @@ The sync queue now uses **timestamp reconciliation** to prevent race conditions 
 
 ```
 App.tsx
-  ├── supabase.auth.getSession()          ← restores live session on page reload
-  ├── supabase.auth.onAuthStateChange()   ← keeps isAuthenticated in sync
-  ├── bootstrapRequired === true          → SetupAdminScreen  (first run, no users)
-  ├── isAuthenticated === false           → Login
-  ├── crushtrack_welcome_seen === 'pending' → WelcomeScreen  (post-setup)
-  └── otherwise                          → Layout (full app)
+  ├── supabase.auth.getSession()              ← restores live session on page reload
+  ├── supabase.auth.onAuthStateChange()       ← keeps isAuthenticated in sync
+  ├── bootstrapRequired === true              → SetupAdminScreen  (first run, no users)
+  ├── isAuthenticated === false               → Login
+  ├── crushtrack_welcome_seen === 'pending'   → WelcomeScreen  (post-setup tour)
+  ├── appMetadata.mustChangePassword === true → SetPasswordScreen
+  ├── isVaultUnlocked === false               → MasterKeyScreen  (E2EE vault unlock)
+  └── otherwise                              → Layout (full app)
 ```
 
 ### URL-Based Routing (CT-204)
@@ -228,14 +231,17 @@ Stone-Crusher-/
 │   └── migrate-users.ts        # One-time migration: local users → Supabase Auth
 ├── src/
 │   ├── components/
-│   │   ├── forms/              # Slip / invoice create-edit-print modals
+│   │   ├── forms/              # Slip create-edit-print modals
 │   │   ├── ui/                 # Shared primitives (Toast, Combobox, Modal, etc.)
 │   │   ├── Layout.tsx          # App shell + URL-based navigation
 │   │   ├── Sidebar.tsx
 │   │   ├── Login.tsx
-│   │   ├── MasterKeyScreen.tsx # E2EE vault unlock screen
+│   │   ├── MasterKeyScreen.tsx     # E2EE vault unlock screen
+│   │   ├── ServerSettingsScreen.tsx # Supabase URL/key override (device-level)
 │   │   ├── SetupAdminScreen.tsx
-│   │   └── WelcomeScreen.tsx
+│   │   ├── SetPasswordScreen.tsx   # Force-change password on first login
+│   │   ├── WelcomeScreen.tsx
+│   │   └── ResetPasswordScreen.tsx
 │   ├── context/
 │   │   └── ErpContext.tsx      # Global state + delta-sync engine
 │   ├── hooks/
@@ -262,15 +268,18 @@ Stone-Crusher-/
 │   ├── pages/
 │   │   ├── Dashboard.tsx
 │   │   ├── Dispatch.tsx
-│   │   ├── Invoices.tsx        (+ invoices/ sub-components)
-│   │   ├── Quotations.tsx      (+ quotations/ sub-components)
+│   │   ├── Invoices.tsx
+│   │   ├── invoices/           # InvoiceCreateModal + useInvoiceGenerator hook
+│   │   ├── Quotations.tsx
+│   │   ├── quotations/         # QuotationCreateModal + useQuotationGenerator hook
 │   │   ├── Customers.tsx
 │   │   ├── Daybook.tsx
 │   │   ├── Ledger.tsx
 │   │   ├── Vehicles.tsx
 │   │   ├── Employees.tsx
 │   │   ├── AuditLog.tsx
-│   │   └── Settings.tsx        (+ settings/ sub-panels)
+│   │   ├── Settings.tsx
+│   │   └── settings/           # SettingsGeneral, Invoicing, Materials, Appearance, Categories, Users
 │   ├── __tests__/              # Vitest unit tests
 │   ├── types.ts                # All TypeScript interfaces (source of truth)
 │   ├── App.tsx
@@ -293,13 +302,14 @@ Stone-Crusher-/
 | Dashboard | `dashboard` | KPI cards; recent slips; date-range filter with midnight auto-refresh |
 | Dispatch | `dispatch` | Slip list; create/edit/print; NFC/barcode scan |
 | Invoices | `invoices` | Invoice list; generate from slips; multi-template print |
+| Quotations | `quotations` | Estimate/proforma list; create/edit; convert to invoice |
 | Customers | `customers` | Customer master; balance summary |
 | Daybook | `daybook` | Income/expense log |
 | Ledger | `ledger` | Per-customer full transaction history |
 | Vehicles | `vehicles` | Vehicle master; soft-delete |
-| Employees | `employees` | Payroll; per-employee ledger |
+| Employees | `employees` | Payroll; weekly/monthly salary; per-employee ledger |
 | Audit Log | `audit` | Admin-only immutable activity log |
-| Settings | `settings` | Company, invoicing, materials, users, appearance tabs |
+| Settings | `settings` | Tabs: General, Invoicing, Materials, Appearance, Categories, Users |
 
 Navigation is URL-based via `wouter` with `useLocation`. Legacy `NAVIGATE_EVENT` dispatch is preserved as a fallback during migration.
 
@@ -342,11 +352,11 @@ balance = openingBalance
         − Adjustment Debit
 ```
 
-Positive = salary/amount owed to employee. Negative = advance recoverable by company.
+Positive = salary/amount owed to employee. Negative = advance recoverable by company. Implemented in `src/lib/employee-ledger.ts`.
 
 ### Soft Deletes
 
-`Vehicle` and `Material` records receive `isActive: false` instead of being removed. Filter UI lists with `isActive !== false`. Hard-deletes apply only to `customers`, `transactions`, `tasks`, and `employees`.
+`Vehicle` and `Material` records receive `isActive: false` instead of being removed. Filter UI lists with `isActive !== false` (or use the `useActive()` hook). Hard-deletes apply only to `customers`, `transactions`, `tasks`, and `employees`.
 
 ---
 

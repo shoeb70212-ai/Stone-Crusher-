@@ -1,30 +1,24 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo } from "react";
 import { useErp } from "../context/ErpContext";
-import { TransactionType, Transaction, Customer } from "../types";
+import { Customer } from "../types";
 import {
-  Plus,
   X,
-  IndianRupee,
-  CreditCard,
   UserCircle,
   Download,
   Calendar,
-  FileText,
   Loader2,
   Printer,
   MessageCircle,
-  ArrowDownLeft,
-  ArrowUpRight,
 } from "lucide-react";
 import { format, parseISO, startOfMonth } from "date-fns";
+import { createLedgerStatementPdfBlob, type LedgerEntry, printHtml, downloadPdfBlob, sharePdfBlob } from "../lib/print-utils";
 import { createLedgerPdfBlob } from "../lib/export-utils";
-import { printHtml, downloadPdfBlob, sharePdfBlob } from "../lib/print-utils";
 import { openWhatsAppMessage } from "../lib/whatsapp-share";
 import { useToast } from "../components/ui/Toast";
 import { generateId } from "../lib/utils";
 
 export function Ledger() {
-  const { transactions, customers, slips, invoices, companySettings, addTransaction, addCustomer, getCustomerBalance, hasPermission, loadHistoricalData } =
+  const { transactions, customers, slips, invoices, companySettings, addCustomer, getCustomerBalance, hasPermission, loadHistoricalData } =
     useErp();
   const { addToast } = useToast();
   const [isPeriodModalOpen, setIsPeriodModalOpen] = useState(false);
@@ -49,7 +43,6 @@ export function Ledger() {
   const [stmtEndDate, setStmtEndDate] = useState("");
 
   // Reference to statement table for PDF export
-  const statementRef = useRef<HTMLDivElement>(null);
 
 
 
@@ -122,33 +115,14 @@ export function Ledger() {
     }
   };
 
-  /** Build the HTML used for PDF generation of a customer ledger statement */
-  const buildLedgerHtml = (
-    cust: Customer,
-    entries: Array<{ date: Date; desc: string; debit: number; credit: number; runningBalance: number }>,
-    openingBal: number,
-    closingBal: number,
-  ) => `
-    <div style="padding:24px;font-family:Inter,sans-serif;">
-      <h2 style="margin:0 0 4px;">${cust.name}</h2>
-      <p style="margin:0 0 12px;color:#666;">Phone: ${cust.phone || 'N/A'}${cust.address ? ` | ${cust.address}` : ''}${cust.gstin ? ` | GSTIN: ${cust.gstin}` : ''}</p>
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <thead><tr style="background:#f4f4f5;"><th style="padding:8px;text-align:left;">Date</th><th style="padding:8px;text-align:left;">Particulars</th><th style="padding:8px;text-align:right;">Debit</th><th style="padding:8px;text-align:right;">Credit</th><th style="padding:8px;text-align:right;">Balance</th></tr></thead>
-        <tbody>
-          <tr style="background:#fafafa;"><td style="padding:8px;border-bottom:1px solid #eee;">-</td><td style="padding:8px;border-bottom:1px solid #eee;">Opening Balance</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${openingBal > 0 ? openingBal.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${openingBal < 0 ? Math.abs(openingBal).toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;">${Math.abs(openingBal).toLocaleString()} ${openingBal < 0 ? 'Cr' : 'Dr'}</td></tr>
-          ${entries.map(e => `<tr><td style="padding:8px;border-bottom:1px solid #eee;">${e.date.toLocaleDateString()}</td><td style="padding:8px;border-bottom:1px solid #eee;">${e.desc}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#e11d48;">${e.debit > 0 ? e.debit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#059669;">${e.credit > 0 ? e.credit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;">${Math.abs(e.runningBalance).toLocaleString()} ${e.runningBalance < 0 ? 'Cr' : e.runningBalance > 0 ? 'Dr' : ''}</td></tr>`).join('')}
-        </tbody>
-      </table>
-      <p style="margin-top:12px;text-align:right;font-weight:bold;">Closing Balance: ₹${Math.abs(closingBal).toLocaleString()} ${closingBal < 0 ? 'Cr' : closingBal > 0 ? 'Dr' : ''}</p>
-    </div>
-  `;
-
-  /** Download the customer ledger statement as a PDF */
-  const handleExportCustomerPDF = async (cust: Customer, entries: Array<{ date: Date; desc: string; debit: number; credit: number; runningBalance: number }>, openingBal: number, closingBal: number) => {
+  /** Download the customer ledger statement as a bank-statement PDF (A4) */
+  const handleExportCustomerPDF = async (cust: Customer, entries: LedgerEntry[], openingBal: number, closingBal: number) => {
     setIsExportingPdf(true);
     try {
-      const html = buildLedgerHtml(cust, entries, openingBal, closingBal);
-      const blob = await createLedgerPdfBlob(cust.name, html);
+      const blob = await createLedgerStatementPdfBlob(
+        cust, entries, openingBal, closingBal, companySettings,
+        stmtStartDate || stmtEndDate ? { start: stmtStartDate, end: stmtEndDate } : undefined,
+      );
       const filename = `Ledger_${cust.name.replace(/\s+/g, '_')}.pdf`;
       downloadPdfBlob(blob, filename);
       addToast('success', 'Ledger PDF downloaded.');
@@ -160,11 +134,13 @@ export function Ledger() {
   };
 
   /** Share the customer ledger statement PDF via WhatsApp / share sheet */
-  const handleShareLedgerWhatsApp = async (cust: Customer, entries: Array<{ date: Date; desc: string; debit: number; credit: number; runningBalance: number }>, openingBal: number, closingBal: number) => {
+  const handleShareLedgerWhatsApp = async (cust: Customer, entries: LedgerEntry[], openingBal: number, closingBal: number) => {
     setIsSharingWhatsApp(true);
     try {
-      const html = buildLedgerHtml(cust, entries, openingBal, closingBal);
-      const blob = await createLedgerPdfBlob(cust.name, html);
+      const blob = await createLedgerStatementPdfBlob(
+        cust, entries, openingBal, closingBal, companySettings,
+        stmtStartDate || stmtEndDate ? { start: stmtStartDate, end: stmtEndDate } : undefined,
+      );
       const filename = `Ledger_${cust.name.replace(/\s+/g, '_')}.pdf`;
       const summaryText = `Ledger Statement: ${cust.name}\nClosing Balance: ₹${Math.abs(closingBal).toLocaleString()} ${closingBal < 0 ? 'Cr' : 'Dr'}`;
       const result = await sharePdfBlob(blob, filename, `Ledger - ${cust.name}`, summaryText);
@@ -607,18 +583,87 @@ export function Ledger() {
               <div className="ml-auto flex gap-2">
                 <button
                   onClick={() => {
+                    const periodLabel = stmtStartDate || stmtEndDate
+                      ? `Period: ${stmtStartDate || 'All'} to ${stmtEndDate || 'Date'}`
+                      : 'All Transactions';
+                    const custContacts = [
+                      viewCustomerLedger.phone ? `Ph: ${viewCustomerLedger.phone}` : '',
+                      viewCustomerLedger.address || '',
+                      viewCustomerLedger.gstin ? `GSTIN: ${viewCustomerLedger.gstin}` : '',
+                    ].filter(Boolean).join('  |  ');
+                    const compContacts = [
+                      companySettings.phone ? `Ph: ${companySettings.phone}` : '',
+                      companySettings.gstin ? `GSTIN: ${companySettings.gstin}` : '',
+                    ].filter(Boolean).join('  |  ');
                     const html = `
-                      <div style="padding:24px;font-family:Inter,sans-serif;">
-                        <h2 style="margin:0 0 4px;">${viewCustomerLedger.name}</h2>
-                        <p style="margin:0 0 12px;color:#666;">Phone: ${viewCustomerLedger.phone || 'N/A'}${viewCustomerLedger.address ? ` | ${viewCustomerLedger.address}` : ''}${viewCustomerLedger.gstin ? ` | GSTIN: ${viewCustomerLedger.gstin}` : ''}</p>
-                        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-                          <thead><tr style="background:#f4f4f5;"><th style="padding:8px;text-align:left;">Date</th><th style="padding:8px;text-align:left;">Particulars</th><th style="padding:8px;text-align:right;">Debit</th><th style="padding:8px;text-align:right;">Credit</th><th style="padding:8px;text-align:right;">Balance</th></tr></thead>
+                      <div style="font-family:'Inter','Segoe UI',sans-serif;max-width:780px;margin:0 auto;padding:16px;">
+                        <div style="border-top:4px solid #10b981;padding-top:12px;margin-bottom:8px;">
+                          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                            <div>
+                              <div style="font-size:20px;font-weight:900;letter-spacing:0.02em;">${companySettings.name || 'COMPANY'}</div>
+                              ${companySettings.address ? `<div style="font-size:11px;color:#555;margin-top:2px;">${companySettings.address}</div>` : ''}
+                              ${compContacts ? `<div style="font-size:10px;color:#777;margin-top:1px;">${compContacts}</div>` : ''}
+                            </div>
+                            <div style="text-align:right;">
+                              <div style="font-size:13px;font-weight:700;color:#374151;">ACCOUNT STATEMENT</div>
+                              <div style="font-size:10px;color:#777;margin-top:2px;">${periodLabel}</div>
+                            </div>
+                          </div>
+                        </div>
+                        <div style="display:flex;gap:12px;margin-bottom:10px;">
+                          <div style="flex:1;background:#f8f9fa;border-radius:6px;padding:10px;">
+                            <div style="font-size:9px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;">Customer</div>
+                            <div style="font-size:13px;font-weight:800;">${viewCustomerLedger.name}</div>
+                            ${custContacts ? `<div style="font-size:10px;color:#6b7280;margin-top:2px;">${custContacts}</div>` : ''}
+                          </div>
+                          <div style="flex:1;background:#f8f9fa;border-radius:6px;padding:10px;">
+                            <div style="font-size:9px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;">Opening Balance</div>
+                            <div style="font-size:13px;font-weight:800;color:${periodOpeningBalance > 0 ? '#dc2626' : periodOpeningBalance < 0 ? '#059669' : '#111'};">
+                              ₹${Math.abs(periodOpeningBalance).toLocaleString()} ${periodOpeningBalance < 0 ? 'Cr' : periodOpeningBalance > 0 ? 'Dr' : ''}
+                            </div>
+                          </div>
+                        </div>
+                        <table style="width:100%;border-collapse:collapse;font-size:11px;">
+                          <thead>
+                            <tr style="background:#f0f2f5;">
+                              <th style="padding:7px 8px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Date</th>
+                              <th style="padding:7px 8px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Particulars</th>
+                              <th style="padding:7px 8px;text-align:right;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Debit (₹)</th>
+                              <th style="padding:7px 8px;text-align:right;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Credit (₹)</th>
+                              <th style="padding:7px 8px;text-align:right;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Balance (₹)</th>
+                            </tr>
+                          </thead>
                           <tbody>
-                            <tr style="background:#fafafa;"><td style="padding:8px;border-bottom:1px solid #eee;">-</td><td style="padding:8px;border-bottom:1px solid #eee;">Opening Balance</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${periodOpeningBalance > 0 ? periodOpeningBalance.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${periodOpeningBalance < 0 ? Math.abs(periodOpeningBalance).toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;">${Math.abs(periodOpeningBalance).toLocaleString()} ${periodOpeningBalance < 0 ? 'Cr' : 'Dr'}</td></tr>
-                            ${entriesWithBalance.map(e => `<tr><td style="padding:8px;border-bottom:1px solid #eee;">${e.date.toLocaleDateString()}</td><td style="padding:8px;border-bottom:1px solid #eee;">${e.desc}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#e11d48;">${e.debit > 0 ? e.debit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#059669;">${e.credit > 0 ? e.credit.toLocaleString() : '-'}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:bold;">${Math.abs(e.runningBalance).toLocaleString()} ${e.runningBalance < 0 ? 'Cr' : e.runningBalance > 0 ? 'Dr' : ''}</td></tr>`).join('')}
+                            <tr style="background:#fafafa;">
+                              <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;">-</td>
+                              <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;font-weight:600;">${stmtStartDate || stmtEndDate ? 'Opening Balance (Period)' : 'Opening Balance'}</td>
+                              <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">${periodOpeningBalance > 0 ? periodOpeningBalance.toLocaleString() : '-'}</td>
+                              <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">${periodOpeningBalance < 0 ? Math.abs(periodOpeningBalance).toLocaleString() : '-'}</td>
+                              <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;">${Math.abs(periodOpeningBalance).toLocaleString()} ${periodOpeningBalance < 0 ? 'Cr' : 'Dr'}</td>
+                            </tr>
+                            ${entriesWithBalance.map((e, i) => `
+                              <tr style="${i % 2 === 0 ? '' : 'background:#fafbff;'}">
+                                <td style="padding:7px 8px;border-bottom:1px solid #f3f4f6;">${e.date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}</td>
+                                <td style="padding:7px 8px;border-bottom:1px solid #f3f4f6;">${e.desc}</td>
+                                <td style="padding:7px 8px;border-bottom:1px solid #f3f4f6;text-align:right;color:${e.debit > 0 ? '#dc2626' : '#9ca3af'};">${e.debit > 0 ? e.debit.toLocaleString() : '-'}</td>
+                                <td style="padding:7px 8px;border-bottom:1px solid #f3f4f6;text-align:right;color:${e.credit > 0 ? '#059669' : '#9ca3af'};">${e.credit > 0 ? e.credit.toLocaleString() : '-'}</td>
+                                <td style="padding:7px 8px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:700;color:${e.runningBalance > 0 ? '#dc2626' : e.runningBalance < 0 ? '#059669' : '#111'};">
+                                  ${Math.abs(e.runningBalance).toLocaleString()} ${e.runningBalance < 0 ? 'Cr' : e.runningBalance > 0 ? 'Dr' : ''}
+                                </td>
+                              </tr>`).join('')}
                           </tbody>
                         </table>
-                        <p style="margin-top:12px;text-align:right;font-weight:bold;">Closing Balance: ₹${Math.abs(statementClosingBalance).toLocaleString()} ${statementClosingBalance < 0 ? 'Cr' : statementClosingBalance > 0 ? 'Dr' : ''}</p>
+                        <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+                          <div style="background:#ebf0f8;border-radius:6px;padding:10px 16px;text-align:right;">
+                            <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:3px;">Closing Balance</div>
+                            <div style="font-size:16px;font-weight:900;color:${statementClosingBalance > 0 ? '#dc2626' : statementClosingBalance < 0 ? '#059669' : '#111'};">
+                              ₹${Math.abs(statementClosingBalance).toLocaleString()} ${statementClosingBalance < 0 ? '(Cr)' : statementClosingBalance > 0 ? '(Dr)' : ''}
+                            </div>
+                          </div>
+                        </div>
+                        <div style="margin-top:12px;border-top:1px solid #e5e7eb;padding-top:8px;font-size:9px;color:#9ca3af;text-align:center;">
+                          This is a computer-generated statement. Generated on ${new Date().toLocaleString('en-IN')}.
+                        </div>
                       </div>
                     `;
                     printHtml(html);
@@ -662,7 +707,7 @@ export function Ledger() {
               </div>
             </div>
 
-            <div className="overflow-x-auto flex-1 w-full p-3 md:p-5 hidden md:block" ref={statementRef}>
+            <div className="overflow-x-auto flex-1 w-full p-3 md:p-5 hidden md:block">
               <table className="w-full min-w-[560px] text-sm text-left">
                 <thead className="text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-900/50 uppercase rounded-lg">
                   <tr>

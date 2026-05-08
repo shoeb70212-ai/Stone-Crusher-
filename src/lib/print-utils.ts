@@ -77,7 +77,7 @@ export function yieldToMain(): Promise<void> {
   });
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const timeoutId = window.setTimeout(() => {
       reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
@@ -557,6 +557,7 @@ export async function createInvoicePdfBlob(
   invoice: Invoice,
   customer: Customer | undefined,
   companySettings: CompanySettings,
+  slips?: Slip[],
 ): Promise<Blob> {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
@@ -1069,12 +1070,11 @@ export async function createInvoicePdfBlob(
 
   const drawMinimalFooter = (y: number, h: number) => {
     // Guard against negative/zero height if invoice table overflows page.
-    const safeH = Math.max(20, h);
-    if (h !== safeH) h = safeH;
+    const fh = Math.max(20, h);
     const rightW = 64;
     const leftW = boxW - rightW;
-    rect(boxX, y, boxW, h);
-    line(boxX + leftW, y, boxX + leftW, y + h, 0.45);
+    rect(boxX, y, boxW, fh);
+    line(boxX + leftW, y, boxX + leftW, y + fh, 0.45);
     drawCell(boxX, y, leftW, 18, `Amount in words\n${amountInWords}`, {
       size: 8,
       style: 'bold',
@@ -1089,7 +1089,7 @@ export async function createInvoicePdfBlob(
       });
       leftY += 20;
     }
-    drawCell(boxX, leftY, leftW, y + h - leftY, `Payment Details\n${[companySettings.bankName, companySettings.accountNumber ? `A/C: ${companySettings.accountNumber}` : '', companySettings.ifscCode ? `IFSC: ${companySettings.ifscCode}` : ''].filter(Boolean).join('  ') || '-'}`, {
+    drawCell(boxX, leftY, leftW, y + fh - leftY, `Payment Details\n${[companySettings.bankName, companySettings.accountNumber ? `A/C: ${companySettings.accountNumber}` : '', companySettings.ifscCode ? `IFSC: ${companySettings.ifscCode}` : ''].filter(Boolean).join('  ') || '-'}`, {
       size: 7.3,
       color: textMuted,
       lineHeight: 4.2,
@@ -1106,7 +1106,7 @@ export async function createInvoicePdfBlob(
         : []),
       ['Total', `Rs. ${safeNumber(invoice.total).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`, true],
     ] as [string, string, boolean][];
-    const rowH = Math.max(1, h) / Math.max(1, rows.length);
+    const rowH = Math.max(1, fh) / Math.max(1, rows.length);
     rows.forEach(([label, value, bold], index) => {
       const rowY = y + index * rowH;
       drawCell(rightX, rowY, rightW, rowH, `${label}\n${value}`, {
@@ -1216,6 +1216,144 @@ export async function createInvoicePdfBlob(
     renderMinimal();
   } else {
     renderClassic();
+  }
+
+  // ── Page 2: Slip / Delivery Details (only when slips are provided) ──────
+  const linkedSlips = slips?.filter(
+    (s) => invoice.slipIds?.includes(s.id),
+  );
+  if (linkedSlips && linkedSlips.length > 0) {
+    doc.addPage();
+    const p2W = doc.internal.pageSize.getWidth();
+    const p2H = doc.internal.pageSize.getHeight();
+    const m2 = 14;
+    const cw2 = p2W - m2 * 2;
+
+    const textDark2: PdfColor  = [20, 20, 20];
+    const textMuted2: PdfColor = [80, 90, 105];
+    const lightFill2: PdfColor = [248, 249, 250];
+    const headerFill2: PdfColor = [240, 242, 245];
+
+    const p2 = createPainter(doc, textDark2);
+
+    // Header
+    p2.setFillColor(primary);
+    doc.rect(m2, 10, cw2, 1, 'F');
+    p2.setFont(14, 'bold', black);
+    doc.text((companySettings.name || 'COMPANY').toUpperCase(), m2, 20);
+    p2.setFont(9, 'bold', textMuted2);
+    doc.text('DELIVERY / DISPATCH DETAILS', p2W - m2, 20, { align: 'right' });
+    p2.setFont(7.5, 'normal', textMuted2);
+    const invoiceRef = `Invoice: ${invoice.invoiceNo}  |  Customer: ${customerName}  |  Date: ${invoiceDate}`;
+    doc.text(invoiceRef, m2, 27);
+    p2.line(m2, 30, m2 + cw2, 30, 0.4);
+
+    // Table column definitions
+    const slipCols = [
+      { label: '#',          w: 8,                                     align: 'center' as TextAlign },
+      { label: 'Date',       w: 22,                                    align: 'left'   as TextAlign },
+      { label: 'Vehicle',    w: 28,                                    align: 'left'   as TextAlign },
+      { label: 'Driver',     w: 28,                                    align: 'left'   as TextAlign },
+      { label: 'Material',   w: 24,                                    align: 'left'   as TextAlign },
+      { label: 'Mode',       w: 26,                                    align: 'left'   as TextAlign },
+      { label: 'Qty',        w: 18,                                    align: 'right'  as TextAlign },
+      { label: 'Amount (₹)', w: cw2 - 8 - 22 - 28 - 28 - 24 - 26 - 18, align: 'right' as TextAlign },
+    ];
+
+    const sRowH = 6.5;
+    const sHeaderH = 8;
+
+    const drawSlipTableHeader = (startY: number) => {
+      p2.setFillColor(headerFill2);
+      doc.rect(m2, startY, cw2, sHeaderH, 'F');
+      let hx = m2;
+      slipCols.forEach((col) => {
+        p2.setFont(7.5, 'bold', textMuted2);
+        const lx = col.align === 'right' ? hx + col.w - 1.5 : col.align === 'center' ? hx + col.w / 2 : hx + 1.5;
+        doc.text(col.label, lx, startY + 5.3, { align: col.align });
+        hx += col.w;
+      });
+      p2.line(m2, startY + sHeaderH, m2 + cw2, startY + sHeaderH, 0.35);
+    };
+
+    let sy = 33;
+    drawSlipTableHeader(sy);
+    sy += sHeaderH;
+
+    let slipTotalQty = 0;
+    let slipTotalAmt = 0;
+
+    linkedSlips.forEach((slip, idx) => {
+      if (sy + sRowH > p2H - 20) {
+        doc.addPage();
+        sy = 20;
+        p2.setFont(7.5, 'italic', textMuted2);
+        doc.text('Delivery Details — continued', m2, sy - 2);
+        drawSlipTableHeader(sy);
+        sy += sHeaderH;
+      }
+
+      const isEven = idx % 2 === 0;
+      p2.setFillColor(isEven ? ([255, 255, 255] as PdfColor) : lightFill2);
+      doc.rect(m2, sy, cw2, sRowH, 'F');
+
+      const slipDate = new Date(slip.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
+      const unitLabel = slip.measurementType.includes('Brass') ? 'Brass' : 'Ton';
+      const modeLabel = slip.deliveryMode === 'Company Vehicle' ? 'Company' : 'Third-Party';
+
+      const rowValues = [
+        { val: String(idx + 1),                         align: 'center' as TextAlign },
+        { val: slipDate,                                 align: 'left'   as TextAlign },
+        { val: formatVehicleNo(slip.vehicleNo),          align: 'left'   as TextAlign },
+        { val: slip.driverName || '-',                   align: 'left'   as TextAlign },
+        { val: slip.materialType,                        align: 'left'   as TextAlign },
+        { val: modeLabel,                                align: 'left'   as TextAlign },
+        { val: `${slip.quantity.toLocaleString('en-IN')} ${unitLabel}`, align: 'right' as TextAlign },
+        { val: slip.totalAmount.toLocaleString('en-IN'), align: 'right'  as TextAlign },
+      ];
+
+      let vx = m2;
+      rowValues.forEach(({ val, align }, ci) => {
+        const col = slipCols[ci];
+        const cx = align === 'right' ? vx + col.w - 1.5 : align === 'center' ? vx + col.w / 2 : vx + 1.5;
+        p2.setFont(7, 'normal', textDark2);
+        const fitted = doc.splitTextToSize(val, col.w - 3)[0];
+        doc.text(fitted, cx, sy + 4.5, { align });
+        vx += col.w;
+      });
+
+      p2.line(m2, sy + sRowH, m2 + cw2, sy + sRowH, 0.1);
+      sy += sRowH;
+      slipTotalQty += slip.quantity;
+      slipTotalAmt += slip.totalAmount;
+    });
+
+    // Totals row
+    sy += 1;
+    p2.setFillColor(headerFill2);
+    doc.rect(m2, sy, cw2, sRowH + 1, 'F');
+    p2.setFont(8, 'bold', textDark2);
+    doc.text('TOTAL', m2 + 1.5, sy + 5);
+    const lastColX = m2 + slipCols.slice(0, 6).reduce((acc, c) => acc + c.w, 0);
+    const qtyColW = slipCols[6].w;
+    const amtColW = slipCols[7].w;
+    doc.text(slipTotalQty.toLocaleString('en-IN'), lastColX + qtyColW - 1.5, sy + 5, { align: 'right' });
+    doc.text(`₹ ${slipTotalAmt.toLocaleString('en-IN')}`, lastColX + qtyColW + amtColW - 1.5, sy + 5, { align: 'right' });
+    p2.line(m2, sy, m2 + cw2, sy, 0.4);
+    p2.line(m2, sy + sRowH + 1, m2 + cw2, sy + sRowH + 1, 0.4);
+
+    // Note
+    sy += sRowH + 6;
+    p2.setFont(6.5, 'italic', textMuted2);
+    doc.text(
+      'This page lists the dispatch slips referenced in the invoice above. Quantities and amounts as recorded at dispatch.',
+      m2,
+      sy,
+      { maxWidth: cw2 },
+    );
+
+    // Suppress unused vars from destructuring
+    void lightFill2;
   }
 
   return doc.output('blob');
@@ -1379,8 +1517,9 @@ export async function downloadInvoicePdf(
   customer: Customer | undefined,
   companySettings: CompanySettings,
   filename: string,
+  slips?: Slip[],
 ): Promise<void> {
-  const blob = await createInvoicePdfBlob(invoice, customer, companySettings);
+  const blob = await createInvoicePdfBlob(invoice, customer, companySettings, slips);
   triggerBlobDownload(blob, filename);
 }
 
@@ -1478,16 +1617,15 @@ export async function saveNativePdf(
   const htmlContent = typeof source === 'string' ? source : source.innerHTML;
   if (!htmlContent) return;
 
+  const blob = await generatePdfBlob(htmlContent, filename);
+
   if (!isNative()) {
-    const blob = await generatePdfBlob(htmlContent, filename);
     triggerBlobDownload(blob, filename);
     return;
   }
 
   try {
     const { Filesystem, Directory } = await import('@capacitor/filesystem');
-
-    const blob = await generatePdfBlob(htmlContent, filename);
     const base64 = await blobToBase64(blob);
 
     const result = await Filesystem.writeFile({
@@ -1500,7 +1638,6 @@ export async function saveNativePdf(
     return result.uri;
   } catch (error) {
     console.error('Native file save failed, falling back to download:', error);
-    const blob = await generatePdfBlob(htmlContent, filename);
     triggerBlobDownload(blob, filename);
     return;
   }
@@ -1569,6 +1706,306 @@ async function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+
+// ---------------------------------------------------------------------------
+// Customer Ledger Statement PDF (jsPDF — bank-statement layout, A4 only)
+// ---------------------------------------------------------------------------
+
+export interface LedgerEntry {
+  date: Date;
+  desc: string;
+  debit: number;
+  credit: number;
+  runningBalance: number;
+}
+
+/**
+ * Generates a bank-statement-style Customer Ledger PDF using jsPDF.
+ * Page 1 header: company details + customer details.
+ * Body: date-ordered transaction table with running balance column.
+ * Footer: closing balance + generated-on timestamp.
+ */
+export async function createLedgerStatementPdfBlob(
+  customer: Customer,
+  entries: LedgerEntry[],
+  openingBalance: number,
+  closingBalance: number,
+  companySettings: CompanySettings,
+  dateRange?: { start?: string; end?: string },
+): Promise<Blob> {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 12;
+  const contentW = pageW - margin * 2;
+
+  const primary =
+    PRIMARY_COLORS[companySettings.primaryColor || 'emerald'] ||
+    '#10b981';
+
+  const black: PdfColor        = [0, 0, 0];
+  const textDark: PdfColor     = [20, 20, 20];
+  const textMuted: PdfColor    = [80, 90, 105];
+  const lightFill: PdfColor    = [248, 249, 250];
+  const headerFill: PdfColor   = [240, 242, 245];
+  const debitColor: PdfColor   = [200, 30, 50];
+  const creditColor: PdfColor  = [5, 120, 80];
+
+  const { setFillColor, setTextColor, setFont, rect, line, writeText } =
+    createPainter(doc, textDark);
+
+  // ── Page-number footer helper ────────────────────────────────────────────
+  const addPageNumber = (pageNum: number, totalPages: number) => {
+    setFont(7, 'normal', textMuted);
+    doc.text(
+      `Page ${pageNum} of ${totalPages}`,
+      pageW / 2,
+      pageH - 5,
+      { align: 'center' },
+    );
+    doc.text(
+      `Generated on ${new Date().toLocaleString('en-IN')}`,
+      margin,
+      pageH - 5,
+    );
+  };
+
+  // ── Section 1: Company header bar ───────────────────────────────────────
+  const drawCompanyHeader = () => {
+    // Top accent line
+    setFillColor(primary);
+    doc.rect(margin, 10, contentW, 1, 'F');
+
+    setFont(16, 'bold', black);
+    doc.text((companySettings.name || 'COMPANY').toUpperCase(), margin, 21);
+
+    const rightX = margin + contentW;
+    setFont(8, 'bold', textMuted);
+    doc.text('ACCOUNT STATEMENT', rightX, 18, { align: 'right' });
+
+    let detailY = 27;
+    if (companySettings.address) {
+      setFont(8, 'normal', textMuted);
+      doc.text(companySettings.address, margin, detailY);
+      detailY += 4.5;
+    }
+    const contacts = [
+      companySettings.phone ? `Ph: ${companySettings.phone}` : '',
+      companySettings.gstin ? `GSTIN: ${companySettings.gstin}` : '',
+    ].filter(Boolean).join('    ');
+    if (contacts) {
+      setFont(7.5, 'normal', textMuted);
+      doc.text(contacts, margin, detailY);
+    }
+
+    // Thin separator
+    setFont(8, 'normal', textDark);
+    line(margin, 36, margin + contentW, 36, 0.4);
+  };
+
+  // ── Section 2: Customer details + period ────────────────────────────────
+  const drawCustomerBlock = () => {
+    const blockY = 39;
+    const halfW = contentW / 2 - 2;
+
+    // Left: customer
+    setFillColor(lightFill);
+    doc.rect(margin, blockY, halfW, 28, 'F');
+    setFont(7, 'bold', textMuted);
+    doc.text('CUSTOMER', margin + 3, blockY + 5);
+    setFont(10, 'bold', textDark);
+    doc.text(customer.name, margin + 3, blockY + 11);
+    setFont(7.5, 'normal', textMuted);
+    const custLines = [
+      customer.phone ? `Phone: ${customer.phone}` : '',
+      customer.address || '',
+      customer.gstin ? `GSTIN: ${customer.gstin}` : '',
+    ].filter(Boolean);
+    custLines.slice(0, 3).forEach((line_, idx) => {
+      doc.text(line_, margin + 3, blockY + 17 + idx * 4);
+    });
+
+    // Right: period + balances
+    const rightX = margin + halfW + 4;
+    setFillColor(lightFill);
+    doc.rect(rightX, blockY, halfW, 28, 'F');
+    setFont(7, 'bold', textMuted);
+    doc.text('STATEMENT PERIOD', rightX + 3, blockY + 5);
+    setFont(8, 'normal', textDark);
+    const periodLabel = dateRange?.start || dateRange?.end
+      ? `${dateRange.start || 'All'} to ${dateRange.end || 'Date'}`
+      : 'All transactions';
+    doc.text(periodLabel, rightX + 3, blockY + 11);
+
+    setFont(7, 'bold', textMuted);
+    doc.text('OPENING BALANCE', rightX + 3, blockY + 18);
+    setFont(8.5, 'bold', openingBalance > 0 ? debitColor : openingBalance < 0 ? creditColor : textDark);
+    doc.text(
+      `₹ ${Math.abs(openingBalance).toLocaleString('en-IN')} ${openingBalance < 0 ? 'Cr' : openingBalance > 0 ? 'Dr' : ''}`,
+      rightX + 3,
+      blockY + 23,
+    );
+
+    line(margin, blockY + 29, margin + contentW, blockY + 29, 0.3);
+  };
+
+  // ── Section 3: Table header row ─────────────────────────────────────────
+  const TABLE_START_Y = 70;
+  const COL = {
+    date:    { x: margin,               w: 22 },
+    desc:    { x: margin + 22,          w: 72 },
+    debit:   { x: margin + 94,          w: 26 },
+    credit:  { x: margin + 120,         w: 26 },
+    balance: { x: margin + 146,         w: contentW - 146 },
+  };
+  const ROW_H = 6;
+  const HEADER_H = 7;
+
+  const drawTableHeader = (y: number) => {
+    setFillColor(headerFill);
+    doc.rect(margin, y, contentW, HEADER_H, 'F');
+    setFont(7.5, 'bold', textMuted);
+    const headers: [string, keyof typeof COL, 'left' | 'right'][] = [
+      ['DATE',       'date',    'left'],
+      ['PARTICULARS','desc',    'left'],
+      ['DEBIT (₹)',  'debit',   'right'],
+      ['CREDIT (₹)', 'credit',  'right'],
+      ['BALANCE (₹)','balance', 'right'],
+    ];
+    headers.forEach(([label, col, align]) => {
+      const c = COL[col];
+      doc.text(label, align === 'right' ? c.x + c.w - 1.5 : c.x + 1.5, y + 4.8, { align });
+    });
+    line(margin, y + HEADER_H, margin + contentW, y + HEADER_H, 0.35);
+  };
+
+  // ── Rendering pass — we may need multiple pages ──────────────────────────
+  drawCompanyHeader();
+  drawCustomerBlock();
+  drawTableHeader(TABLE_START_Y);
+
+  let y = TABLE_START_Y + HEADER_H;
+  let page = 1;
+  // We'll patch page numbers in a second pass after we know total pages.
+  const pageBreakY = pageH - 18;
+  let rowIndex = 0;
+
+  const addNewPage = () => {
+    addPageNumber(page, 0); // placeholder; will re-render later
+    doc.addPage();
+    page++;
+    drawCompanyHeader();
+    setFont(7.5, 'italic', textMuted);
+    doc.text(`${customer.name} — continued`, margin, 38);
+    drawTableHeader(40);
+    y = 40 + HEADER_H;
+  };
+
+  // Opening balance row
+  setFillColor(lightFill);
+  doc.rect(margin, y, contentW, ROW_H, 'F');
+  setFont(7.5, 'bold', textDark);
+  doc.text('-', COL.date.x + 1.5, y + 4.2);
+  doc.text('Opening Balance', COL.desc.x + 1.5, y + 4.2);
+  setFont(7.5, 'normal', openingBalance > 0 ? debitColor : textDark);
+  if (openingBalance > 0)
+    doc.text(openingBalance.toLocaleString('en-IN'), COL.debit.x + COL.debit.w - 1.5, y + 4.2, { align: 'right' });
+  else
+    doc.text('-', COL.debit.x + COL.debit.w - 1.5, y + 4.2, { align: 'right' });
+
+  setFont(7.5, 'normal', openingBalance < 0 ? creditColor : textDark);
+  if (openingBalance < 0)
+    doc.text(Math.abs(openingBalance).toLocaleString('en-IN'), COL.credit.x + COL.credit.w - 1.5, y + 4.2, { align: 'right' });
+  else
+    doc.text('-', COL.credit.x + COL.credit.w - 1.5, y + 4.2, { align: 'right' });
+
+  const obLabel = `${Math.abs(openingBalance).toLocaleString('en-IN')} ${openingBalance < 0 ? 'Cr' : openingBalance > 0 ? 'Dr' : ''}`;
+  setFont(7.5, 'bold', openingBalance > 0 ? debitColor : openingBalance < 0 ? creditColor : textDark);
+  doc.text(obLabel, COL.balance.x + COL.balance.w - 1.5, y + 4.2, { align: 'right' });
+  line(margin, y + ROW_H, margin + contentW, y + ROW_H, 0.15);
+  y += ROW_H;
+
+  // Transaction rows
+  entries.forEach((entry) => {
+    if (y + ROW_H > pageBreakY) addNewPage();
+
+    const isEven = rowIndex % 2 === 0;
+    if (isEven) {
+      setFillColor([255, 255, 255]);
+    } else {
+      setFillColor([252, 253, 255]);
+    }
+    doc.rect(margin, y, contentW, ROW_H, 'F');
+
+    setFont(7, 'normal', textDark);
+    doc.text(
+      entry.date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }),
+      COL.date.x + 1.5, y + 4.2,
+    );
+
+    const descLines = doc.splitTextToSize(entry.desc, COL.desc.w - 3);
+    doc.text(descLines[0], COL.desc.x + 1.5, y + 4.2);
+
+    if (entry.debit > 0) {
+      setFont(7, 'normal', debitColor);
+      doc.text(entry.debit.toLocaleString('en-IN'), COL.debit.x + COL.debit.w - 1.5, y + 4.2, { align: 'right' });
+    } else {
+      setFont(7, 'normal', textMuted);
+      doc.text('-', COL.debit.x + COL.debit.w - 1.5, y + 4.2, { align: 'right' });
+    }
+
+    if (entry.credit > 0) {
+      setFont(7, 'normal', creditColor);
+      doc.text(entry.credit.toLocaleString('en-IN'), COL.credit.x + COL.credit.w - 1.5, y + 4.2, { align: 'right' });
+    } else {
+      setFont(7, 'normal', textMuted);
+      doc.text('-', COL.credit.x + COL.credit.w - 1.5, y + 4.2, { align: 'right' });
+    }
+
+    const balLabel = `${Math.abs(entry.runningBalance).toLocaleString('en-IN')} ${entry.runningBalance < 0 ? 'Cr' : entry.runningBalance > 0 ? 'Dr' : ''}`;
+    setFont(7, 'bold', entry.runningBalance > 0 ? debitColor : entry.runningBalance < 0 ? creditColor : textDark);
+    doc.text(balLabel, COL.balance.x + COL.balance.w - 1.5, y + 4.2, { align: 'right' });
+
+    line(margin, y + ROW_H, margin + contentW, y + ROW_H, 0.1);
+    y += ROW_H;
+    rowIndex++;
+  });
+
+  // ── Closing balance row ──────────────────────────────────────────────────
+  if (y + ROW_H + 2 > pageBreakY) addNewPage();
+  y += 1;
+  setFillColor([235, 240, 248]);
+  doc.rect(margin, y, contentW, ROW_H + 1, 'F');
+  setFont(8, 'bold', textDark);
+  doc.text('CLOSING BALANCE', COL.desc.x + 1.5, y + 5);
+  const clLabel = `₹ ${Math.abs(closingBalance).toLocaleString('en-IN')} ${closingBalance < 0 ? 'Cr' : closingBalance > 0 ? 'Dr' : ''}`;
+  setFont(8.5, 'bold', closingBalance > 0 ? debitColor : closingBalance < 0 ? creditColor : textDark);
+  doc.text(clLabel, COL.balance.x + COL.balance.w - 1.5, y + 5, { align: 'right' });
+  line(margin, y, margin + contentW, y, 0.5);
+  line(margin, y + ROW_H + 1, margin + contentW, y + ROW_H + 1, 0.5);
+
+  // ── Bottom accent line + disclaimer ─────────────────────────────────────
+  const totalPages = page;
+  setFillColor(primary);
+  doc.rect(margin, pageH - 12, contentW, 0.8, 'F');
+  setFont(6.5, 'italic', textMuted);
+  doc.text('This is a computer-generated statement and does not require a signature.', pageW / 2, pageH - 8, { align: 'center' });
+
+  // Patch page numbers on all pages now that we know total count
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    addPageNumber(p, totalPages);
+  }
+
+  // Suppress unused variable warning — writeText is available from createPainter
+  void writeText;
+  void setTextColor;
+  void rect;
+
+  return doc.output('blob');
+}
 
 export async function createQuotationPdfBlob(
   quotation: import("../types").Quotation,
@@ -1645,10 +2082,10 @@ export async function createQuotationPdfBlob(
       const labelW = 22;
       const rowH = companySettings.invoiceShowDueDate ? 8.4 : 10.5;
       const rows = [
-        ['Inv No.', quotation.quotationNo],
+        ['Quote No.', quotation.quotationNo],
         ['Date', invoiceDate],
         ...(companySettings.invoiceShowDueDate
-          ? [['Due Date', new Date(new Date(quotation.date).getTime() + DEFAULT_PAYMENT_TERM_MS).toLocaleDateString('en-GB')]]
+          ? [['Valid Till', new Date(new Date(quotation.date).getTime() + DEFAULT_PAYMENT_TERM_MS).toLocaleDateString('en-GB')]]
           : []),
       ];
       rows.forEach(([labelText, valueText], index) => {
@@ -1723,8 +2160,8 @@ export async function createQuotationPdfBlob(
     drawLabelValue('Address', customer?.address || '-', leftX, contentY + 7, 24, 56);
     drawLabelValue('Phone', customer?.phone || '-', leftX, contentY + 14, 24, 56);
     if (isGst) drawLabelValue('GSTIN', customer?.gstin || '-', leftX, contentY + 21, 24, 56);
-    drawLabelValue('Invoice No.', quotation.quotationNo, rightX, contentY + 1, 32, 46, true);
-    drawLabelValue('Invoice Date', invoiceDate, rightX, contentY + 14, 32, 46);
+    drawLabelValue('Quote No.', quotation.quotationNo, rightX, contentY + 1, 32, 46, true);
+    drawLabelValue('Quote Date', invoiceDate, rightX, contentY + 14, 32, 46);
   };
 
   const drawMinimalDetails = (y: number, h: number) => {
@@ -1736,7 +2173,7 @@ export async function createQuotationPdfBlob(
       size: 8,
       style: 'bold',
     });
-    drawCell(boxX + boxW / 2, y, boxW / 2, 8, 'Invoice / Payment Details', {
+    drawCell(boxX + boxW / 2, y, boxW / 2, 8, 'Quotation Details', {
       align: 'center',
       valign: 'middle',
       fill: lightFill,
@@ -1751,15 +2188,15 @@ export async function createQuotationPdfBlob(
     drawLabelValue('Phone', customer?.phone || '-', leftX, contentY + 14, 22, 58);
     if (isGst) drawLabelValue('GSTIN', customer?.gstin || '-', leftX, contentY + 21, 22, 58);
     const rightRows: [string, string, boolean][] = [
-      ['Invoice No.', quotation.quotationNo, true],
-      ['Invoice Date', invoiceDate, false],
+      ['Quote No.', quotation.quotationNo, true],
+      ['Quote Date', invoiceDate, false],
       ['Status', quotation.status, false],
       ['Type', quotation.type, false],
       ['Bank', companySettings.bankName || '-', false],
     ];
     if (companySettings.invoiceShowDueDate) {
-      const dueDate = new Date(new Date(quotation.date).getTime() + DEFAULT_PAYMENT_TERM_MS).toLocaleDateString('en-GB');
-      rightRows.splice(2, 0, ['Due Date', dueDate, false]);
+      const validTill = new Date(new Date(quotation.date).getTime() + DEFAULT_PAYMENT_TERM_MS).toLocaleDateString('en-GB');
+      rightRows.splice(2, 0, ['Valid Till', validTill, false]);
     }
     rightRows.slice(0, 5).forEach(([label, value, bold], index) => {
       drawLabelValue(label, value, rightX, contentY + index * 6.5, 30, 54, bold);
@@ -2086,12 +2523,11 @@ export async function createQuotationPdfBlob(
 
   const drawMinimalFooter = (y: number, h: number) => {
     // Guard against negative/zero height if invoice table overflows page.
-    const safeH = Math.max(20, h);
-    if (h !== safeH) h = safeH;
+    const fh = Math.max(20, h);
     const rightW = 64;
     const leftW = boxW - rightW;
-    rect(boxX, y, boxW, h);
-    line(boxX + leftW, y, boxX + leftW, y + h, 0.45);
+    rect(boxX, y, boxW, fh);
+    line(boxX + leftW, y, boxX + leftW, y + fh, 0.45);
     drawCell(boxX, y, leftW, 18, `Amount in words\n${amountInWords}`, {
       size: 8,
       style: 'bold',
@@ -2106,7 +2542,7 @@ export async function createQuotationPdfBlob(
       });
       leftY += 20;
     }
-    drawCell(boxX, leftY, leftW, y + h - leftY, `Payment Details\n${[companySettings.bankName, companySettings.accountNumber ? `A/C: ${companySettings.accountNumber}` : '', companySettings.ifscCode ? `IFSC: ${companySettings.ifscCode}` : ''].filter(Boolean).join('  ') || '-'}`, {
+    drawCell(boxX, leftY, leftW, y + fh - leftY, `Payment Details\n${[companySettings.bankName, companySettings.accountNumber ? `A/C: ${companySettings.accountNumber}` : '', companySettings.ifscCode ? `IFSC: ${companySettings.ifscCode}` : ''].filter(Boolean).join('  ') || '-'}`, {
       size: 7.3,
       color: textMuted,
       lineHeight: 4.2,
@@ -2123,7 +2559,7 @@ export async function createQuotationPdfBlob(
         : []),
       ['Total', `Rs. ${safeNumber(quotation.total).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`, true],
     ] as [string, string, boolean][];
-    const rowH = Math.max(1, h) / Math.max(1, rows.length);
+    const rowH = Math.max(1, fh) / Math.max(1, rows.length);
     rows.forEach(([label, value, bold], index) => {
       const rowY = y + index * rowH;
       drawCell(rightX, rowY, rightW, rowH, `${label}\n${value}`, {
