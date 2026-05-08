@@ -355,7 +355,7 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
             options={activeEmployees.filter(e => /driver/i.test(e.role || "")).map(e => ({ label: e.name, value: e.name }))}
             value={formData.driverName}
             allowCreate
-            onChange={(val) => setFormData({ ...formData, driverName: val || "" })}
+            onChange={(val) => setFormData({ ...formData, driverName: (val?.startsWith("NEW:") ? val.slice(4) : val) || "" })}
             placeholder="Driver name"
             mobileTitle="Select Driver"
           />

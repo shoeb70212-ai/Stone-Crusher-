@@ -6,6 +6,8 @@ import { format, parseISO } from "date-fns";
 import { parseFeetInches, generateId, normalizeVehicleNo, formatVehicleNo } from "../lib/utils";
 import { PrintSlipModal } from "../components/forms/PrintSlipModal";
 
+const stripNew = (s: string | undefined) => s?.startsWith("NEW:") ? s.slice(4) : (s ?? "");
+
 export function Vehicles() {
   const { vehicles, addVehicle, updateVehicle, slips } = useErp();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -37,8 +39,8 @@ export function Vehicles() {
     setEditingVehicleId(v.id);
     setFormData({
       vehicleNo: formatVehicleNo(v.vehicleNo),
-      ownerName: v.ownerName,
-      driverName: v.driverName || "",
+      ownerName: stripNew(v.ownerName),
+      driverName: stripNew(v.driverName) || "",
       driverPhone: v.driverPhone || "",
       measurementType: v.defaultMeasurementType,
       lengthFeet: v.measurement.lengthFeet?.toString() || "",
@@ -166,8 +168,8 @@ export function Vehicles() {
                    </div>
                 </div>
                 <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                   <span className="font-semibold text-zinc-700 dark:text-zinc-300">Owner:</span> {v.ownerName}
-                   {v.driverName && <span className="ml-2">· Driver: {v.driverName} {v.driverPhone && `(${v.driverPhone})`}</span>}
+                   <span className="font-semibold text-zinc-700 dark:text-zinc-300">Owner:</span> {stripNew(v.ownerName)}
+                   {v.driverName && <span className="ml-2">· Driver: {stripNew(v.driverName)} {v.driverPhone && `(${v.driverPhone})`}</span>}
                 </div>
                 <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
                    {v.defaultMeasurementType === "Volume (Brass)"
@@ -224,10 +226,10 @@ export function Vehicles() {
                       {formatVehicleNo(v.vehicleNo)}
                     </td>
                     <td className="px-4 py-4 font-medium text-zinc-700 dark:text-zinc-200 align-top">
-                      {v.ownerName}
+                      {stripNew(v.ownerName)}
                       {v.driverName && (
                         <span className="block text-xs font-normal text-zinc-500 dark:text-zinc-400 mt-0.5">
-                          Driver: {v.driverName} {v.driverPhone && `(${v.driverPhone})`}
+                          Driver: {stripNew(v.driverName)} {v.driverPhone && `(${v.driverPhone})`}
                         </span>
                       )}
                     </td>
@@ -513,7 +515,7 @@ export function Vehicles() {
                   {formatVehicleNo(selectedVehicle.vehicleNo)} - Trip History
                 </h3>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                  Owner: {selectedVehicle.ownerName || "Self"}
+                  Owner: {stripNew(selectedVehicle.ownerName) || "Self"}
                 </p>
               </div>
               <button
