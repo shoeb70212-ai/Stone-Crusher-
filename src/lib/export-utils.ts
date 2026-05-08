@@ -92,17 +92,14 @@ export async function createLedgerPdfBlob(
     jsPDF: { unit: 'in' as const, format: 'a4' as const, orientation: 'portrait' as const },
   };
 
-  // Render in an absolutely-positioned wrapper so html2canvas can compute layout.
-  // position:absolute at scrollY (not fixed/off-screen) is required — html2canvas
-  // cannot capture elements rendered off-screen with fixed positioning.
   const wrapper = document.createElement('div');
   wrapper.setAttribute('aria-hidden', 'true');
+  // position:fixed off-screen so html2canvas can capture it; z-index:-1 causes blank output.
   wrapper.style.cssText = [
-    'position:absolute',
-    `top:${Math.max(0, window.scrollY)}px`,
-    'left:0',
+    'position:fixed',
+    'top:-9999px',
+    'left:-9999px',
     'pointer-events:none',
-    'z-index:-1',
     'background:white',
     'color:#1a1a2e',
   ].join(';');

@@ -1708,7 +1708,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
 
 
 // ---------------------------------------------------------------------------
-// Customer Ledger Statement PDF (html2canvas — bank-statement layout, A4)
+// Customer Ledger Statement PDF (pure jsPDF — bank-statement layout, A4)
 // ---------------------------------------------------------------------------
 
 export interface LedgerEntry {
@@ -1889,8 +1889,8 @@ function buildLedgerStatementHtml(
 }
 
 /**
- * Generates a bank-statement-style Customer Ledger PDF via html2canvas/html2pdf.
- * Uses HTML rendering so Unicode (Rs., ₹, etc.) and layout render correctly.
+ * Generates a bank-statement-style Customer Ledger PDF using pure jsPDF.
+ * No html2canvas — avoids blank-page rendering bugs on z-index / off-screen elements.
  */
 export async function createLedgerStatementPdfBlob(
   customer: Customer,
@@ -1900,47 +1900,270 @@ export async function createLedgerStatementPdfBlob(
   companySettings: CompanySettings,
   dateRange?: { start?: string; end?: string },
 ): Promise<Blob> {
-  const html2pdfModule = await import('html2pdf.js');
-  const html2pdf = (html2pdfModule.default || html2pdfModule) as typeof html2pdfModule.default;
+  const { jsPDF } = await import('jspdf');
 
-  const statementHtml = buildLedgerStatementHtml(
-    customer, entries, openingBalance, closingBalance, companySettings, dateRange,
-  );
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  const pw = doc.internal.pageSize.getWidth();   // 210
+  const ph = doc.internal.pageSize.getHeight();  // 297
+  const ml = 14; // left margin
+  const mr = 14; // right margin
+  const cw = pw - ml - mr; // content width = 182
 
-  const opt = {
-    margin: [8, 8] as [number, number],
-    filename: `Ledger_${customer.name.replace(/\s+/g, '_')}.pdf`,
-    image: { type: 'jpeg' as const, quality: 0.92 },
-    html2canvas: { scale: 2, useCORS: true, logging: false },
-    jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const },
+  const primary = PRIMARY_COLORS[companySettings.primaryColor || 'emerald'] || '#10b981';
+  // convert hex to rgb for jsPDF
+  const hexToRgb = (hex: string): [number, number, number] => {
+    const clean = hex.replace('#', '');
+    return [parseInt(clean.slice(0,2),16), parseInt(clean.slice(2,4),16), parseInt(clean.slice(4,6),16)];
+  };
+  const [pr, pg, pb] = hexToRgb(primary);
+
+  const fmt = (n: number) => `Rs.${Math.abs(n).toLocaleString('en-IN')}`;
+  const balLabel = (n: number) =>
+    n === 0 ? 'Rs.0'
+    : n < 0  ? `Rs.${Math.abs(n).toLocaleString('en-IN')} (Cr)`
+    : `Rs.${n.toLocaleString('en-IN')} (Dr)`;
+
+  const periodLabel = dateRange?.start || dateRange?.end
+    ? `${dateRange.start || 'All'} to ${dateRange.end || 'Date'}`
+    : 'All Transactions';
+
+  let y = 14;
+
+  // ── Company header ──────────────────────────────────────────────────────────
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(30, 30, 30);
+  doc.text(companySettings.name || 'COMPANY', pw / 2, y, { align: 'center' });
+  y += 5;
+
+  const contacts = [
+    companySettings.phone  ? `Ph: ${companySettings.phone}` : '',
+    companySettings.gstin  ? `GSTIN: ${companySettings.gstin}` : '',
+    companySettings.address || '',
+  ].filter(Boolean).join('  |  ');
+  if (contacts) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    doc.text(contacts, pw / 2, y, { align: 'center' });
+    y += 4;
+  }
+
+  // primary underline
+  doc.setDrawColor(pr, pg, pb);
+  doc.setLineWidth(0.7);
+  doc.line(ml, y, ml + cw, y);
+  y += 5;
+
+  // ── Report title ─────────────────────────────────────────────────────────────
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(30, 30, 30);
+  doc.text('Customer Ledger Report', pw / 2, y, { align: 'center' });
+  y += 5;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`(${periodLabel})`, pw / 2, y, { align: 'center' });
+  y += 7;
+
+  // ── Info boxes (left: customer, right: summary) ───────────────────────────
+  const boxH = 38;
+  const halfW = (cw - 4) / 2;
+
+  // left box border
+  doc.setDrawColor(220, 220, 220);
+  doc.setLineWidth(0.3);
+  doc.rect(ml, y, halfW, boxH);
+  // right box border
+  doc.rect(ml + halfW + 4, y, halfW, boxH);
+
+  // LEFT: Customer Details
+  let ly = y + 5;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 100, 100);
+  doc.text('CUSTOMER DETAILS', ml + 3, ly);
+  ly += 5;
+
+  const customerRows: [string, string][] = [
+    ['Customer Name:', customer.name],
+    ...(customer.phone   ? [['Phone:', customer.phone] as [string,string]]   : []),
+    ...(customer.address ? [['Address:', customer.address] as [string,string]] : []),
+    ...(customer.gstin   ? [['GSTIN:', customer.gstin] as [string,string]]   : []),
+  ];
+  for (const [label, val] of customerRows) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(50, 50, 50);
+    doc.text(label, ml + 3, ly);
+    doc.setFont('helvetica', 'normal');
+    doc.text(doc.splitTextToSize(val, halfW - 35), ml + 35, ly);
+    ly += 4.5;
+  }
+
+  // Final balance in left box
+  ly = y + boxH - 12;
+  doc.setDrawColor(220, 220, 220);
+  doc.setLineWidth(0.2);
+  doc.line(ml + 2, ly, ml + halfW - 2, ly);
+  ly += 4;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 100, 100);
+  doc.text('Final Balance:', ml + 3, ly);
+  const balColor: [number,number,number] = closingBalance > 0 ? [220,38,38] : closingBalance < 0 ? [5,150,105] : [50,50,50];
+  doc.setTextColor(...balColor);
+  doc.setFontSize(9);
+  doc.text(balLabel(closingBalance), ml + 35, ly);
+
+  // RIGHT: Summary
+  const rx = ml + halfW + 4;
+  ly = y + 5;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 100, 100);
+  doc.text('SUMMARY', rx + 3, ly);
+  ly += 5;
+
+  const totalDebit  = entries.reduce((s, e) => s + e.debit,  0);
+  const totalCredit = entries.reduce((s, e) => s + e.credit, 0);
+
+  const summaryRows: [string, string, [number,number,number]][] = [
+    ['Starting Balance:', balLabel(openingBalance), openingBalance > 0 ? [220,38,38] : openingBalance < 0 ? [5,150,105] : [50,50,50]],
+    [`(${dateRange?.start || '-'})`, '', [130,130,130]],
+    ['Total Debit (-):', fmt(totalDebit), [220,38,38]],
+    ['Total Credit (+):', fmt(totalCredit), [5,150,105]],
+    ['Closing Balance:', balLabel(closingBalance), closingBalance > 0 ? [220,38,38] : closingBalance < 0 ? [5,150,105] : [50,50,50]],
+    [`(${dateRange?.end || '-'})`, '', [130,130,130]],
+    ['Total Transactions:', String(entries.length), [50,50,50]],
+  ];
+  for (const [label, val, color] of summaryRows) {
+    if (!label && !val) { ly += 1; continue; }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(50, 50, 50);
+    doc.text(label, rx + 3, ly);
+    doc.setFont('helvetica', val === balLabel(closingBalance) ? 'bold' : 'normal');
+    doc.setTextColor(...color);
+    doc.text(val, rx + halfW - 3, ly, { align: 'right' });
+    ly += 4.5;
+  }
+
+  y += boxH + 6;
+
+  // ── Transaction table ────────────────────────────────────────────────────────
+  // column layout: SR | Date | Description | Debit | Credit | Balance
+  const cols = {
+    sr:   { x: ml,           w: 10 },
+    date: { x: ml + 10,      w: 24 },
+    desc: { x: ml + 34,      w: 72 },
+    deb:  { x: ml + 106,     w: 24 },
+    crd:  { x: ml + 130,     w: 24 },
+    bal:  { x: ml + 154,     w: cw - 154 },
+  };
+  const rowH = 6.5;
+
+  // header row
+  doc.setFillColor(243, 244, 246);
+  doc.rect(ml, y, cw, rowH, 'F');
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.4);
+  doc.line(ml, y + rowH, ml + cw, y + rowH);
+
+  const hStyle = { size: 7.5, bold: true };
+  const drawHeader = (text: string, cx: number, cwidth: number, align: 'left'|'right'|'center' = 'left') => {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(hStyle.size);
+    doc.setTextColor(80, 80, 80);
+    const tx = align === 'right' ? cx + cwidth - 2 : align === 'center' ? cx + cwidth / 2 : cx + 2;
+    doc.text(text, tx, y + 4.2, { align });
+  };
+  drawHeader('SR.',   cols.sr.x,   cols.sr.w,   'center');
+  drawHeader('DATE',  cols.date.x, cols.date.w);
+  drawHeader('DESCRIPTION', cols.desc.x, cols.desc.w);
+  drawHeader('DEBIT (-)', cols.deb.x, cols.deb.w, 'right');
+  drawHeader('CREDIT (+)', cols.crd.x, cols.crd.w, 'right');
+  drawHeader('BALANCE', cols.bal.x, cols.bal.w, 'right');
+  y += rowH;
+
+  // opening balance row
+  const drawRow = (
+    sr: string, date: string, desc: string,
+    debit: string, credit: string, balance: string,
+    bg: string, balColor: [number,number,number],
+    debitColor: [number,number,number], creditColor: [number,number,number],
+  ) => {
+    if (y + rowH > ph - 16) {
+      doc.addPage();
+      y = 14;
+    }
+    if (bg !== '#fff') {
+      doc.setFillColor(249, 250, 251);
+      doc.rect(ml, y, cw, rowH, 'F');
+    }
+    doc.setDrawColor(229, 231, 235);
+    doc.setLineWidth(0.2);
+    doc.line(ml, y + rowH, ml + cw, y + rowH);
+
+    const cell = (text: string, cx: number, cwidth: number, align: 'left'|'right'|'center', color: [number,number,number], bold = false) => {
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...color);
+      const tx = align === 'right' ? cx + cwidth - 2 : align === 'center' ? cx + cwidth / 2 : cx + 2;
+      doc.text(text, tx, y + 4.2, { align });
+    };
+
+    cell(sr,      cols.sr.x,   cols.sr.w,   'center', [130,130,130]);
+    cell(date,    cols.date.x, cols.date.w, 'left',   [80,80,80]);
+    cell(desc,    cols.desc.x, cols.desc.w, 'left',   [30,30,30]);
+    cell(debit,   cols.deb.x,  cols.deb.w,  'right',  debitColor);
+    cell(credit,  cols.crd.x,  cols.crd.w,  'right',  creditColor);
+    cell(balance, cols.bal.x,  cols.bal.w,  'right',  balColor, true);
+    y += rowH;
   };
 
-  const wrapper = document.createElement('div');
-  wrapper.setAttribute('aria-hidden', 'true');
-  wrapper.style.cssText = [
-    'position:absolute',
-    `top:${Math.max(0, window.scrollY)}px`,
-    'left:0',
-    'width:820px',
-    'background:white',
-    'color:#111',
-    'pointer-events:none',
-    'z-index:-1',
-  ].join(';');
-  wrapper.innerHTML = statementHtml;
-  document.body.appendChild(wrapper);
+  const openingBalColor: [number,number,number] = openingBalance > 0 ? [220,38,38] : openingBalance < 0 ? [5,150,105] : [100,100,100];
+  drawRow(
+    '-', '-', 'Opening Balance',
+    openingBalance > 0 ? fmt(openingBalance) : '-',
+    openingBalance < 0 ? fmt(Math.abs(openingBalance)) : '-',
+    openingBalance === 0 ? 'Rs.0' : `(Rs.${Math.abs(openingBalance).toLocaleString('en-IN')})`,
+    '#f9fafb',
+    openingBalColor,
+    openingBalance > 0 ? [220,38,38] : [156,163,175],
+    openingBalance < 0 ? [5,150,105] : [156,163,175],
+  );
 
-  await yieldToMain();
-
-  try {
-    return await withTimeout(
-      html2pdf().set(opt).from(wrapper).outputPdf('blob'),
-      20000,
-      'Ledger PDF generation',
+  entries.forEach((e, i) => {
+    const rb = e.runningBalance;
+    const rbColor: [number,number,number] = rb > 0 ? [220,38,38] : rb < 0 ? [5,150,105] : [100,100,100];
+    drawRow(
+      String(i + 1),
+      e.date.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }),
+      e.desc,
+      e.debit > 0  ? fmt(e.debit)  : '-',
+      e.credit > 0 ? fmt(e.credit) : '-',
+      rb === 0 ? 'Rs.0' : `(Rs.${Math.abs(rb).toLocaleString('en-IN')})`,
+      i % 2 === 0 ? '#fff' : '#f9fafb',
+      rbColor,
+      e.debit  > 0 ? [220,38,38] : [156,163,175],
+      e.credit > 0 ? [5,150,105] : [156,163,175],
     );
-  } finally {
-    document.body.removeChild(wrapper);
-  }
+  });
+
+  // ── Footer ───────────────────────────────────────────────────────────────────
+  y += 3;
+  doc.setDrawColor(229, 231, 235);
+  doc.setLineWidth(0.3);
+  doc.line(ml, y, ml + cw, y);
+  y += 4;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(130, 130, 130);
+  doc.text(`Printed at: ${new Date().toLocaleString('en-IN')}`, ml, y);
+
+  return doc.output('blob');
 }
 
 export async function createQuotationPdfBlob(
