@@ -1708,7 +1708,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
 
 
 // ---------------------------------------------------------------------------
-// Customer Ledger Statement PDF (jsPDF — bank-statement layout, A4 only)
+// Customer Ledger Statement PDF (html2canvas — bank-statement layout, A4)
 // ---------------------------------------------------------------------------
 
 export interface LedgerEntry {
@@ -1720,10 +1720,177 @@ export interface LedgerEntry {
 }
 
 /**
- * Generates a bank-statement-style Customer Ledger PDF using jsPDF.
- * Page 1 header: company details + customer details.
- * Body: date-ordered transaction table with running balance column.
- * Footer: closing balance + generated-on timestamp.
+ * Builds the bank-statement HTML for a customer ledger.
+ * Matches the reference layout: company header, customer info block,
+ * summary block, then a full transaction table with running balance.
+ */
+function buildLedgerStatementHtml(
+  customer: Customer,
+  entries: LedgerEntry[],
+  openingBalance: number,
+  closingBalance: number,
+  companySettings: CompanySettings,
+  dateRange?: { start?: string; end?: string },
+): string {
+  const primary = PRIMARY_COLORS[companySettings.primaryColor || 'emerald'] || '#10b981';
+  const periodLabel = dateRange?.start || dateRange?.end
+    ? `(${dateRange.start || 'All'} to ${dateRange.end || 'Date'})`
+    : '(All Transactions)';
+
+  const totalDebit  = entries.reduce((s, e) => s + e.debit,  0);
+  const totalCredit = entries.reduce((s, e) => s + e.credit, 0);
+  const totalTx     = entries.length;
+
+  const fmt = (n: number) => `Rs.${Math.abs(n).toLocaleString('en-IN')}`;
+  const balLabel = (n: number) =>
+    n === 0 ? 'Rs.0'
+    : n < 0  ? `Rs.${Math.abs(n).toLocaleString('en-IN')} (Credit)`
+    : `Rs.${n.toLocaleString('en-IN')} (Debit)`;
+
+  const compContacts = [
+    companySettings.phone  ? `Ph: ${companySettings.phone}` : '',
+    companySettings.gstin  ? `GSTIN: ${companySettings.gstin}` : '',
+    companySettings.address || '',
+  ].filter(Boolean).join('  |  ');
+
+  const rows = entries.map((e, i) => `
+    <tr style="background:${i % 2 === 0 ? '#fff' : '#f9fafb'};">
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center;">${i + 1}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;">
+        ${e.date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+      </td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;">${e.desc}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;color:${e.debit > 0 ? '#dc2626' : '#9ca3af'};">
+        ${e.debit > 0 ? fmt(e.debit) : '-'}
+      </td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;color:${e.credit > 0 ? '#059669' : '#9ca3af'};">
+        ${e.credit > 0 ? fmt(e.credit) : '-'}
+      </td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;color:${e.runningBalance > 0 ? '#dc2626' : e.runningBalance < 0 ? '#059669' : '#374151'};">
+        ${e.runningBalance === 0 ? 'Rs.0'
+          : e.runningBalance < 0
+            ? `(Rs.${Math.abs(e.runningBalance).toLocaleString('en-IN')})`
+            : `(Rs.${e.runningBalance.toLocaleString('en-IN')})`}
+      </td>
+    </tr>`).join('');
+
+  return `
+    <div style="font-family:'Segoe UI',Arial,sans-serif;color:#111;background:#fff;width:760px;margin:0 auto;padding:20px 24px;">
+
+      <!-- Company Header -->
+      <div style="text-align:center;border-bottom:3px solid ${primary};padding-bottom:10px;margin-bottom:6px;">
+        <div style="font-size:22px;font-weight:900;letter-spacing:0.04em;text-transform:uppercase;">${companySettings.name || 'COMPANY'}</div>
+        ${compContacts ? `<div style="font-size:11px;color:#6b7280;margin-top:3px;">${compContacts}</div>` : ''}
+      </div>
+
+      <!-- Report Title + Period -->
+      <div style="text-align:center;margin-bottom:14px;">
+        <div style="font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;">Customer Ledger Report</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:2px;">${periodLabel}</div>
+      </div>
+
+      <!-- Customer Info + Summary side by side -->
+      <div style="display:flex;gap:16px;margin-bottom:16px;">
+
+        <!-- Left: Customer Info -->
+        <div style="flex:1;border:1px solid #e5e7eb;border-radius:6px;padding:12px;">
+          <div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Customer Details</div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <tr>
+              <td style="padding:2px 0;font-weight:700;width:120px;">Customer Name:</td>
+              <td style="padding:2px 0;">${customer.name}</td>
+            </tr>
+            ${customer.phone ? `<tr><td style="padding:2px 0;font-weight:700;">Phone:</td><td>${customer.phone}</td></tr>` : ''}
+            ${customer.address ? `<tr><td style="padding:2px 0;font-weight:700;">Address:</td><td>${customer.address}</td></tr>` : ''}
+            ${customer.gstin ? `<tr><td style="padding:2px 0;font-weight:700;">GSTIN:</td><td>${customer.gstin}</td></tr>` : ''}
+          </table>
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #e5e7eb;">
+            <div style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:4px;">Final Balance:</div>
+            <div style="font-size:16px;font-weight:900;color:${closingBalance > 0 ? '#dc2626' : closingBalance < 0 ? '#059669' : '#374151'};">
+              ${balLabel(closingBalance)}
+            </div>
+            ${dateRange?.end || dateRange?.start ? `<div style="font-size:10px;color:#9ca3af;margin-top:2px;">(${dateRange.end || dateRange.start})</div>` : ''}
+          </div>
+        </div>
+
+        <!-- Right: Summary -->
+        <div style="flex:1;border:1px solid #e5e7eb;border-radius:6px;padding:12px;">
+          <div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:6px;">Summary</div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <tr>
+              <td style="padding:3px 0;font-weight:700;width:160px;">Starting Balance:</td>
+              <td style="padding:3px 0;color:${openingBalance > 0 ? '#dc2626' : openingBalance < 0 ? '#059669' : '#374151'};font-weight:600;">
+                ${balLabel(openingBalance)}
+              </td>
+            </tr>
+            ${dateRange?.start ? `<tr><td></td><td style="font-size:10px;color:#9ca3af;">(${dateRange.start})</td></tr>` : ''}
+            <tr>
+              <td style="padding:3px 0;font-weight:700;color:#dc2626;">Total Debit (-):</td>
+              <td style="padding:3px 0;font-weight:700;color:#dc2626;">${fmt(totalDebit)}</td>
+            </tr>
+            <tr>
+              <td style="padding:3px 0;font-weight:700;color:#059669;">Total Credit (+):</td>
+              <td style="padding:3px 0;font-weight:700;color:#059669;">${fmt(totalCredit)}</td>
+            </tr>
+            <tr style="border-top:1px solid #e5e7eb;">
+              <td style="padding:3px 0;font-weight:700;">Closing Balance:</td>
+              <td style="padding:3px 0;font-weight:900;color:${closingBalance > 0 ? '#dc2626' : closingBalance < 0 ? '#059669' : '#374151'};">
+                ${balLabel(closingBalance)}
+              </td>
+            </tr>
+            ${dateRange?.end ? `<tr><td></td><td style="font-size:10px;color:#9ca3af;">(${dateRange.end})</td></tr>` : ''}
+            <tr>
+              <td style="padding:3px 0;font-weight:700;">Total Transactions:</td>
+              <td style="padding:3px 0;font-weight:700;">${totalTx}</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+
+      <!-- Transaction Table -->
+      <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+        <thead>
+          <tr style="background:#f3f4f6;">
+            <th style="padding:7px 8px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;border-bottom:2px solid #d1d5db;width:36px;">SR.</th>
+            <th style="padding:7px 8px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;border-bottom:2px solid #d1d5db;width:110px;">Date</th>
+            <th style="padding:7px 8px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;border-bottom:2px solid #d1d5db;">Description</th>
+            <th style="padding:7px 8px;text-align:right;font-size:10px;color:#dc2626;font-weight:700;text-transform:uppercase;border-bottom:2px solid #d1d5db;width:110px;">Debit (-)</th>
+            <th style="padding:7px 8px;text-align:right;font-size:10px;color:#059669;font-weight:700;text-transform:uppercase;border-bottom:2px solid #d1d5db;width:110px;">Credit (+)</th>
+            <th style="padding:7px 8px;text-align:right;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;border-bottom:2px solid #d1d5db;width:130px;">Balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Opening balance row -->
+          <tr style="background:#f9fafb;">
+            <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center;color:#9ca3af;">-</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;color:#9ca3af;">-</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-weight:600;">Sabqa Raqam (Opening Balance)</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;color:${openingBalance > 0 ? '#dc2626' : '#9ca3af'};">
+              ${openingBalance > 0 ? fmt(openingBalance) : '-'}
+            </td>
+            <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;color:${openingBalance < 0 ? '#059669' : '#9ca3af'};">
+              ${openingBalance < 0 ? fmt(openingBalance) : '-'}
+            </td>
+            <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;color:${openingBalance > 0 ? '#dc2626' : openingBalance < 0 ? '#059669' : '#374151'};">
+              ${openingBalance === 0 ? 'Rs.0'
+                : openingBalance < 0 ? `(Rs.${Math.abs(openingBalance).toLocaleString('en-IN')})`
+                : `(Rs.${openingBalance.toLocaleString('en-IN')})`}
+            </td>
+          </tr>
+          ${rows}
+        </tbody>
+      </table>
+
+      <!-- Footer -->
+      <div style="margin-top:10px;font-size:10px;color:#9ca3af;text-align:center;border-top:1px solid #e5e7eb;padding-top:8px;">
+        Printed at: ${new Date().toLocaleString('en-IN')}
+      </div>
+    </div>`;
+}
+
+/**
+ * Generates a bank-statement-style Customer Ledger PDF via html2canvas/html2pdf.
+ * Uses HTML rendering so Unicode (Rs., ₹, etc.) and layout render correctly.
  */
 export async function createLedgerStatementPdfBlob(
   customer: Customer,
@@ -1733,278 +1900,47 @@ export async function createLedgerStatementPdfBlob(
   companySettings: CompanySettings,
   dateRange?: { start?: string; end?: string },
 ): Promise<Blob> {
-  const { jsPDF } = await import('jspdf');
-  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  const html2pdfModule = await import('html2pdf.js');
+  const html2pdf = (html2pdfModule.default || html2pdfModule) as typeof html2pdfModule.default;
 
-  const pageW = doc.internal.pageSize.getWidth();
-  const pageH = doc.internal.pageSize.getHeight();
-  const margin = 12;
-  const contentW = pageW - margin * 2;
+  const statementHtml = buildLedgerStatementHtml(
+    customer, entries, openingBalance, closingBalance, companySettings, dateRange,
+  );
 
-  const primary =
-    PRIMARY_COLORS[companySettings.primaryColor || 'emerald'] ||
-    '#10b981';
+  const opt = {
+    margin: [8, 8] as [number, number],
+    filename: `Ledger_${customer.name.replace(/\s+/g, '_')}.pdf`,
+    image: { type: 'jpeg' as const, quality: 0.92 },
+    html2canvas: { scale: 2, useCORS: true, logging: false },
+    jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const },
+  };
 
-  const black: PdfColor        = [0, 0, 0];
-  const textDark: PdfColor     = [20, 20, 20];
-  const textMuted: PdfColor    = [80, 90, 105];
-  const lightFill: PdfColor    = [248, 249, 250];
-  const headerFill: PdfColor   = [240, 242, 245];
-  const debitColor: PdfColor   = [200, 30, 50];
-  const creditColor: PdfColor  = [5, 120, 80];
+  const wrapper = document.createElement('div');
+  wrapper.setAttribute('aria-hidden', 'true');
+  wrapper.style.cssText = [
+    'position:absolute',
+    `top:${Math.max(0, window.scrollY)}px`,
+    'left:0',
+    'width:820px',
+    'background:white',
+    'color:#111',
+    'pointer-events:none',
+    'z-index:-1',
+  ].join(';');
+  wrapper.innerHTML = statementHtml;
+  document.body.appendChild(wrapper);
 
-  const { setFillColor, setTextColor, setFont, rect, line, writeText } =
-    createPainter(doc, textDark);
+  await yieldToMain();
 
-  // ── Page-number footer helper ────────────────────────────────────────────
-  const addPageNumber = (pageNum: number, totalPages: number) => {
-    setFont(7, 'normal', textMuted);
-    doc.text(
-      `Page ${pageNum} of ${totalPages}`,
-      pageW / 2,
-      pageH - 5,
-      { align: 'center' },
+  try {
+    return await withTimeout(
+      html2pdf().set(opt).from(wrapper).outputPdf('blob'),
+      20000,
+      'Ledger PDF generation',
     );
-    doc.text(
-      `Generated on ${new Date().toLocaleString('en-IN')}`,
-      margin,
-      pageH - 5,
-    );
-  };
-
-  // ── Section 1: Company header bar ───────────────────────────────────────
-  const drawCompanyHeader = () => {
-    // Top accent line
-    setFillColor(primary);
-    doc.rect(margin, 10, contentW, 1, 'F');
-
-    setFont(16, 'bold', black);
-    doc.text((companySettings.name || 'COMPANY').toUpperCase(), margin, 21);
-
-    const rightX = margin + contentW;
-    setFont(8, 'bold', textMuted);
-    doc.text('ACCOUNT STATEMENT', rightX, 18, { align: 'right' });
-
-    let detailY = 27;
-    if (companySettings.address) {
-      setFont(8, 'normal', textMuted);
-      doc.text(companySettings.address, margin, detailY);
-      detailY += 4.5;
-    }
-    const contacts = [
-      companySettings.phone ? `Ph: ${companySettings.phone}` : '',
-      companySettings.gstin ? `GSTIN: ${companySettings.gstin}` : '',
-    ].filter(Boolean).join('    ');
-    if (contacts) {
-      setFont(7.5, 'normal', textMuted);
-      doc.text(contacts, margin, detailY);
-    }
-
-    // Thin separator
-    setFont(8, 'normal', textDark);
-    line(margin, 36, margin + contentW, 36, 0.4);
-  };
-
-  // ── Section 2: Customer details + period ────────────────────────────────
-  const drawCustomerBlock = () => {
-    const blockY = 39;
-    const halfW = contentW / 2 - 2;
-
-    // Left: customer
-    setFillColor(lightFill);
-    doc.rect(margin, blockY, halfW, 28, 'F');
-    setFont(7, 'bold', textMuted);
-    doc.text('CUSTOMER', margin + 3, blockY + 5);
-    setFont(10, 'bold', textDark);
-    doc.text(customer.name, margin + 3, blockY + 11);
-    setFont(7.5, 'normal', textMuted);
-    const custLines = [
-      customer.phone ? `Phone: ${customer.phone}` : '',
-      customer.address || '',
-      customer.gstin ? `GSTIN: ${customer.gstin}` : '',
-    ].filter(Boolean);
-    custLines.slice(0, 3).forEach((line_, idx) => {
-      doc.text(line_, margin + 3, blockY + 17 + idx * 4);
-    });
-
-    // Right: period + balances
-    const rightX = margin + halfW + 4;
-    setFillColor(lightFill);
-    doc.rect(rightX, blockY, halfW, 28, 'F');
-    setFont(7, 'bold', textMuted);
-    doc.text('STATEMENT PERIOD', rightX + 3, blockY + 5);
-    setFont(8, 'normal', textDark);
-    const periodLabel = dateRange?.start || dateRange?.end
-      ? `${dateRange.start || 'All'} to ${dateRange.end || 'Date'}`
-      : 'All transactions';
-    doc.text(periodLabel, rightX + 3, blockY + 11);
-
-    setFont(7, 'bold', textMuted);
-    doc.text('OPENING BALANCE', rightX + 3, blockY + 18);
-    setFont(8.5, 'bold', openingBalance > 0 ? debitColor : openingBalance < 0 ? creditColor : textDark);
-    doc.text(
-      `₹ ${Math.abs(openingBalance).toLocaleString('en-IN')} ${openingBalance < 0 ? 'Cr' : openingBalance > 0 ? 'Dr' : ''}`,
-      rightX + 3,
-      blockY + 23,
-    );
-
-    line(margin, blockY + 29, margin + contentW, blockY + 29, 0.3);
-  };
-
-  // ── Section 3: Table header row ─────────────────────────────────────────
-  const TABLE_START_Y = 70;
-  const COL = {
-    date:    { x: margin,               w: 22 },
-    desc:    { x: margin + 22,          w: 72 },
-    debit:   { x: margin + 94,          w: 26 },
-    credit:  { x: margin + 120,         w: 26 },
-    balance: { x: margin + 146,         w: contentW - 146 },
-  };
-  const ROW_H = 6;
-  const HEADER_H = 7;
-
-  const drawTableHeader = (y: number) => {
-    setFillColor(headerFill);
-    doc.rect(margin, y, contentW, HEADER_H, 'F');
-    setFont(7.5, 'bold', textMuted);
-    const headers: [string, keyof typeof COL, 'left' | 'right'][] = [
-      ['DATE',       'date',    'left'],
-      ['PARTICULARS','desc',    'left'],
-      ['DEBIT (₹)',  'debit',   'right'],
-      ['CREDIT (₹)', 'credit',  'right'],
-      ['BALANCE (₹)','balance', 'right'],
-    ];
-    headers.forEach(([label, col, align]) => {
-      const c = COL[col];
-      doc.text(label, align === 'right' ? c.x + c.w - 1.5 : c.x + 1.5, y + 4.8, { align });
-    });
-    line(margin, y + HEADER_H, margin + contentW, y + HEADER_H, 0.35);
-  };
-
-  // ── Rendering pass — we may need multiple pages ──────────────────────────
-  drawCompanyHeader();
-  drawCustomerBlock();
-  drawTableHeader(TABLE_START_Y);
-
-  let y = TABLE_START_Y + HEADER_H;
-  let page = 1;
-  // We'll patch page numbers in a second pass after we know total pages.
-  const pageBreakY = pageH - 18;
-  let rowIndex = 0;
-
-  const addNewPage = () => {
-    addPageNumber(page, 0); // placeholder; will re-render later
-    doc.addPage();
-    page++;
-    drawCompanyHeader();
-    setFont(7.5, 'italic', textMuted);
-    doc.text(`${customer.name} — continued`, margin, 38);
-    drawTableHeader(40);
-    y = 40 + HEADER_H;
-  };
-
-  // Opening balance row
-  setFillColor(lightFill);
-  doc.rect(margin, y, contentW, ROW_H, 'F');
-  setFont(7.5, 'bold', textDark);
-  doc.text('-', COL.date.x + 1.5, y + 4.2);
-  doc.text('Opening Balance', COL.desc.x + 1.5, y + 4.2);
-  setFont(7.5, 'normal', openingBalance > 0 ? debitColor : textDark);
-  if (openingBalance > 0)
-    doc.text(openingBalance.toLocaleString('en-IN'), COL.debit.x + COL.debit.w - 1.5, y + 4.2, { align: 'right' });
-  else
-    doc.text('-', COL.debit.x + COL.debit.w - 1.5, y + 4.2, { align: 'right' });
-
-  setFont(7.5, 'normal', openingBalance < 0 ? creditColor : textDark);
-  if (openingBalance < 0)
-    doc.text(Math.abs(openingBalance).toLocaleString('en-IN'), COL.credit.x + COL.credit.w - 1.5, y + 4.2, { align: 'right' });
-  else
-    doc.text('-', COL.credit.x + COL.credit.w - 1.5, y + 4.2, { align: 'right' });
-
-  const obLabel = `${Math.abs(openingBalance).toLocaleString('en-IN')} ${openingBalance < 0 ? 'Cr' : openingBalance > 0 ? 'Dr' : ''}`;
-  setFont(7.5, 'bold', openingBalance > 0 ? debitColor : openingBalance < 0 ? creditColor : textDark);
-  doc.text(obLabel, COL.balance.x + COL.balance.w - 1.5, y + 4.2, { align: 'right' });
-  line(margin, y + ROW_H, margin + contentW, y + ROW_H, 0.15);
-  y += ROW_H;
-
-  // Transaction rows
-  entries.forEach((entry) => {
-    if (y + ROW_H > pageBreakY) addNewPage();
-
-    const isEven = rowIndex % 2 === 0;
-    if (isEven) {
-      setFillColor([255, 255, 255]);
-    } else {
-      setFillColor([252, 253, 255]);
-    }
-    doc.rect(margin, y, contentW, ROW_H, 'F');
-
-    setFont(7, 'normal', textDark);
-    doc.text(
-      entry.date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }),
-      COL.date.x + 1.5, y + 4.2,
-    );
-
-    const descLines = doc.splitTextToSize(entry.desc, COL.desc.w - 3);
-    doc.text(descLines[0], COL.desc.x + 1.5, y + 4.2);
-
-    if (entry.debit > 0) {
-      setFont(7, 'normal', debitColor);
-      doc.text(entry.debit.toLocaleString('en-IN'), COL.debit.x + COL.debit.w - 1.5, y + 4.2, { align: 'right' });
-    } else {
-      setFont(7, 'normal', textMuted);
-      doc.text('-', COL.debit.x + COL.debit.w - 1.5, y + 4.2, { align: 'right' });
-    }
-
-    if (entry.credit > 0) {
-      setFont(7, 'normal', creditColor);
-      doc.text(entry.credit.toLocaleString('en-IN'), COL.credit.x + COL.credit.w - 1.5, y + 4.2, { align: 'right' });
-    } else {
-      setFont(7, 'normal', textMuted);
-      doc.text('-', COL.credit.x + COL.credit.w - 1.5, y + 4.2, { align: 'right' });
-    }
-
-    const balLabel = `${Math.abs(entry.runningBalance).toLocaleString('en-IN')} ${entry.runningBalance < 0 ? 'Cr' : entry.runningBalance > 0 ? 'Dr' : ''}`;
-    setFont(7, 'bold', entry.runningBalance > 0 ? debitColor : entry.runningBalance < 0 ? creditColor : textDark);
-    doc.text(balLabel, COL.balance.x + COL.balance.w - 1.5, y + 4.2, { align: 'right' });
-
-    line(margin, y + ROW_H, margin + contentW, y + ROW_H, 0.1);
-    y += ROW_H;
-    rowIndex++;
-  });
-
-  // ── Closing balance row ──────────────────────────────────────────────────
-  if (y + ROW_H + 2 > pageBreakY) addNewPage();
-  y += 1;
-  setFillColor([235, 240, 248]);
-  doc.rect(margin, y, contentW, ROW_H + 1, 'F');
-  setFont(8, 'bold', textDark);
-  doc.text('CLOSING BALANCE', COL.desc.x + 1.5, y + 5);
-  const clLabel = `₹ ${Math.abs(closingBalance).toLocaleString('en-IN')} ${closingBalance < 0 ? 'Cr' : closingBalance > 0 ? 'Dr' : ''}`;
-  setFont(8.5, 'bold', closingBalance > 0 ? debitColor : closingBalance < 0 ? creditColor : textDark);
-  doc.text(clLabel, COL.balance.x + COL.balance.w - 1.5, y + 5, { align: 'right' });
-  line(margin, y, margin + contentW, y, 0.5);
-  line(margin, y + ROW_H + 1, margin + contentW, y + ROW_H + 1, 0.5);
-
-  // ── Bottom accent line + disclaimer ─────────────────────────────────────
-  const totalPages = page;
-  setFillColor(primary);
-  doc.rect(margin, pageH - 12, contentW, 0.8, 'F');
-  setFont(6.5, 'italic', textMuted);
-  doc.text('This is a computer-generated statement and does not require a signature.', pageW / 2, pageH - 8, { align: 'center' });
-
-  // Patch page numbers on all pages now that we know total count
-  for (let p = 1; p <= totalPages; p++) {
-    doc.setPage(p);
-    addPageNumber(p, totalPages);
+  } finally {
+    document.body.removeChild(wrapper);
   }
-
-  // Suppress unused variable warning — writeText is available from createPainter
-  void writeText;
-  void setTextColor;
-  void rect;
-
-  return doc.output('blob');
 }
 
 export async function createQuotationPdfBlob(
