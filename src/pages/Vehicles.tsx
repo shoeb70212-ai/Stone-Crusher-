@@ -320,7 +320,7 @@ export function Vehicles() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                    Owner / Transporter Name
+                    Company / Third-Party Name
                   </label>
                   <input
                     required

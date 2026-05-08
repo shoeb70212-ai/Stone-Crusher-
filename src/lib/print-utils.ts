@@ -431,14 +431,14 @@ export function printPdfBlob(blob: Blob, title = 'Print Document'): Promise<void
             { once: true },
           );
 
-          // Long-running fallback for WebViews that never fire afterprint.
-          // 90s is generous enough for the user to interact with the dialog.
+          // Fallback for browsers/WebViews that don't fire afterprint on cancel.
+          // 4s covers the dialog appearing; afterprint handles the normal path.
           setTimeout(() => {
             if (!settled) {
               finish();
               cleanup();
             }
-          }, 90_000);
+          }, 4_000);
         });
       });
     };
@@ -1343,7 +1343,7 @@ export async function createInvoicePdfBlob(
     p2.line(m2, sy + sRowH + 1, m2 + cw2, sy + sRowH + 1, 0.4);
 
     // Note
-    sy += sRowH + 6;
+    sy += sRowH + 5;
     p2.setFont(6.5, 'italic', textMuted2);
     doc.text(
       'This page lists the dispatch slips referenced in the invoice above. Quantities and amounts as recorded at dispatch.',
@@ -1351,6 +1351,13 @@ export async function createInvoicePdfBlob(
       sy,
       { maxWidth: cw2 },
     );
+    sy += 5;
+
+    // Outer border box enclosing the entire dispatch section (header → note)
+    doc.setDrawColor(200, 205, 215);
+    doc.setLineWidth(0.5);
+    doc.rect(m2 - 2, 8, cw2 + 4, sy - 6);
+    doc.setLineWidth(0.2);
 
     // Suppress unused vars from destructuring
     void lightFill2;
