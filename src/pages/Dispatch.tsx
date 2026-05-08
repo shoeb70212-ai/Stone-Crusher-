@@ -868,7 +868,7 @@ export function Dispatch() {
                         </p>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">
                           {slip.measurementType === "Volume (Brass)"
-                            ? `${slip.measurement.lengthFeet}' × ${slip.measurement.widthFeet}' × ${slip.measurement.heightFeet}'`
+                            ? `${Number(slip.measurement.lengthFeet).toFixed(2)}' × ${Number(slip.measurement.widthFeet).toFixed(2)}' × ${Number(slip.measurement.heightFeet).toFixed(2)}'`
                             : `G: ${slip.measurement.grossWeight}t | T: ${slip.measurement.tareWeight}t`}
                         </p>
                       </td>

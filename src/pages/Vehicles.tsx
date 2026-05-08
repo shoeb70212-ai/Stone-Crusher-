@@ -173,7 +173,7 @@ export function Vehicles() {
                 </div>
                 <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
                    {v.defaultMeasurementType === "Volume (Brass)"
-                        ? `${v.measurement.lengthFeet}' × ${v.measurement.widthFeet}' × ${v.measurement.heightFeet}'`
+                        ? `${Number(v.measurement.lengthFeet).toFixed(2)}' × ${Number(v.measurement.widthFeet).toFixed(2)}' × ${Number(v.measurement.heightFeet).toFixed(2)}'`
                         : `Tare: ${v.measurement.tareWeight} T`}
                 </div>
                 <div className="flex gap-1.5 mt-1">
@@ -242,7 +242,7 @@ export function Vehicles() {
                     </td>
                     <td className="px-4 py-4 text-zinc-600 dark:text-zinc-300 align-top">
                       {v.defaultMeasurementType === "Volume (Brass)"
-                        ? `${v.measurement.lengthFeet}' × ${v.measurement.widthFeet}' × ${v.measurement.heightFeet}'`
+                        ? `${Number(v.measurement.lengthFeet).toFixed(2)}' × ${Number(v.measurement.widthFeet).toFixed(2)}' × ${Number(v.measurement.heightFeet).toFixed(2)}'`
                         : `Tare Weight: ${v.measurement.tareWeight} Tons`}
                     </td>
                     <td className="px-4 py-4 align-top">
