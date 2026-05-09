@@ -18,6 +18,7 @@ import pg from 'pg';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomBytes } from 'node:crypto';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -181,7 +182,7 @@ function collectUsers(sources: SettingsSource[]): Map<string, UserAccount> {
 }
 
 function generateTempPassword(): string {
-  return `Temp${Math.random().toString(36).slice(2, 10)}!`;
+  return `Temp${randomBytes(6).toString('base64url')}!`;
 }
 
 async function migrate() {
