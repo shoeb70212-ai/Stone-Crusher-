@@ -137,11 +137,12 @@ export async function upsertRecord(
       : safeItem[k],
   );
 
+  // audit_logs is append-only — never update an existing row on conflict.
   const updateCols = keys.filter((k) => k !== 'id');
   const updateClause =
-    updateCols.length > 0
-      ? `ON CONFLICT (id) DO UPDATE SET ${updateCols.map((k) => `"${k}" = EXCLUDED."${k}"`).join(', ')}`
-      : 'ON CONFLICT (id) DO NOTHING';
+    table === 'audit_logs' || updateCols.length === 0
+      ? 'ON CONFLICT (id) DO NOTHING'
+      : `ON CONFLICT (id) DO UPDATE SET ${updateCols.map((k) => `"${k}" = EXCLUDED."${k}"`).join(', ')}`;
 
   await client.query(
     `INSERT INTO ${table} (${columns}) VALUES (${placeholders}) ${updateClause}`,
@@ -390,8 +391,9 @@ export async function initDb(): Promise<void> {
     'CREATE INDEX IF NOT EXISTS idx_audit_logs_updated_at ON audit_logs ("updatedAt")',
     'CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs (timestamp DESC)',
     'CREATE INDEX IF NOT EXISTS idx_tombstones_table_deleted ON tombstones ("tableKey", "deletedAt")',
-    // Revoke DELETE on audit_logs from authenticated role (append-only enforcement)
+    // Revoke DELETE and UPDATE on audit_logs — table is append-only by design
     'REVOKE DELETE ON audit_logs FROM authenticated',
+    'REVOKE UPDATE ON audit_logs FROM authenticated',
     'GRANT INSERT ON audit_logs TO authenticated',
   ];
 

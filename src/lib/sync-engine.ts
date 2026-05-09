@@ -251,18 +251,22 @@ export async function pushDeltaToCloud(
     return;
   }
 
-  const payloads: Record<string, unknown>[] = [];
   const now = new Date().toISOString();
+
+  // Collect all encryption tasks to run in parallel
+  const encryptTasks: Promise<Record<string, unknown>>[] = [];
 
   for (const [collection, items] of Object.entries(updates)) {
     if (collection === 'companySettings') {
-      payloads.push({
-        id: 'companySettings_singleton',
-        collection_name: 'companySettings',
-        encrypted_data: await encryptData(items, masterKey),
-        is_deleted: false,
-        updated_at: now,
-      });
+      encryptTasks.push(
+        encryptData(items, masterKey).then((encrypted_data) => ({
+          id: 'companySettings_singleton',
+          collection_name: 'companySettings',
+          encrypted_data,
+          is_deleted: false,
+          updated_at: now,
+        })),
+      );
       continue;
     }
 
@@ -270,19 +274,23 @@ export async function pushDeltaToCloud(
     for (const item of items) {
       const rec = item as Record<string, unknown>;
       if (!rec.id) continue;
-      payloads.push({
-        id: rec.id,
-        collection_name: collection,
-        encrypted_data: await encryptData(rec, masterKey),
-        is_deleted: false,
-        updated_at: now,
-      });
+      encryptTasks.push(
+        encryptData(rec, masterKey).then((encrypted_data) => ({
+          id: rec.id,
+          collection_name: collection,
+          encrypted_data,
+          is_deleted: false,
+          updated_at: now,
+        })),
+      );
     }
   }
 
+  // Tombstone rows require no encryption — add them directly
+  const tombstones: Record<string, unknown>[] = [];
   for (const [collection, ids] of Object.entries(deletions)) {
     for (const id of ids) {
-      payloads.push({
+      tombstones.push({
         id,
         collection_name: collection,
         encrypted_data: '',
@@ -291,6 +299,8 @@ export async function pushDeltaToCloud(
       });
     }
   }
+
+  const payloads = [...(await Promise.all(encryptTasks)), ...tombstones];
 
   if (payloads.length === 0) return;
 
@@ -318,7 +328,7 @@ export async function pushDeltaToCloud(
  *
  * Returns null when the vault is locked or the cloud is empty.
  */
-type CloudPullResult = { [collection: string]: unknown; companySettings?: unknown };
+type CloudPullResult = { [collection: string]: unknown; companySettings?: unknown; skippedCount: number };
 
 export async function pullAllFromCloud(): Promise<CloudPullResult | null> {
   if (!masterKey) {
@@ -393,7 +403,7 @@ export async function pullAllFromCloud(): Promise<CloudPullResult | null> {
   const total = Object.values(collections).reduce((s, a) => s + a.length, 0);
   log.info(`Cloud pull complete: ${total} records across ${Object.keys(collections).length} collections.`);
 
-  return { ...collections, companySettings };
+  return { ...collections, companySettings, skippedCount: skipped };
 }
 
 // ---------------------------------------------------------------------------
@@ -410,18 +420,22 @@ export async function pushFullDatasetToCloud(
 ): Promise<void> {
   if (!masterKey) throw new Error('Cannot push: vault is locked.');
 
-  const payloads: Record<string, unknown>[] = [];
   const now = new Date().toISOString();
+
+  // Collect all encryption tasks and run them in parallel
+  const encryptTasks: Promise<Record<string, unknown>>[] = [];
 
   for (const [collection, items] of Object.entries(data)) {
     if (collection === 'companySettings') {
-      payloads.push({
-        id: 'companySettings_singleton',
-        collection_name: 'companySettings',
-        encrypted_data: await encryptData(items, masterKey),
-        is_deleted: false,
-        updated_at: now,
-      });
+      encryptTasks.push(
+        encryptData(items, masterKey).then((encrypted_data) => ({
+          id: 'companySettings_singleton',
+          collection_name: 'companySettings',
+          encrypted_data,
+          is_deleted: false,
+          updated_at: now,
+        })),
+      );
       continue;
     }
 
@@ -429,15 +443,19 @@ export async function pushFullDatasetToCloud(
     for (const item of items) {
       const rec = item as Record<string, unknown>;
       if (!rec.id) continue;
-      payloads.push({
-        id: rec.id,
-        collection_name: collection,
-        encrypted_data: await encryptData(rec, masterKey),
-        is_deleted: false,
-        updated_at: now,
-      });
+      encryptTasks.push(
+        encryptData(rec, masterKey).then((encrypted_data) => ({
+          id: rec.id,
+          collection_name: collection,
+          encrypted_data,
+          is_deleted: false,
+          updated_at: now,
+        })),
+      );
     }
   }
+
+  const payloads = await Promise.all(encryptTasks);
 
   if (payloads.length === 0) {
     log.info('pushFullDatasetToCloud: nothing to push.');
