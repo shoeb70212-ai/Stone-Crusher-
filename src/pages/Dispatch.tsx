@@ -22,7 +22,7 @@ import { MobileModal } from "../components/ui/MobileModal";
 import { MobileChip, MobileFilterSheet } from "../components/ui/MobilePrimitives";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { DocumentActionButton, type DocumentAction } from "../components/ui/DocumentActionButton";
-import { cn, formatVehicleNo, normalizeVehicleNo } from "../lib/utils";
+import { cn, formatVehicleNo, normalizeVehicleNo, formatQuantity, formatMoney } from "../lib/utils";
 import { useHapticFeedback } from "../lib/use-haptic-feedback";
 import { usePullToRefresh } from "../lib/use-pull-to-refresh";
 import { getStatusColor, getStatusSymbol } from "../lib/status-styles";
@@ -72,6 +72,12 @@ export function Dispatch() {
   // Debounce the text search so the filtered list only recomputes after typing pauses
   const debouncedFilterVehicle = useDebounce(filterVehicle, 300);
 
+  // O(1) customer lookup — avoids customers.find() inside every row render
+  const customerById = useMemo(
+    () => new Map(customers.map((c) => [c.id, c])),
+    [customers],
+  );
+
   const filteredSlips = useMemo(() => slips
     .filter((s) => {
       if (activeTab === "pending" && s.status !== "Pending") return false;
@@ -84,7 +90,7 @@ export function Dispatch() {
       // Global search query (mobile persistent search bar)
       const q = debouncedSearch.trim().toLowerCase();
       if (q) {
-        const cust = customers.find((c) => c.id === s.customerId);
+        const cust = customerById.get(s.customerId);
         const haystack = [
           s.vehicleNo,
           s.materialType,
@@ -117,7 +123,7 @@ export function Dispatch() {
       return true;
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-  [slips, activeTab, debouncedFilterVehicle, debouncedSearch, filterMaterial, filterDeliveryMode, filterCustomer, filterDate, filterStartDate, filterEndDate]);
+  [slips, activeTab, debouncedFilterVehicle, debouncedSearch, filterMaterial, filterDeliveryMode, filterCustomer, filterDate, filterStartDate, filterEndDate, customerById]);
 
   // Reset to first page whenever filters change
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [filteredSlips.length]);
@@ -184,7 +190,7 @@ export function Dispatch() {
 
   const getSlipCustomerName = (slip: Slip) => {
     if (slip.customerId === "CASH" || !slip.customerId) return "Counter Sale";
-    return customers.find((c) => c.id === slip.customerId)?.name ?? slip.customerId;
+    return customerById.get(slip.customerId)?.name ?? slip.customerId;
   };
 
   const handleSlipDocumentAction = async (slip: Slip, action: SlipDocumentAction) => {
@@ -525,7 +531,7 @@ export function Dispatch() {
             )}
             {filterCustomer !== "All" && (
               <MobileChip onRemove={() => setFilterCustomer("All")}>
-                {filterCustomer === "CASH" ? "Cash" : customers.find((c) => c.id === filterCustomer)?.name || "Customer"}
+                {filterCustomer === "CASH" ? "Cash" : customerById.get(filterCustomer)?.name || "Customer"}
               </MobileChip>
             )}
             {filterDeliveryMode !== "All" && (
@@ -693,7 +699,7 @@ export function Dispatch() {
             ) : (
               <div className="space-y-2 pb-[calc(10rem+env(safe-area-inset-bottom))] md:pb-0 stagger-animation">
                 {filteredSlips.slice(0, visibleCount).map((slip) => {
-                  const cust = customers.find((c) => c.id === slip.customerId);
+                  const cust = customerById.get(slip.customerId);
                   return (
                     <div
                       key={slip.id}
@@ -718,7 +724,7 @@ export function Dispatch() {
                           </div>
                           <span className="font-bold text-primary-600 dark:text-primary-400 text-sm"
                           >
-                            ₹{slip.totalAmount.toLocaleString()}
+                            ₹{formatMoney(slip.totalAmount)}
                           </span>
                         </div>
                         <div className="flex items-center gap-3 mt-1 text-[11px] text-zinc-500 dark:text-zinc-400"
@@ -726,7 +732,7 @@ export function Dispatch() {
                           <span className="truncate"
                           >{slip.materialType}</span>
                           <span>·</span>
-                          <span>{slip.quantity.toFixed(1)} {slip.measurementType === "Volume (Brass)" ? "Br" : "T"}</span>
+                          <span>{formatQuantity(slip.quantity)} {slip.measurementType === "Volume (Brass)" ? "Br" : "T"}</span>
                           <span>·</span>
                           <span className="truncate"
                           >{slip.customerId === "CASH" ? "Cash" : cust?.name?.slice(0, 14) ?? "—"}</span>
@@ -834,7 +840,7 @@ export function Dispatch() {
                   </tr>
                 )}
                 {filteredSlips.slice(0, visibleCount).map((slip) => {
-                  const cust = customers.find((c) => c.id === slip.customerId);
+                  const cust = customerById.get(slip.customerId);
                   return (
                     <tr
                       key={slip.id}
@@ -861,7 +867,7 @@ export function Dispatch() {
                       </td>
                       <td className="px-4 py-4">
                         <p className="text-zinc-700 dark:text-zinc-200 font-medium">
-                          {slip.quantity.toFixed(2)}{" "}
+                          {formatQuantity(slip.quantity)}{" "}
                           {slip.measurementType === "Volume (Brass)"
                             ? "Brass"
                             : "Tons"}
@@ -877,7 +883,7 @@ export function Dispatch() {
                       </td>
                       <td className="px-4 py-4">
                         <p className="font-medium text-zinc-900 dark:text-white">
-                          ₹{slip.totalAmount.toLocaleString()}
+                          ₹{formatMoney(slip.totalAmount)}
                         </p>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">
                           @ ₹{slip.ratePerUnit}/

@@ -15,7 +15,7 @@ import { createLedgerStatementPdfBlob, type LedgerEntry, printHtml, downloadPdfB
 import { createLedgerPdfBlob } from "../lib/export-utils";
 import { openWhatsAppMessage } from "../lib/whatsapp-share";
 import { useToast } from "../components/ui/Toast";
-import { generateId } from "../lib/utils";
+import { generateId, formatMoney } from "../lib/utils";
 
 export function Ledger() {
   const { transactions, customers, slips, invoices, companySettings, addCustomer, getCustomerBalance, hasPermission, loadHistoricalData } =
@@ -142,7 +142,7 @@ export function Ledger() {
         stmtStartDate || stmtEndDate ? { start: stmtStartDate, end: stmtEndDate } : undefined,
       );
       const filename = `Ledger_${cust.name.replace(/\s+/g, '_')}.pdf`;
-      const summaryText = `Ledger Statement: ${cust.name}\nClosing Balance: ₹${Math.abs(closingBal).toLocaleString()} ${closingBal < 0 ? 'Cr' : 'Dr'}`;
+      const summaryText = `Ledger Statement: ${cust.name}\nClosing Balance: ₹${formatMoney(Math.abs(closingBal))} ${closingBal < 0 ? 'Cr' : 'Dr'}`;
       const result = await sharePdfBlob(blob, filename, `Ledger - ${cust.name}`, summaryText);
 
       if (result === 'downloaded') {
@@ -227,7 +227,7 @@ export function Ledger() {
                         {canViewPending && (
                           <div className="text-right flex flex-col items-end shrink-0">
                              <span className={`font-bold text-sm ${currentBalance > 0 ? "text-rose-600" : currentBalance < 0 ? "text-primary-600" : "text-zinc-900 dark:text-white"}`}>
-                                ₹{Math.abs(currentBalance).toLocaleString()} {currentBalance < 0 ? "(Cr)" : currentBalance > 0 ? "(Dr)" : ""}
+                                ₹{formatMoney(Math.abs(currentBalance))} {currentBalance < 0 ? "(Cr)" : currentBalance > 0 ? "(Dr)" : ""}
                              </span>
                              <div className="mt-1">
                                 {currentBalance > 0 ? (
@@ -288,7 +288,7 @@ export function Ledger() {
                         </td>
                         {canViewPending ? (
                           <td className="px-4 py-4 text-right font-bold text-zinc-900 dark:text-white">
-                            ₹{Math.abs(currentBalance).toLocaleString()}{" "}
+                            ₹{formatMoney(Math.abs(currentBalance))}{" "}
                             {currentBalance < 0 ? "(Cr)" : currentBalance > 0 ? "(Dr)" : ""}
                           </td>
                         ) : (
@@ -468,17 +468,23 @@ export function Ledger() {
 
         // Include Tallied, Pending, and Loaded slips to match getCustomerBalance,
         // so the running total at the bottom equals the Closing Balance footer.
+        // For partially/fully paid slips, post a separate credit row for the cash
+        // received so the running balance matches getCustomerBalance exactly.
         slips
           .filter((s) => s.customerId === viewCustomerLedger.id && (s.status === "Tallied" || s.status === "Pending" || s.status === "Loaded"))
           .forEach((s) => {
-            allEntries.push({
-              date: new Date(s.date),
-              desc: s.invoiceId
-                ? `Ref #${s.id.slice(0, 5).toUpperCase()} - ${s.materialType} Delivery (Billed)`
-                : `Ref #${s.id.slice(0, 5).toUpperCase()} - ${s.materialType} Delivery`,
-              debit: s.invoiceId ? 0 : s.totalAmount,
-              credit: 0,
-            });
+            const ref = `Ref #${s.id.slice(0, 5).toUpperCase()}`;
+            if (s.invoiceId) {
+              // Billed slips: amount appears on the invoice row instead
+              allEntries.push({ date: new Date(s.date), desc: `${ref} - ${s.materialType} Delivery (Billed)`, debit: 0, credit: 0 });
+            } else {
+              // Unbilled delivery debit
+              allEntries.push({ date: new Date(s.date), desc: `${ref} - ${s.materialType} Delivery`, debit: s.totalAmount, credit: 0 });
+              // Cash collected on-slip: credit back the paid portion so running balance stays correct
+              if ((s.amountPaid ?? 0) > 0) {
+                allEntries.push({ date: new Date(s.date), desc: `${ref} - Cash Received`, debit: 0, credit: s.amountPaid! });
+              }
+            }
           });
 
         invoices
@@ -619,7 +625,7 @@ export function Ledger() {
                           <div style="flex:1;background:#f8f9fa;border-radius:6px;padding:10px;">
                             <div style="font-size:9px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;">Opening Balance</div>
                             <div style="font-size:13px;font-weight:800;color:${periodOpeningBalance > 0 ? '#dc2626' : periodOpeningBalance < 0 ? '#059669' : '#111'};">
-                              ₹${Math.abs(periodOpeningBalance).toLocaleString()} ${periodOpeningBalance < 0 ? 'Cr' : periodOpeningBalance > 0 ? 'Dr' : ''}
+                              ₹${formatMoney(Math.abs(periodOpeningBalance))} ${periodOpeningBalance < 0 ? 'Cr' : periodOpeningBalance > 0 ? 'Dr' : ''}
                             </div>
                           </div>
                         </div>
@@ -637,18 +643,18 @@ export function Ledger() {
                             <tr style="background:#fafafa;">
                               <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;">-</td>
                               <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;font-weight:600;">${stmtStartDate || stmtEndDate ? 'Opening Balance (Period)' : 'Opening Balance'}</td>
-                              <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">${periodOpeningBalance > 0 ? periodOpeningBalance.toLocaleString() : '-'}</td>
-                              <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">${periodOpeningBalance < 0 ? Math.abs(periodOpeningBalance).toLocaleString() : '-'}</td>
-                              <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;">${Math.abs(periodOpeningBalance).toLocaleString()} ${periodOpeningBalance < 0 ? 'Cr' : 'Dr'}</td>
+                              <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">${periodOpeningBalance > 0 ? formatMoney(periodOpeningBalance) : '-'}</td>
+                              <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;">${periodOpeningBalance < 0 ? formatMoney(Math.abs(periodOpeningBalance)) : '-'}</td>
+                              <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;">${formatMoney(Math.abs(periodOpeningBalance))} ${periodOpeningBalance < 0 ? 'Cr' : 'Dr'}</td>
                             </tr>
                             ${entriesWithBalance.map((e, i) => `
                               <tr style="${i % 2 === 0 ? '' : 'background:#fafbff;'}">
                                 <td style="padding:7px 8px;border-bottom:1px solid #f3f4f6;">${e.date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}</td>
                                 <td style="padding:7px 8px;border-bottom:1px solid #f3f4f6;">${e.desc}</td>
-                                <td style="padding:7px 8px;border-bottom:1px solid #f3f4f6;text-align:right;color:${e.debit > 0 ? '#dc2626' : '#9ca3af'};">${e.debit > 0 ? e.debit.toLocaleString() : '-'}</td>
-                                <td style="padding:7px 8px;border-bottom:1px solid #f3f4f6;text-align:right;color:${e.credit > 0 ? '#059669' : '#9ca3af'};">${e.credit > 0 ? e.credit.toLocaleString() : '-'}</td>
+                                <td style="padding:7px 8px;border-bottom:1px solid #f3f4f6;text-align:right;color:${e.debit > 0 ? '#dc2626' : '#9ca3af'};">${e.debit > 0 ? formatMoney(e.debit) : '-'}</td>
+                                <td style="padding:7px 8px;border-bottom:1px solid #f3f4f6;text-align:right;color:${e.credit > 0 ? '#059669' : '#9ca3af'};">${e.credit > 0 ? formatMoney(e.credit) : '-'}</td>
                                 <td style="padding:7px 8px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:700;color:${e.runningBalance > 0 ? '#dc2626' : e.runningBalance < 0 ? '#059669' : '#111'};">
-                                  ${Math.abs(e.runningBalance).toLocaleString()} ${e.runningBalance < 0 ? 'Cr' : e.runningBalance > 0 ? 'Dr' : ''}
+                                  ${formatMoney(Math.abs(e.runningBalance))} ${e.runningBalance < 0 ? 'Cr' : e.runningBalance > 0 ? 'Dr' : ''}
                                 </td>
                               </tr>`).join('')}
                           </tbody>
@@ -657,7 +663,7 @@ export function Ledger() {
                           <div style="background:#ebf0f8;border-radius:6px;padding:10px 16px;text-align:right;">
                             <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:3px;">Closing Balance</div>
                             <div style="font-size:16px;font-weight:900;color:${statementClosingBalance > 0 ? '#dc2626' : statementClosingBalance < 0 ? '#059669' : '#111'};">
-                              ₹${Math.abs(statementClosingBalance).toLocaleString()} ${statementClosingBalance < 0 ? '(Cr)' : statementClosingBalance > 0 ? '(Dr)' : ''}
+                              ₹${formatMoney(Math.abs(statementClosingBalance))} ${statementClosingBalance < 0 ? '(Cr)' : statementClosingBalance > 0 ? '(Dr)' : ''}
                             </div>
                           </div>
                         </div>
@@ -739,17 +745,13 @@ export function Ledger() {
                       {(stmtStartDate || stmtEndDate) ? "Opening Balance (Period)" : "Opening Balance"}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {periodOpeningBalance > 0
-                        ? periodOpeningBalance.toLocaleString()
-                        : "-"}
+                      {periodOpeningBalance > 0 ? formatMoney(periodOpeningBalance) : "-"}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {periodOpeningBalance < 0
-                        ? Math.abs(periodOpeningBalance).toLocaleString()
-                        : "-"}
+                      {periodOpeningBalance < 0 ? formatMoney(Math.abs(periodOpeningBalance)) : "-"}
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-zinc-900 dark:text-white">
-                      {Math.abs(periodOpeningBalance).toLocaleString()}{" "}
+                      {formatMoney(Math.abs(periodOpeningBalance))}{" "}
                       {periodOpeningBalance < 0 ? "Cr" : "Dr"}
                     </td>
                   </tr>
@@ -766,13 +768,13 @@ export function Ledger() {
                         {entry.desc}
                       </td>
                       <td className="px-4 py-3 text-right text-rose-600 font-medium">
-                        {entry.debit > 0 ? entry.debit.toLocaleString() : "-"}
+                        {entry.debit > 0 ? formatMoney(entry.debit) : "-"}
                       </td>
                       <td className="px-4 py-3 text-right text-primary-600 font-medium">
-                        {entry.credit > 0 ? entry.credit.toLocaleString() : "-"}
+                        {entry.credit > 0 ? formatMoney(entry.credit) : "-"}
                       </td>
                       <td className="px-4 py-3 text-right font-bold text-zinc-900 dark:text-white">
-                        {Math.abs(entry.runningBalance).toLocaleString()}{" "}
+                        {formatMoney(Math.abs(entry.runningBalance))}{" "}
                         {entry.runningBalance < 0 ? "Cr" : entry.runningBalance > 0 ? "Dr" : ""}
                       </td>
                     </tr>
@@ -786,20 +788,20 @@ export function Ledger() {
               <div className="space-y-2">
                 <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-700 rounded-xl p-3">
                   <div className="text-[10px] text-zinc-500 uppercase font-semibold">Opening Balance</div>
-                  <div className="text-sm font-bold text-zinc-900 dark:text-white">₹{Math.abs(periodOpeningBalance).toLocaleString()} {periodOpeningBalance < 0 ? 'Cr' : 'Dr'}</div>
+                  <div className="text-sm font-bold text-zinc-900 dark:text-white">₹{formatMoney(Math.abs(periodOpeningBalance))} {periodOpeningBalance < 0 ? 'Cr' : 'Dr'}</div>
                 </div>
                 {entriesWithBalance.map((entry, idx) => (
                   <div key={idx} className={`bg-white dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl p-3 ${entry.debit > 0 ? 'border-l-4 border-l-rose-500' : entry.credit > 0 ? 'border-l-4 border-l-primary-500' : ''}`}>
                     <div className="flex justify-between items-start">
                       <span className="text-[11px] text-zinc-500 dark:text-zinc-400">{entry.date.toLocaleDateString()}</span>
                       <span className="text-xs font-bold text-zinc-900 dark:text-white">
-                        ₹{Math.abs(entry.runningBalance).toLocaleString()} {entry.runningBalance < 0 ? 'Cr' : entry.runningBalance > 0 ? 'Dr' : ''}
+                        ₹{formatMoney(Math.abs(entry.runningBalance))} {entry.runningBalance < 0 ? 'Cr' : entry.runningBalance > 0 ? 'Dr' : ''}
                       </span>
                     </div>
                     <div className="text-xs font-medium text-zinc-800 dark:text-zinc-200 mt-0.5">{entry.desc}</div>
                     <div className="flex gap-3 mt-1">
-                      {entry.debit > 0 && <span className="text-[11px] font-semibold text-rose-600">Dr: ₹{entry.debit.toLocaleString()}</span>}
-                      {entry.credit > 0 && <span className="text-[11px] font-semibold text-primary-600">Cr: ₹{entry.credit.toLocaleString()}</span>}
+                      {entry.debit > 0 && <span className="text-[11px] font-semibold text-rose-600">Dr: ₹{formatMoney(entry.debit)}</span>}
+                      {entry.credit > 0 && <span className="text-[11px] font-semibold text-primary-600">Cr: ₹{formatMoney(entry.credit)}</span>}
                     </div>
                   </div>
                 ))}
@@ -819,8 +821,7 @@ export function Ledger() {
                         : "text-zinc-900 dark:text-white"
                   }
                 >
-                  ₹{" "}
-                  {Math.abs(statementClosingBalance).toLocaleString()}{" "}
+                  ₹{formatMoney(Math.abs(statementClosingBalance))}{" "}
                   {statementClosingBalance < 0
                     ? "(Cr)"
                     : statementClosingBalance > 0

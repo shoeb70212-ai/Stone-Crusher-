@@ -23,7 +23,7 @@ import { format, parseISO } from "date-fns";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { customerSchema } from "../lib/validation";
 import { useToast } from "../components/ui/Toast";
-import { generateId, formatVehicleNo } from "../lib/utils";
+import { generateId, formatVehicleNo, findExactDuplicate } from "../lib/utils";
 import { createLedgerPdfBlob } from "../lib/export-utils";
 import { printHtml, downloadPdfBlob, sharePdfBlob } from "../lib/print-utils";
 import { openWhatsAppMessage } from "../lib/whatsapp-share";
@@ -94,6 +94,12 @@ export function Customers() {
     if (!validation.success) {
       const firstError = validation.error.issues[0]?.message ?? "Invalid customer data";
       addToast("error", firstError);
+      return;
+    }
+
+    const dupe = findExactDuplicate(customers, validation.data.name, editingDataId ?? undefined);
+    if (dupe) {
+      addToast("error", `A customer named "${dupe.name}" already exists. Use a different name or edit the existing record.`);
       return;
     }
 

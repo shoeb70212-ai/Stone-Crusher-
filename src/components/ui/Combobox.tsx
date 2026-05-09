@@ -35,7 +35,7 @@ export function Combobox({
   const displayValue = selectedOption
     ? selectedOption.label
     : allowCreate && value.startsWith("NEW:")
-      ? value.slice("NEW:".length)
+      ? value.slice("NEW:".length).trim()
       : allowCreate
         ? value
         : "";

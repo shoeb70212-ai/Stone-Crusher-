@@ -108,3 +108,46 @@ export function formatVehicleNo(raw: string): string {
   // Build spaced format, omitting empty series
   return [state, district, series, num].filter(Boolean).join(" ");
 }
+
+/**
+ * Formats a quantity to 2 decimal places, trimming trailing zeros after the decimal point.
+ * e.g. 5.916666 → "5.92", 10.0 → "10", 5.50 → "5.5"
+ */
+export function formatQuantity(n: number): string {
+  const fixed = n.toFixed(2);
+  // Remove trailing zeros after decimal, and the decimal point itself if no fractional part remains
+  return fixed.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+}
+
+/**
+ * Rounds a monetary value to the nearest integer and formats with Indian grouping.
+ * e.g. 1234.567 → "1,235"
+ */
+export function formatMoney(n: number): string {
+  return Math.round(n).toLocaleString('en-IN');
+}
+
+/**
+ * Formats a monetary value to exactly 2 decimal places with Indian grouping.
+ * For use in GST line items and precise financial displays.
+ * e.g. 1234.5 → "1,234.50"
+ */
+export function formatMoneyExact(n: number): string {
+  return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
+ * Finds the first entity in a list whose name matches the given name (case-insensitive, trimmed).
+ * Used to detect duplicate entries before creation.
+ * @param excludeId - skip this ID (useful when editing, to ignore the entity itself)
+ */
+export function findExactDuplicate<T extends { id: string; name: string }>(
+  list: T[],
+  name: string,
+  excludeId?: string,
+): T | undefined {
+  const normalized = name.trim().toLowerCase();
+  return list.find(
+    (item) => item.name.trim().toLowerCase() === normalized && item.id !== excludeId,
+  );
+}

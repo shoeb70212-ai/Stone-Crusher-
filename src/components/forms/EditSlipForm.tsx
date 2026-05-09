@@ -165,7 +165,7 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
         grossWeight: parseFloat(formData.grossWeight) || undefined,
         tareWeight: parseFloat(formData.tareWeight) || undefined,
       },
-      quantity: Math.round(calculatedQty * 100) / 100,
+      quantity: Number(calculatedQty.toFixed(2)),
       ratePerUnit: parseFloat(formData.ratePerUnit) || 0,
       totalAmount: finalAmount,
       amountPaid: finalAmountPaid,

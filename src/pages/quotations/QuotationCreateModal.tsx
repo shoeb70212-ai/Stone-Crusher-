@@ -113,7 +113,7 @@ export function QuotationCreateModal({
               { label: "Cash Sale", value: "CASH" },
               ...customers.map((c) => ({ label: c.name, value: c.id })),
             ]}
-            value={newQuotation.customerId || (newQuotation.customerName ? `NEW: ${newQuotation.customerName}` : "")}
+            value={newQuotation.customerId || ""}
             onChange={(val) => setNewQuotation({ ...newQuotation, customerId: val })}
             allowCreate={true}
             placeholder="Search customer..."

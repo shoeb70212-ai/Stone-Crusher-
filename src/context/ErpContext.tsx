@@ -1277,7 +1277,7 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
   // Slip CRUD
   // -----------------------------------------------------------------------
 
-  /** Appends a new dispatch slip. */
+  /** Appends a new dispatch slip. Auto-creates a daybook Income entry for any on-slip cash collected. */
   const addSlip = useCallback((slip: Slip): boolean => {
     setSlips((prev) => [...prev, slip]);
     queueUpdate("slips", slip);
@@ -1294,6 +1294,25 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
         totalAmount: slip.totalAmount,
       },
     });
+
+    // When cash is collected at dispatch for a credit customer, record a daybook Income
+    // transaction so the cash flow is visible in the daybook. The transaction carries
+    // slipId for cross-reference but no customerId — the slip's amountPaid field already
+    // handles the credit in getCustomerBalance to avoid double-counting.
+    if ((slip.amountPaid ?? 0) > 0 && slip.customerId !== "CASH") {
+      const cashTx: Transaction = {
+        id: generateId(),
+        date: slip.date,
+        type: "Income",
+        amount: slip.amountPaid!,
+        category: "Cash Receipt (Slip)",
+        description: `Cash collected on dispatch for ${formatVehicleNo(slip.vehicleNo)}`,
+        slipId: slip.id,
+      };
+      setTransactions((prev) => [...prev, cashTx]);
+      queueUpdate("transactions", cashTx);
+    }
+
     return true;
   }, [queueUpdate, recordAudit]);
 
@@ -1315,7 +1334,7 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
     return true;
   }, [slips, queueUpdate, recordAudit]);
 
-  /** Partially updates a slip by ID (used by EditSlipForm). */
+  /** Partially updates a slip by ID (used by EditSlipForm). Keeps the auto-generated cash receipt transaction in sync. */
   const updateSlip = useCallback((id: string, updates: Partial<Slip>): boolean => {
     const previous = slips.find((s) => s.id === id);
     if (!previous) return false;
@@ -1336,8 +1355,36 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
         invoiceId: updated.invoiceId,
       },
     });
+
+    // Keep the linked daybook cash-receipt transaction in sync with amountPaid changes.
+    if ("amountPaid" in updates && updated.customerId !== "CASH") {
+      const linked = transactions.find((t) => t.slipId === id && t.category === "Cash Receipt (Slip)");
+      const newAmount = updated.amountPaid ?? 0;
+
+      if (!linked && newAmount > 0) {
+        const cashTx: Transaction = {
+          id: generateId(),
+          date: updated.date,
+          type: "Income",
+          amount: newAmount,
+          category: "Cash Receipt (Slip)",
+          description: `Cash collected on dispatch for ${formatVehicleNo(updated.vehicleNo)}`,
+          slipId: id,
+        };
+        setTransactions((prev) => [...prev, cashTx]);
+        queueUpdate("transactions", cashTx);
+      } else if (linked && newAmount <= 0) {
+        setTransactions((prev) => prev.filter((t) => t.id !== linked.id));
+        queueDelete("transactions", linked.id);
+      } else if (linked && newAmount > 0 && linked.amount !== newAmount) {
+        const updated2 = { ...linked, amount: newAmount };
+        setTransactions((prev) => prev.map((t) => (t.id === linked.id ? updated2 : t)));
+        queueUpdate("transactions", updated2);
+      }
+    }
+
     return true;
-  }, [slips, queueUpdate, recordAudit]);
+  }, [slips, transactions, queueUpdate, queueDelete, recordAudit]);
 
   // -----------------------------------------------------------------------
   // Transaction CRUD

@@ -4,12 +4,14 @@ import { Truck, Plus, X, FileText, Edit2, Printer } from "lucide-react";
 import { MeasurementType, Slip, Vehicle } from "../types";
 import { format, parseISO } from "date-fns";
 import { parseFeetInches, generateId, normalizeVehicleNo, formatVehicleNo } from "../lib/utils";
+import { useToast } from "../components/ui/Toast";
 import { PrintSlipModal } from "../components/forms/PrintSlipModal";
 
 const stripNew = (s: string | undefined) => s?.startsWith("NEW:") ? s.slice(4) : (s ?? "");
 
 export function Vehicles() {
   const { vehicles, addVehicle, updateVehicle, slips } = useErp();
+  const { addToast } = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
@@ -53,8 +55,20 @@ export function Vehicles() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const normalizedNo = normalizeVehicleNo(formData.vehicleNo);
+    if (!normalizedNo) { addToast("error", "Vehicle number is required."); return; }
+
+    // Block duplicate vehicle numbers
+    const dupeVehicle = vehicles.find(
+      (v) => normalizeVehicleNo(v.vehicleNo) === normalizedNo && v.id !== editingVehicleId,
+    );
+    if (dupeVehicle) {
+      addToast("error", `Vehicle ${formatVehicleNo(normalizedNo)} already exists. Use a different number or edit the existing record.`);
+      return;
+    }
+
     const vehicleData = {
-      vehicleNo: normalizeVehicleNo(formData.vehicleNo),
+      vehicleNo: normalizedNo,
       ownerName: formData.ownerName,
       driverName: formData.driverName,
       driverPhone: formData.driverPhone,
