@@ -6,15 +6,23 @@
 // We use AES-GCM for authenticated encryption.
 const ALGO_NAME = "AES-GCM";
 const KEY_LENGTH_BITS = 256;
-const PBKDF2_ITERATIONS = 100000;
+/** OWASP-recommended minimum as of 2023. New vaults always use this value. */
+export const PBKDF2_ITERATIONS = 600_000;
+/** Legacy iteration count used before the 600k upgrade; kept for unlocking old vaults. */
+export const PBKDF2_ITERATIONS_LEGACY = 100_000;
 const SALT_SIZE_BYTES = 16;
 const IV_SIZE_BYTES = 12; // Standard for AES-GCM
 
 /**
  * Derives a strong AES-GCM crypto key from a human-readable master password.
- * Uses PBKDF2 with SHA-256.
+ * Pass `iterations` explicitly so callers can use the legacy count when
+ * unlocking a vault that was created before the 600k upgrade.
  */
-export async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promise<CryptoKey> {
+export async function deriveKeyFromPassword(
+  password: string,
+  salt: Uint8Array,
+  iterations: number = PBKDF2_ITERATIONS,
+): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const passwordKey = await window.crypto.subtle.importKey(
     "raw",
@@ -28,7 +36,7 @@ export async function deriveKeyFromPassword(password: string, salt: Uint8Array):
     {
       name: "PBKDF2",
       salt: salt,
-      iterations: PBKDF2_ITERATIONS,
+      iterations,
       hash: "SHA-256",
     },
     passwordKey,
@@ -58,7 +66,7 @@ export async function importMasterKey(jwkString: string): Promise<CryptoKey> {
  * Encrypts a plain JavaScript object into a base64 string containing both the IV and ciphertext.
  * Format: base64(IV + Ciphertext)
  */
-export async function encryptData(data: any, key: CryptoKey): Promise<string> {
+export async function encryptData(data: unknown, key: CryptoKey): Promise<string> {
   const enc = new TextEncoder();
   const encodedData = enc.encode(JSON.stringify(data));
 
@@ -84,7 +92,7 @@ export async function encryptData(data: any, key: CryptoKey): Promise<string> {
 /**
  * Decrypts a base64 string back into a plain JavaScript object.
  */
-export async function decryptData(encryptedBase64: string, key: CryptoKey): Promise<any> {
+export async function decryptData(encryptedBase64: string, key: CryptoKey): Promise<unknown> {
   try {
     const combinedBuffer = base64ToArrayBuffer(encryptedBase64);
     const combinedArray = new Uint8Array(combinedBuffer);

@@ -9,7 +9,7 @@ import { SetupAdminScreen } from "./components/SetupAdminScreen";
 import { SetPasswordScreen } from "./components/SetPasswordScreen";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { ResetPasswordScreen } from "./components/ResetPasswordScreen";
-import MasterKeyScreen from "./components/MasterKeyScreen";
+import MasterKeyScreen, { VAULT_TRUST_KEY } from "./components/MasterKeyScreen";
 import { supabase } from "./lib/supabase";
 import { recordDeviceAccess } from "./lib/device-info";
 import { isNative } from "./lib/capacitor";
@@ -57,8 +57,13 @@ function AppShell({ isAuthenticated, isVaultUnlocked, onLogin, onVaultUnlocked }
   const mustSetPassword = isAuthenticated && !isLoading && appMetaMustChange && !passwordSetDone;
 
   // Auto-fix: if the server already cleared the flag but the local cache is stale, fix it.
+  // Guard with a ref so this runs at most once per session — updateCompanySettings triggers
+  // a re-render, which would otherwise re-run the effect and create an update loop.
+  const staleFlagFixedRef = React.useRef(false);
   React.useEffect(() => {
+    if (staleFlagFixedRef.current) return;
     if (!isLoading && !appMetaMustChange && localMustChange && currentUserRecord && currentUserId) {
+      staleFlagFixedRef.current = true;
       const updatedSettings = {
         ...companySettings,
         users: (companySettings.users || []).map((u) =>
@@ -67,7 +72,7 @@ function AppShell({ isAuthenticated, isVaultUnlocked, onLogin, onVaultUnlocked }
       };
       updateCompanySettings(updatedSettings);
     }
-  }, [isLoading, appMetaMustChange, localMustChange, currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isLoading, appMetaMustChange, localMustChange, currentUserId, currentUserRecord, companySettings, updateCompanySettings]);
 
   return (
     <>
@@ -150,7 +155,8 @@ export default function App() {
       .then(async ({ data }) => {
         if (data.session) {
           setIsAuthenticated(true);
-          const savedKey = localStorage.getItem('crushtrack_vault_key');
+          const trusted = localStorage.getItem(VAULT_TRUST_KEY) === '1';
+          const savedKey = trusted ? localStorage.getItem('crushtrack_vault_key') : null;
           if (savedKey) {
             try {
               const key = await importMasterKey(savedKey);
@@ -159,6 +165,7 @@ export default function App() {
             } catch (e) {
               console.warn('Failed to restore vault key', e);
               localStorage.removeItem('crushtrack_vault_key');
+              localStorage.removeItem(VAULT_TRUST_KEY);
             }
           }
         }
@@ -182,16 +189,24 @@ export default function App() {
       } else {
         const isAuth = !!session;
         setIsAuthenticated(isAuth);
-        
+
         if (isAuth) {
-          const savedKey = localStorage.getItem('crushtrack_vault_key');
-          if (savedKey) {
-            try {
-              const key = await importMasterKey(savedKey);
-              setMasterKey(key);
-              setIsVaultUnlocked(true);
-            } catch (e) {
-              localStorage.removeItem('crushtrack_vault_key');
+          // TOKEN_REFRESHED fires every ~1 hour. The vault is already unlocked at
+          // that point — re-importing the key on every refresh is unnecessary crypto
+          // work and causes spurious setIsVaultUnlocked re-renders. Only restore
+          // the vault key on actual sign-in events when the vault is still locked.
+          if (event !== 'TOKEN_REFRESHED') {
+            const trusted = localStorage.getItem(VAULT_TRUST_KEY) === '1';
+            const savedKey = trusted ? localStorage.getItem('crushtrack_vault_key') : null;
+            if (savedKey) {
+              try {
+                const key = await importMasterKey(savedKey);
+                setMasterKey(key);
+                setIsVaultUnlocked(true);
+              } catch (e) {
+                localStorage.removeItem('crushtrack_vault_key');
+                localStorage.removeItem(VAULT_TRUST_KEY);
+              }
             }
           }
         } else {
