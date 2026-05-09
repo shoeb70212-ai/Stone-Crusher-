@@ -77,11 +77,9 @@ async function resolveCaller(
 
   const settings = await readSettings();
   const users = (settings.users ?? []) as UserAccount[];
-  
-  // Bootstrap Mode: If no users exist, allow the first authenticated user to be Admin
-  if (users.length === 0) {
-    return { role: 'Admin', userId: caller.userId };
-  }
+
+  // No users registered yet — deny access; first-run setup uses SetupAdminScreen
+  if (users.length === 0) return null;
 
   const settingsUser = users.find(
     (u) =>
@@ -207,7 +205,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,POST');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'Accept, Content-Type, Content-Length, X-Requested-With, X-API-Key, Authorization, X-CSRF-Token',
+    'Accept, Content-Type, Content-Length, X-Requested-With, X-API-Key, Authorization',
   );
 
   if (req.method === 'OPTIONS') return res.status(200).end();

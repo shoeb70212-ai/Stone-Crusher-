@@ -288,8 +288,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // Update companySettings.users.
-    const result = await writeSettings({ ...settings, users: updatedUsers });
+    // Update companySettings.users with optimistic locking.
+    const expectedVersion = typeof settings.version === 'number' ? settings.version : undefined;
+    const result = await writeSettings({ ...settings, users: updatedUsers }, expectedVersion);
+    if (!result.ok) {
+      return res.status(409).json({ error: 'Settings were modified concurrently. Please reload and retry.', currentVersion: result.currentVersion });
+    }
 
     return res.status(200).json({ user: updatedUsers.find((u) => u.id === id), currentVersion: result.currentVersion });
   }
@@ -330,7 +334,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: delError.message });
     }
 
-    const result = await writeSettings({ ...settings, users: remainingUsers });
+    const expectedVersion = typeof settings.version === 'number' ? settings.version : undefined;
+    const result = await writeSettings({ ...settings, users: remainingUsers }, expectedVersion);
+    if (!result.ok) {
+      return res.status(409).json({ error: 'Settings were modified concurrently. Please reload and retry.', currentVersion: result.currentVersion });
+    }
 
     return res.status(200).json({ success: true, currentVersion: result.currentVersion });
   }
@@ -374,7 +382,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const updatedUsers = users.map((u) =>
       u.id === target.id ? { ...u, mustChangePassword: false } : u,
     );
-    const result = await writeSettings({ ...settings, users: updatedUsers });
+    const expectedVersion = typeof settings.version === 'number' ? settings.version : undefined;
+    const result = await writeSettings({ ...settings, users: updatedUsers }, expectedVersion);
+    if (!result.ok) {
+      return res.status(409).json({ error: 'Settings were modified concurrently. Please reload and retry.', currentVersion: result.currentVersion });
+    }
 
     return res.status(200).json({ success: true, currentVersion: result.currentVersion });
   }
