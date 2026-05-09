@@ -142,6 +142,9 @@ export default function App() {
     localStorage.removeItem('erp_auth_token');
 
     // Read the current session on mount — covers page reload with a live session.
+    // Vault key restoration runs in the same promise chain so that when authChecked
+    // flips to true both isAuthenticated and isVaultUnlocked are already correct,
+    // preventing MasterKeyScreen from flashing for users with a saved key.
     supabase.auth
       .getSession()
       .then(async ({ data }) => {
@@ -164,6 +167,8 @@ export default function App() {
         // ignore session read errors — user stays unauthenticated
       })
       .finally(() => {
+        // authChecked flips only after vault restoration is complete above,
+        // so the correct isVaultUnlocked value is always in place on first render.
         setAuthChecked(true);
       });
 

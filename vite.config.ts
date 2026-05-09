@@ -37,9 +37,11 @@ export default defineConfig(({mode}) => {
         output: {
           manualChunks: {
             // Keep heavy PDF/print libs out of the main bundle
-            'pdf-libs': ['html2pdf.js'],
-            // All page components — merged to avoid circular chunk
-            // deps between finance and ops (they share form components).
+            'pdf-libs': ['html2pdf.js', 'jspdf'],
+            // date-fns is large — isolate it so it doesn't bloat the vendor chunk
+            'date-fns': ['date-fns'],
+            // All page components in one chunk to avoid circular deps between
+            // finance and ops pages that share form components.
             'pages': [
               './src/pages/Invoices.tsx',
               './src/pages/Ledger.tsx',
@@ -47,6 +49,11 @@ export default defineConfig(({mode}) => {
               './src/pages/Dispatch.tsx',
               './src/pages/Vehicles.tsx',
               './src/pages/Customers.tsx',
+              './src/pages/Employees.tsx',
+              './src/pages/Quotations.tsx',
+              './src/pages/Dashboard.tsx',
+              './src/pages/Settings.tsx',
+              './src/pages/AuditLog.tsx',
             ],
           },
         },

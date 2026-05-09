@@ -225,8 +225,13 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
 
   // Subscribe to Supabase Auth state changes.  When the session transitions
   // the role is re-derived below (in the settings-load effect).
+  // getSession() here seeds the initial session value so loadData runs
+  // once on mount rather than waiting for the onAuthStateChange INITIAL_SESSION event.
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    supabase.auth.getSession().then(({ data }) => {
+      // Only update if App.tsx hasn't already set a session via onAuthStateChange
+      setSession((prev) => prev ?? data.session);
+    });
     const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
       // Clear stale legacy keys so they never pollute a fresh Supabase session.
@@ -353,6 +358,8 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
     }
   }, [applyDataToState]);
 
+  // ── Initial load: IndexedDB → localStorage fallback, then unblock UI ──
+  // Does NOT depend on isVaultUnlocked so it runs exactly once per session.
   useEffect(() => {
     async function loadData() {
       let loaded = false;
@@ -367,20 +374,6 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
         console.warn('[ErpContext] IndexedDB load failed:', e);
       }
 
-      // ── Priority 2: Supabase encrypted cloud (authoritative source) ──
-      // Always pull when the vault is unlocked so every device stays in sync.
-      // pullAllFromCloud writes records to IDB, then we do a single loadFromIDB.
-      if (hasMasterKey() && isVaultUnlocked) {
-        try {
-          const cloudData = await pullAllFromCloud();
-          if (cloudData) {
-            loaded = await loadFromIDB();
-          }
-        } catch (e) {
-          console.warn('[ErpContext] Cloud pull failed (offline?):', e);
-        }
-      }
-
       // ── Fallback: localStorage snapshot (no network, no IDB) ──
       if (!loaded) {
         const saved = localStorage.getItem(LOCAL_BACKUP_KEY);
@@ -392,7 +385,26 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
       setIsLoading(false);
     }
     loadData();
-  }, [session?.user?.id, applyDataToState, loadFromIDB, isVaultUnlocked]);
+  }, [session?.user?.id, applyDataToState, loadFromIDB]);
+
+  // ── Background cloud sync: runs when vault unlocks, never blocks the UI ──
+  // Separated from the initial load so vault unlock doesn't re-run the full
+  // IDB load waterfall; it only pulls fresh data from Supabase and re-hydrates.
+  useEffect(() => {
+    if (!isVaultUnlocked || !hasMasterKey()) return;
+
+    async function syncFromCloud() {
+      try {
+        const cloudData = await pullAllFromCloud();
+        if (cloudData) {
+          await loadFromIDB();
+        }
+      } catch (e) {
+        console.warn('[ErpContext] Cloud pull failed (offline?):', e);
+      }
+    }
+    syncFromCloud();
+  }, [isVaultUnlocked, loadFromIDB]);
 
   // -----------------------------------------------------------------------
   // Delta-Sync Queue — batches mutations and PATCHes them to the server
@@ -640,6 +652,7 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
     transactions,
     vehicles,
     invoices,
+    quotations,
     tasks,
     auditLogs,
     companySettings,
@@ -735,28 +748,45 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
   // Audit logging
   // -----------------------------------------------------------------------
 
+  // Pre-compute the current session user record once. Both hasPermission and
+  // getCurrentActor reuse this instead of scanning the users array on every call.
+  const currentSessionUser = useMemo(() => {
+    if (!session) return null;
+    const users = companySettings.users ?? [];
+    return users.find(
+      (u) =>
+        u.id === session.user.id ||
+        u.email.toLowerCase() === (session.user.email ?? '').toLowerCase(),
+    ) ?? null;
+  }, [session, companySettings.users]);
+
+  // Stable Sets for O(1) default-permission lookups (created once, never reallocated).
+  const MANAGER_PERMISSIONS = useMemo(() => new Set([
+    "viewAllCustomers", "viewCustomerLedger", "viewCustomerStatement",
+    "viewPendingAmounts", "viewAllDispatches", "viewDaybook",
+    "viewReports", "manageVehicles", "manageEmployees",
+  ]), []);
+
+  const PARTNER_PERMISSIONS = useMemo(() => new Set([
+    "viewAllCustomers", "viewCustomerLedger", "viewCustomerStatement",
+    "viewPendingAmounts", "viewAllDispatches", "viewReports",
+  ]), []);
+
   const getCurrentActor = useCallback(() => {
     if (!session) {
       return { actorName: 'System', actorRole: (userRole ?? 'System') as AuditLog['actorRole'] };
     }
 
-    const users = companySettings.users ?? [];
-    const user = users.find(
-      (u) =>
-        u.id === session.user.id ||
-        u.email.toLowerCase() === (session.user.email ?? '').toLowerCase(),
-    );
-
-    if (user) {
+    if (currentSessionUser) {
       return {
-        actorId: user.id,
-        actorName: user.name || user.email || user.role,
-        actorRole: user.role,
+        actorId: currentSessionUser.id,
+        actorName: currentSessionUser.name || currentSessionUser.email || currentSessionUser.role,
+        actorRole: currentSessionUser.role,
       };
     }
 
     return { actorName: `${userRole ?? 'Unknown'} User`, actorRole: (userRole ?? 'System') as AuditLog['actorRole'] };
-  }, [session, companySettings.users, userRole]);
+  }, [session, currentSessionUser, userRole]);
 
   /** Signs the current user out of Supabase Auth, locks the vault, and clears local state. */
   const signOut = useCallback(async () => {
@@ -783,24 +813,13 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
   const hasPermission = useCallback((key: keyof import("../types").UserPermissions) => {
     if (userRole === "Admin") return true;
 
-    const users = companySettings.users ?? [];
-    const user = users.find(
-      (u) =>
-        u.id === session?.user.id ||
-        (session?.user.email && u.email.toLowerCase() === session.user.email.toLowerCase()),
-    );
-    
-    if (user && user.permissions && user.permissions[key] !== undefined) {
-      return user.permissions[key]!;
+    if (currentSessionUser?.permissions?.[key] !== undefined) {
+      return currentSessionUser.permissions[key]!;
     }
 
-    // Default fallbacks if permissions are undefined for the user
-    if (userRole === "Manager") {
-      return ["viewAllCustomers", "viewCustomerLedger", "viewCustomerStatement", "viewPendingAmounts", "viewAllDispatches", "viewDaybook", "viewReports", "manageVehicles", "manageEmployees"].includes(key);
-    }
-    // Partner default
-    return ["viewAllCustomers", "viewCustomerLedger", "viewCustomerStatement", "viewPendingAmounts", "viewAllDispatches", "viewReports"].includes(key);
-  }, [userRole, session, companySettings.users]);
+    if (userRole === "Manager") return MANAGER_PERMISSIONS.has(key);
+    return PARTNER_PERMISSIONS.has(key);
+  }, [userRole, currentSessionUser, MANAGER_PERMISSIONS, PARTNER_PERMISSIONS]);
 
   // -----------------------------------------------------------------------
   // Vehicle CRUD

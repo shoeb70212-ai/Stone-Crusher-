@@ -152,29 +152,33 @@ export function Dashboard() {
   }, [transactions, dateStart, dateEnd, prevDateStart, prevDateEnd]);
 
   // Volume — exclude Cancelled slips (material was never dispatched)
-  const currentVolume = dateSlips
-    .filter((s) => s.status !== "Cancelled")
-    .reduce((acc, s) => acc + s.quantity, 0);
-  const prevVolume = prevDateSlips
-    .filter((s) => s.status !== "Cancelled")
-    .reduce((acc, s) => acc + s.quantity, 0);
+  const { currentVolume, prevVolume } = useMemo(() => ({
+    currentVolume: dateSlips
+      .filter((s) => s.status !== "Cancelled")
+      .reduce((acc, s) => acc + s.quantity, 0),
+    prevVolume: prevDateSlips
+      .filter((s) => s.status !== "Cancelled")
+      .reduce((acc, s) => acc + s.quantity, 0),
+  }), [dateSlips, prevDateSlips]);
 
   // Trips by Company Vehicles in period — only Loaded/Tallied (not Pending or Cancelled)
-  const companyVehicleTrips = dateSlips
-    .filter(
-      (s) => s.deliveryMode === "Company Vehicle" && (s.status === "Loaded" || s.status === "Tallied"),
-    )
-    .reduce(
-      (acc, curr) => {
-        const key = normalizeVehicleNo(curr.vehicleNo) || curr.vehicleNo;
-        if (!acc[key])
-          acc[key] = { trips: 0, quantity: 0, displayNo: formatVehicleNo(curr.vehicleNo) };
-        acc[key].trips += 1;
-        acc[key].quantity += curr.quantity;
-        return acc;
-      },
-      {} as Record<string, { trips: number; quantity: number; displayNo: string }>,
-    );
+  const companyVehicleTrips = useMemo(() =>
+    dateSlips
+      .filter(
+        (s) => s.deliveryMode === "Company Vehicle" && (s.status === "Loaded" || s.status === "Tallied"),
+      )
+      .reduce(
+        (acc, curr) => {
+          const key = normalizeVehicleNo(curr.vehicleNo) || curr.vehicleNo;
+          if (!acc[key])
+            acc[key] = { trips: 0, quantity: 0, displayNo: formatVehicleNo(curr.vehicleNo) };
+          acc[key].trips += 1;
+          acc[key].quantity += curr.quantity;
+          return acc;
+        },
+        {} as Record<string, { trips: number; quantity: number; displayNo: string }>,
+      ),
+  [dateSlips]);
 
   const totalReceivables = useMemo(() => {
     return customers
