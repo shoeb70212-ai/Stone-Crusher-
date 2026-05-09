@@ -34,7 +34,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_FILE = path.join(__dirname, "local-data.json");
 const PORT = Number(process.env.PORT || 8083);
-const HOST = process.env.HOST || "0.0.0.0";
+const HOST = process.env.HOST || "127.0.0.1";
 const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;   // 24 hours
 
@@ -139,15 +139,31 @@ async function verifySupabaseJwt(token: string, supabaseUrl: string): Promise<bo
 
   const [headerB64, payloadB64, sigB64] = parts;
 
-  // Decode header to find kid
   const header = JSON.parse(Buffer.from(headerB64, "base64url").toString("utf8")) as { kid?: string; alg?: string };
-  const claims = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8")) as { exp?: number };
+  const claims = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8")) as {
+    exp?: number; nbf?: number; iss?: string; aud?: string | string[];
+  };
 
-  // Check expiry first — fast path
-  if (claims.exp && claims.exp * 1000 <= Date.now()) return false;
+  // kid is required — reject tokens that omit it (prevents key-confusion attacks)
+  if (!header.kid) return false;
+
+  // Standard temporal claims
+  const now = Date.now();
+  if (claims.exp && claims.exp * 1000 <= now) return false;
+  if (claims.nbf && claims.nbf * 1000 > now) return false;
+
+  // Issuer must match the configured Supabase project
+  const expectedIss = `${supabaseUrl}/auth/v1`;
+  if (claims.iss !== expectedIss) return false;
+
+  // Audience must be "authenticated" (Supabase standard)
+  const aud = claims.aud;
+  const audOk = aud === "authenticated" || (Array.isArray(aud) && aud.includes("authenticated"));
+  if (!audOk) return false;
 
   const keys = await getJwks(supabaseUrl);
-  const jwk = keys.find((k) => !header.kid || k.kid === header.kid) ?? keys[0];
+  // Exact kid match only — no fallback to keys[0]
+  const jwk = keys.find((k) => k.kid === header.kid);
   if (!jwk) return false;
 
   // Import the public key (supports both EC P-256 and legacy RSA)
