@@ -29,7 +29,7 @@ import { printHtml, downloadPdfBlob, sharePdfBlob } from "../lib/print-utils";
 import { openWhatsAppMessage } from "../lib/whatsapp-share";
 
 export function Customers() {
-  const { customers, addCustomer, updateCustomer, deleteCustomer, slips, transactions, getCustomerBalance, invoices, hasPermission } = useErp();
+  const { customers, addCustomer, updateCustomer, deleteCustomer, slips, transactions, getCustomerBalance, invoices, hasPermission, historicalBalances } = useErp();
   const { addToast } = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDataId, setEditingDataId] = useState<string | null>(null);
@@ -204,6 +204,20 @@ export function Customers() {
           isCharge: true,
           affectsBalance: !s.invoiceId, // Billed slips don't increase balance since the Invoice handles it
         });
+        // amountPaid is cash collected at dispatch — credit the customer so the
+        // running balance matches getCustomerBalance (which uses totalAmount - amountPaid).
+        if (!s.invoiceId && (s.amountPaid ?? 0) > 0) {
+          historyItems.push({
+            id: s.id + '_paid',
+            date: s.date,
+            type: "On-Slip Payment",
+            category: "Slip",
+            description: `Cash collected on dispatch - ${formatVehicleNo(s.vehicleNo)}`,
+            amount: s.amountPaid!,
+            isCharge: false,
+            affectsBalance: true,
+          });
+        }
       });
 
     // Add Invoices
@@ -226,9 +240,10 @@ export function Customers() {
         });
       });
 
-    // Add Transactions
+    // Add Transactions — exclude "Slip Payment" which duplicates the amountPaid
+    // already shown by the synthetic "On-Slip Payment" entry above.
     transactions
-      .filter((t) => t.customerId === selectedCustomer.id)
+      .filter((t) => t.customerId === selectedCustomer.id && t.category !== "Slip Payment")
       .forEach((t) => {
         historyItems.push({
           id: t.id,
@@ -250,9 +265,9 @@ export function Customers() {
     );
 
     // Compute running balance in ascending order (oldest → newest).
-    // Each row's runningBalance is the balance AFTER that transaction —
-    // which is what the customer "stood at" after that event occurred.
-    let runningBalance = 0;
+    // Seed with historicalBalances so the final entry matches getCustomerBalance
+    // when paginated/archived data exists.
+    let runningBalance = historicalBalances[selectedCustomer.id] || 0;
     const computedHistory = historyItems.map((item) => {
       if (item.affectsBalance !== false) {
         runningBalance += item.isCharge ? item.amount : -item.amount;
@@ -293,7 +308,7 @@ export function Customers() {
     }
 
     return results;
-  }, [selectedCustomer, slips, transactions, invoices, ledgerStartDate, ledgerEndDate, ledgerTxType, ledgerTxCategory, ledgerSortDirection]);
+  }, [selectedCustomer, slips, transactions, invoices, historicalBalances, ledgerStartDate, ledgerEndDate, ledgerTxType, ledgerTxCategory, ledgerSortDirection]);
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -546,12 +561,17 @@ export function Customers() {
                 <h3 className="text-xl font-bold text-foreground">
                   {selectedCustomer.name} - Statement
                 </h3>
-                <p className="text-sm text-muted-foreground">
-                  Current Balance:{" "}
-                  <strong className="text-foreground">
-                    ₹{getCustomerBalance(selectedCustomer.id).toLocaleString()}
-                  </strong>
-                </p>
+                {(() => {
+                  const bal = getCustomerBalance(selectedCustomer.id);
+                  return (
+                    <p className="text-sm text-muted-foreground">
+                      Current Balance:{" "}
+                      <strong className={bal > 0 ? "text-danger" : bal < 0 ? "text-primary-600" : "text-foreground"}>
+                        ₹{Math.abs(bal).toLocaleString()}{bal > 0 ? " Dr" : bal < 0 ? " Cr" : ""}
+                      </strong>
+                    </p>
+                  );
+                })()}
               </div>
               
               <div className="flex flex-wrap items-center gap-2">
@@ -751,8 +771,8 @@ export function Customers() {
                               : format(parseISO(item.date), "dd MMM yyyy, hh:mm a")}
                           </span>
                           <span className="font-medium bg-surface-2 px-2 py-1 rounded">
-                            Run Bal: ₹ {item.runningBalance.toLocaleString()}{" "}
-                            {item.runningBalance > 0 ? "Dr" : "Cr"}
+                            Run Bal: ₹ {Math.abs(item.runningBalance).toLocaleString()}{" "}
+                            {item.runningBalance > 0 ? "Dr" : item.runningBalance < 0 ? "Cr" : ""}
                           </span>
                         </div>
                       </div>

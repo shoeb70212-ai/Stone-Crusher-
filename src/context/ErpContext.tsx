@@ -336,7 +336,8 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
         }
       }
       for (const t of olderTransactions) {
-        if (t.customerId) {
+        // Exclude "Slip Payment" — same reason as in customerBalanceById: it duplicates amountPaid.
+        if (t.customerId && t.category !== "Slip Payment") {
           const custId = t.customerId as string;
           const amt = Number(t.amount) || 0;
           if (t.type === "Income") customerBal[custId] = (customerBal[custId] || 0) - amt;
@@ -1544,7 +1545,10 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
      }
 
      for (const t of transactions) {
-       if (t.customerId) {
+       // "Slip Payment" transactions duplicate the amountPaid already tracked on the
+       // slip itself (totalAmount - amountPaid in slipTotals).  Counting both would
+       // credit the customer twice for the same cash payment.
+       if (t.customerId && t.category !== "Slip Payment") {
          if (t.type === "Income") {
            incomeTotals[t.customerId] = (incomeTotals[t.customerId] || 0) + t.amount;
          } else if (t.type === "Expense") {

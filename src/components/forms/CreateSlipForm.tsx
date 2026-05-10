@@ -15,7 +15,7 @@ import { createSlipPdfBlob, downloadPdfBlob, printPdfBlob, sharePdfBlob } from "
 import { buildSlipWhatsAppMessage, openWhatsAppMessage } from "../../lib/whatsapp-share";
 
 export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void }) {
-  const { vehicles, customers, employees, addSlip, slips, companySettings, addVehicle, updateVehicle, addCustomer, addTransaction, userRole, session } = useErp();
+  const { vehicles, customers, employees, addSlip, slips, companySettings, addVehicle, updateVehicle, addCustomer, userRole, session } = useErp();
   const activeVehicles = useActive(vehicles);
   const activeCustomers = useActive(customers);
   const activeEmployees = useActive(employees);
@@ -228,19 +228,9 @@ export function CreateSlipForm({ onSuccess }: { onSuccess: (slip?: Slip) => void
         attachmentUri: attachmentUri || undefined,
       };
       addSlip(newSlip);
-
-      if (finalAmountPaid > 0) {
-        addTransaction({
-          id: "tx_" + generateId(),
-          date: new Date().toISOString(),
-          type: "Income",
-          category: "Slip Payment",
-          amount: finalAmountPaid,
-          description: `Initial payment for slip #${newSlip.id.slice(0, 5).toUpperCase()}`,
-          customerId: finalCustomerId,
-          slipId: newSlip.id,
-        });
-      }
+      // amountPaid is tracked on the slip itself — getCustomerBalance uses
+      // totalAmount - amountPaid, and the ledger shows "Cash Received" from it.
+      // No separate customer transaction is needed (that would double-count).
 
       try { if (formData.loaderName) localStorage.setItem('lastLoaderName', formData.loaderName); } catch { /* noop */ }
 

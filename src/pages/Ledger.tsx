@@ -499,7 +499,7 @@ export function Ledger() {
           });
 
         transactions
-          .filter((t) => t.customerId === viewCustomerLedger.id)
+          .filter((t) => t.customerId === viewCustomerLedger.id && t.category !== "Slip Payment")
           .forEach((t) => {
             allEntries.push({
               date: new Date(t.date),

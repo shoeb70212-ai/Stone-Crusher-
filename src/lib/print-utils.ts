@@ -204,8 +204,9 @@ async function generatePdfBlob(htmlContent: string, filename: string): Promise<B
 export function printHtml(htmlContent: string): Promise<void> {
   return new Promise((resolve) => {
     const iframe = document.createElement('iframe');
-    // Off-screen but visible to the rendering engine so html/css applies.
-    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    // Off-screen with real dimensions so Chrome lays out the content before printing.
+    // A 0×0 frame causes Chrome to produce a blank print preview.
+    iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0;visibility:hidden;';
     document.body.appendChild(iframe);
 
     let cleaned = false;

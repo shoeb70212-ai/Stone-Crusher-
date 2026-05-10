@@ -12,7 +12,7 @@ import { captureDocument } from "../../lib/camera";
 import { Camera } from "lucide-react";
 
 export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSuccess: () => void; onCancel: () => void }) {
-  const { vehicles, addVehicle, updateVehicle, customers, updateSlip, slips, transactions, addTransaction, updateTransaction, deleteTransaction, companySettings, employees } = useErp();
+  const { vehicles, addVehicle, updateVehicle, customers, updateSlip, slips, companySettings, employees } = useErp();
   const activeVehicles = useActive(vehicles);
   const activeCustomers = useActive(customers);
   const activeEmployees = useActive(employees);
@@ -188,38 +188,10 @@ export function EditSlipForm({ slip, onSuccess, onCancel }: { slip: Slip; onSucc
       updateSlip(slip.id, updatedSlip);
     }
 
-    if (transactions) {
-      const existingTx = transactions.find(t => t.slipId === slip.id);
-      if (existingTx) {
-        if (finalAmountPaid > 0) {
-          if (updateTransaction) {
-            updateTransaction(existingTx.id, {
-              amount: finalAmountPaid,
-              customerId: updatedSlip.customerId
-            });
-          }
-        } else {
-          if (deleteTransaction) {
-            deleteTransaction(existingTx.id);
-          }
-        }
-      } else {
-        if (finalAmountPaid > 0) {
-          if (addTransaction) {
-            addTransaction({
-              id: "tx_" + generateId(),
-              date: new Date().toISOString(),
-              type: "Income",
-              category: "Slip Payment",
-              amount: finalAmountPaid,
-              description: `Payment for slip #${slip.id.slice(0, 5).toUpperCase()}`,
-              customerId: updatedSlip.customerId,
-              slipId: slip.id
-            });
-          }
-        }
-      }
-    }
+    // amountPaid is stored on the slip; ErpContext keeps the linked daybook
+    // "Cash Receipt (Slip)" entry in sync automatically via updateSlip.
+    // No separate customer transaction is created — that would double-count
+    // the payment in getCustomerBalance and the ledger.
 
     onSuccess();
   };
