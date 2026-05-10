@@ -33,7 +33,7 @@ import { useToast } from "../components/ui/Toast";
 import { ConfirmationModal } from "../components/ui/ConfirmationModal";
 import { EmptyState } from "../components/ui/EmptyState";
 import { downloadCSV } from "../lib/export-utils";
-import { generateId } from "../lib/utils";
+import { generateId, findExactDuplicate } from "../lib/utils";
 
 const salaryTypes: Employee["salaryType"][] = ["Weekly", "Monthly"];
 const paymentModes: NonNullable<EmployeeTransaction["paymentMode"]>[] = ["Cash", "Bank", "UPI", "Cheque", "Adjustment"];
@@ -282,6 +282,12 @@ export function Employees() {
 
     if (!validation.success) {
       addToast("error", validation.error.issues[0]?.message ?? "Invalid employee data.");
+      return;
+    }
+
+    const dupe = findExactDuplicate(employees, validation.data.name, editingEmployeeId ?? undefined);
+    if (dupe) {
+      addToast("error", `An employee named "${dupe.name}" already exists. Use a different name or edit the existing record.`);
       return;
     }
 

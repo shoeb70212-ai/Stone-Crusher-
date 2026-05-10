@@ -15,7 +15,7 @@
 
 import { isNative } from './capacitor';
 import type { CompanySettings, Customer, Invoice, Slip } from '../types';
-import { toWords, formatVehicleNo } from './utils';
+import { toWords, formatVehicleNo, formatQuantity } from './utils';
 
 // ---------------------------------------------------------------------------
 // Module-level constants
@@ -1308,7 +1308,7 @@ export async function createInvoicePdfBlob(
         { val: slip.driverName || '-',                   align: 'left'   as TextAlign },
         { val: slip.materialType,                        align: 'left'   as TextAlign },
         { val: modeLabel,                                align: 'left'   as TextAlign },
-        { val: `${slip.quantity.toLocaleString('en-IN')} ${unitLabel}`, align: 'right' as TextAlign },
+        { val: `${formatQuantity(slip.quantity)} ${unitLabel}`, align: 'right' as TextAlign },
         { val: slip.totalAmount.toLocaleString('en-IN'), align: 'right'  as TextAlign },
       ];
 
@@ -1476,7 +1476,7 @@ export async function createSlipPdfBlob(
     ...(slip.driverName ? [['Driver', slip.driverName + (slip.driverPhone ? ` (${slip.driverPhone.slice(-4)})` : '')] as [string, string]] : []),
     ['Customer', customerName],
     ['Material', slip.materialType],
-    ['Qty', `${slip.quantity.toFixed(1)} ${slip.measurementType === 'Volume (Brass)' ? 'Br' : 'T'}`],
+    ['Qty', `${formatQuantity(slip.quantity)} ${slip.measurementType === 'Volume (Brass)' ? 'Br' : 'T'}`],
   ];
 
   doc.setLineWidth(0.2);

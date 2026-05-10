@@ -161,22 +161,20 @@ export function Dashboard() {
       .reduce((acc, s) => acc + s.quantity, 0),
   }), [dateSlips, prevDateSlips]);
 
-  // Trips by Company Vehicles in period — only Loaded/Tallied (not Pending or Cancelled)
+  // Trips by all vehicles in period (Company + Third-Party) — only Loaded/Tallied
   const companyVehicleTrips = useMemo(() =>
     dateSlips
-      .filter(
-        (s) => s.deliveryMode === "Company Vehicle" && (s.status === "Loaded" || s.status === "Tallied"),
-      )
+      .filter((s) => s.status === "Loaded" || s.status === "Tallied")
       .reduce(
         (acc, curr) => {
           const key = normalizeVehicleNo(curr.vehicleNo) || curr.vehicleNo;
           if (!acc[key])
-            acc[key] = { trips: 0, quantity: 0, displayNo: formatVehicleNo(curr.vehicleNo) };
+            acc[key] = { trips: 0, quantity: 0, displayNo: formatVehicleNo(curr.vehicleNo), isThirdParty: curr.deliveryMode === "Third-Party Vehicle" };
           acc[key].trips += 1;
           acc[key].quantity += curr.quantity;
           return acc;
         },
-        {} as Record<string, { trips: number; quantity: number; displayNo: string }>,
+        {} as Record<string, { trips: number; quantity: number; displayNo: string; isThirdParty: boolean }>,
       ),
   [dateSlips]);
 
@@ -264,6 +262,33 @@ export function Dashboard() {
     () => transactions.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5),
     [transactions],
   );
+
+  const activityFeedItems = useMemo(() => {
+    return [
+      ...recentSlips.map((s) => ({
+        id: s.id,
+        type: "slip" as const,
+        date: s.date,
+        title: formatVehicleNo(s.vehicleNo),
+        subtitle: `${s.materialType} · ${s.quantity.toFixed(1)} ${s.measurementType === "Volume (Brass)" ? "Brass" : "Tons"}`,
+        amount: s.totalAmount,
+        status: s.status,
+        accentClass: "bg-info-muted text-info",
+        icon: Truck,
+      })),
+      ...recentTransactions.map((t) => ({
+        id: t.id,
+        type: "transaction" as const,
+        date: t.date,
+        title: t.category,
+        subtitle: t.type,
+        amount: t.amount,
+        status: t.type,
+        accentClass: t.type === "Income" ? "bg-success-muted text-success" : "bg-danger-muted text-danger",
+        icon: t.type === "Income" ? ArrowDownCircle : ArrowUpCircle,
+      })),
+    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 8);
+  }, [recentSlips, recentTransactions]);
 
   return (
     <div className="space-y-5 md:space-y-6">
@@ -436,34 +461,7 @@ export function Dashboard() {
           </button>
         </div>
         <div className="divide-y divide-border max-h-80 md:max-h-96 overflow-y-auto">
-          {/* Merge and sort recent slips + transactions by date */}
-          {useMemo(() => {
-            const activityItems = [
-              ...recentSlips.map((s) => ({
-                id: s.id,
-                type: "slip" as const,
-                date: s.date,
-                title: formatVehicleNo(s.vehicleNo),
-                subtitle: `${s.materialType} · ${s.quantity.toFixed(1)} ${s.measurementType === "Volume (Brass)" ? "Brass" : "Tons"}`,
-                amount: s.totalAmount,
-                status: s.status,
-                accentClass: "bg-info-muted text-info",
-                icon: Truck,
-              })),
-              ...recentTransactions.map((t) => ({
-                id: t.id,
-                type: "transaction" as const,
-                date: t.date,
-                title: t.category,
-                subtitle: t.type,
-                amount: t.amount,
-                status: t.type,
-                accentClass: t.type === "Income" ? "bg-success-muted text-success" : "bg-danger-muted text-danger",
-                icon: t.type === "Income" ? ArrowDownCircle : ArrowUpCircle,
-              })),
-            ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 8);
-            return activityItems;
-          }, [recentSlips, recentTransactions]).map((item) => (
+          {activityFeedItems.map((item) => (
             <div
               key={item.id + item.type}
               className="flex items-center gap-3 px-4 py-3 md:px-5 hover:bg-muted/60 transition-colors"
@@ -504,12 +502,12 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* ── Company Vehicles — refined card grid ── */}
+      {/* ── All Vehicle Trips — card grid ── */}
       <div className="card-surface p-4 md:p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-display font-semibold text-foreground flex items-center gap-2 text-sm md:text-base tracking-tight">
             <Truck className="w-4 h-4 text-muted-foreground" />
-            Company Vehicles
+            Vehicle Trips
           </h3>
         </div>
 
@@ -517,15 +515,20 @@ export function Dashboard() {
           {(
             Object.entries(companyVehicleTrips) as [
               string,
-              { trips: number; quantity: number; displayNo: string },
+              { trips: number; quantity: number; displayNo: string; isThirdParty: boolean },
             ][]
           ).map(([key, data]) => (
             <div
               key={key}
               className="flex justify-between items-center px-3 py-2.5 bg-surface-2 border border-border rounded-lg hover:border-border-strong transition-colors"
             >
-              <span className="font-semibold text-foreground text-xs md:text-sm tabular-nums">{data.displayNo}</span>
-              <div className="text-right leading-none">
+              <div className="min-w-0">
+                <span className="font-semibold text-foreground text-xs md:text-sm tabular-nums block truncate">{data.displayNo}</span>
+                <span className={`text-[9px] font-medium uppercase tracking-wide ${data.isThirdParty ? "text-amber-500" : "text-primary-500"}`}>
+                  {data.isThirdParty ? "3rd Party" : "Company"}
+                </span>
+              </div>
+              <div className="text-right leading-none ml-2 shrink-0">
                 <span className="text-sm md:text-base font-bold text-primary-600 dark:text-primary-400 block tabular-nums">
                   {data.trips}
                 </span>
@@ -538,7 +541,7 @@ export function Dashboard() {
           {Object.keys(companyVehicleTrips).length === 0 && (
             <div className="col-span-full rounded-lg border border-dashed border-border bg-surface-2 px-4 py-6 text-center">
               <p className="text-sm font-semibold text-foreground">No vehicle trips in this range</p>
-              <p className="mt-1 text-xs text-muted-foreground">Company vehicle activity will appear after slips are loaded or tallied.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Vehicle activity will appear after slips are loaded or tallied.</p>
             </div>
           )}
         </div>

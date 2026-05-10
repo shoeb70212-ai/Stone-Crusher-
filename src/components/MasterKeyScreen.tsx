@@ -1,8 +1,17 @@
 import React, { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { deriveKeyFromPassword, encryptData, decryptData, exportMasterKey } from '../lib/crypto-utils';
+import {
+  deriveKeyFromPassword,
+  encryptData,
+  decryptData,
+  exportMasterKey,
+  PBKDF2_ITERATIONS,
+  PBKDF2_ITERATIONS_LEGACY,
+} from '../lib/crypto-utils';
 import { setMasterKey } from '../lib/sync-engine';
 import { Lock, Eye, EyeOff, ShieldCheck, AlertTriangle } from 'lucide-react';
+
+export const VAULT_TRUST_KEY = 'crushtrack_vault_trusted';
 
 /**
  * MasterKeyScreen
@@ -26,6 +35,7 @@ export default function MasterKeyScreen({ onUnlocked }: MasterKeyScreenProps) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [trustDevice, setTrustDevice] = useState(false);
   const [isFirstTime, setIsFirstTime] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -76,32 +86,38 @@ export default function MasterKeyScreen({ onUnlocked }: MasterKeyScreenProps) {
       const salt = window.crypto.getRandomValues(new Uint8Array(16));
       const saltBase64 = btoa(String.fromCharCode(...salt));
 
-      // Derive the AES key
-      const key = await deriveKeyFromPassword(password, salt);
+      // Derive the AES key using the current (high) iteration count
+      const key = await deriveKeyFromPassword(password, salt, PBKDF2_ITERATIONS);
 
       // Encrypt a known verification string so we can check the password later
       const verifyToken = await encryptData(VERIFY_PLAINTEXT, key);
 
-      // Store salt + verification token in Supabase
+      // Store salt + verification token + iteration count in Supabase
       const { error: upsertError } = await supabase
         .from('encrypted_records')
         .upsert({
           id: SALT_RECORD_ID,
           collection_name: SYSTEM_COLLECTION,
-          encrypted_data: JSON.stringify({ salt: saltBase64, verifyToken }),
+          encrypted_data: JSON.stringify({ salt: saltBase64, verifyToken, iterations: PBKDF2_ITERATIONS }),
           is_deleted: false,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'id' });
 
       if (upsertError) throw upsertError;
 
-      // Store the key in memory
+      // Store key in memory; only persist to localStorage when user opts in
       setMasterKey(key);
-      const exported = await exportMasterKey(key);
-      localStorage.setItem('crushtrack_vault_key', exported);
+      if (trustDevice) {
+        const exported = await exportMasterKey(key);
+        localStorage.setItem('crushtrack_vault_key', exported);
+        localStorage.setItem(VAULT_TRUST_KEY, '1');
+      } else {
+        localStorage.removeItem('crushtrack_vault_key');
+        localStorage.removeItem(VAULT_TRUST_KEY);
+      }
       onUnlocked();
-    } catch (e: any) {
-      setError(e.message || 'Failed to set up vault.');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to set up vault.');
     } finally {
       setLoading(false);
     }
@@ -127,7 +143,7 @@ export default function MasterKeyScreen({ onUnlocked }: MasterKeyScreenProps) {
 
       if (fetchError || !data) throw new Error('Vault not found. Please contact your administrator.');
 
-      const { salt: saltBase64, verifyToken } = JSON.parse(data.encrypted_data);
+      const { salt: saltBase64, verifyToken, iterations: storedIterations } = JSON.parse(data.encrypted_data);
 
       // Reconstruct the salt
       const saltBinary = atob(saltBase64);
@@ -136,8 +152,13 @@ export default function MasterKeyScreen({ onUnlocked }: MasterKeyScreenProps) {
         salt[i] = saltBinary.charCodeAt(i);
       }
 
+      // Use stored iteration count so old vaults (100k) still unlock correctly
+      const iterations: number = typeof storedIterations === 'number'
+        ? storedIterations
+        : PBKDF2_ITERATIONS_LEGACY;
+
       // Derive the key from the entered password
-      const key = await deriveKeyFromPassword(password, salt);
+      const key = await deriveKeyFromPassword(password, salt, iterations);
 
       // Try to decrypt the verification token
       const decrypted = await decryptData(verifyToken, key);
@@ -146,16 +167,23 @@ export default function MasterKeyScreen({ onUnlocked }: MasterKeyScreenProps) {
         throw new Error('Incorrect Master Password.');
       }
 
-      // Success — store key in memory
+      // Store key in memory; only persist to localStorage when user opts in
       setMasterKey(key);
-      const exported = await exportMasterKey(key);
-      localStorage.setItem('crushtrack_vault_key', exported);
+      if (trustDevice) {
+        const exported = await exportMasterKey(key);
+        localStorage.setItem('crushtrack_vault_key', exported);
+        localStorage.setItem(VAULT_TRUST_KEY, '1');
+      } else {
+        localStorage.removeItem('crushtrack_vault_key');
+        localStorage.removeItem(VAULT_TRUST_KEY);
+      }
       onUnlocked();
-    } catch (e: any) {
-      if (e.message?.includes('Decryption failed')) {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '';
+      if (msg.includes('Decryption failed')) {
         setError('Incorrect Master Password. Please try again.');
       } else {
-        setError(e.message || 'Failed to unlock vault.');
+        setError(msg || 'Failed to unlock vault.');
       }
     } finally {
       setLoading(false);
@@ -249,6 +277,17 @@ export default function MasterKeyScreen({ onUnlocked }: MasterKeyScreenProps) {
             </div>
           </div>
         )}
+
+        {/* Trust this device */}
+        <label style={styles.trustLabel}>
+          <input
+            type="checkbox"
+            checked={trustDevice}
+            onChange={(e) => setTrustDevice(e.target.checked)}
+            style={{ marginRight: '0.5rem' }}
+          />
+          Trust this device (stay unlocked after reload)
+        </label>
 
         {/* Submit Button */}
         <button
@@ -368,6 +407,15 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#64748b',
     cursor: 'pointer',
     padding: '0.25rem',
+  },
+  trustLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    color: '#94a3b8',
+    fontSize: '0.8rem',
+    marginBottom: '0.75rem',
+    cursor: 'pointer',
+    textAlign: 'left' as const,
   },
   button: {
     width: '100%',

@@ -75,6 +75,8 @@ export function Layout() {
   useEffect(() => {
     if (!isNative()) return;
 
+    let removeShortcutListener: (() => void) | undefined;
+
     import('@capawesome/capacitor-app-shortcuts').then(({ AppShortcuts }) => {
       AppShortcuts.set({
         shortcuts: [
@@ -110,8 +112,12 @@ export function Layout() {
         if (VALID_VIEWS.has(view)) {
           setLocation(`/${view}`);
         }
+      }).then((handle) => {
+        removeShortcutListener = () => handle.remove();
       }).catch(() => {});
     });
+
+    return () => removeShortcutListener?.();
   }, [setLocation]);
 
   // Android hardware back button — navigate to dashboard instead of exiting app
@@ -221,7 +227,9 @@ export function Layout() {
     }
   }, [companySettings.theme, companySettings.primaryColor, companySettings.designTheme]);
 
-  // Route protection
+  // Route protection — re-runs when the view changes or when permissions change
+  // (e.g. admin revokes a Manager's access mid-session). hasPermission is stable
+  // between mutations; it only rebuilds when userRole or currentSessionUser changes.
   useEffect(() => {
     if (currentView === "ledger" && !hasPermission("viewCustomerLedger")) setLocation("/dashboard");
     if (currentView === "settings" && !isAdmin) setLocation("/dashboard");

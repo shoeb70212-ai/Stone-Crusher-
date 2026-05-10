@@ -1,7 +1,7 @@
 import { Invoice, InvoiceItem, Slip, Customer } from "../../types";
 import { MobileModal } from "../../components/ui/MobileModal";
 import { Combobox } from "../../components/ui/Combobox";
-import { formatVehicleNo } from "../../lib/utils";
+import { formatVehicleNo, formatQuantity } from "../../lib/utils";
 import { Download, MessageCircle, Printer, FileText, Loader2, X } from "lucide-react";
 
 interface Material {
@@ -104,7 +104,19 @@ export function InvoiceCreateModal({
         {unbilledSlips.length > 0 && (
           <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
             <div className="bg-zinc-50 dark:bg-zinc-900/50 px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 font-semibold text-xs text-zinc-700 dark:text-zinc-200 flex justify-between items-center">
-              <span>Select Slips</span>
+              <div className="flex items-center gap-2">
+                <span>Select Slips</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allSelected = unbilledSlips.every((s) => selectedSlipIds.includes(s.id));
+                    setSelectedSlipIds(allSelected ? [] : unbilledSlips.map((s) => s.id));
+                  }}
+                  className="text-[10px] font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 underline underline-offset-2"
+                >
+                  {unbilledSlips.every((s) => selectedSlipIds.includes(s.id)) ? "Clear All" : "Select All"}
+                </button>
+              </div>
               <button
                 onClick={() => {
                   const itemsMap = new Map<string, InvoiceItem>();
@@ -168,7 +180,7 @@ export function InvoiceCreateModal({
                         {slip.materialType}
                       </span>
                       <span className="font-medium text-zinc-900 dark:text-white">
-                        {slip.quantity} {slip.measurementType.includes("Brass") ? "Brass" : "Ton"}
+                        {formatQuantity(slip.quantity)} {slip.measurementType.includes("Brass") ? "Brass" : "Ton"}
                       </span>
                     </div>
                   </div>

@@ -48,30 +48,19 @@ export async function verifyBearerToken(
   req: VercelRequest,
 ): Promise<{ userId: string; email: string; appMetadata: Record<string, unknown> } | null> {
   const auth = req.headers['authorization'];
-  if (!auth?.startsWith('Bearer ')) {
-    console.log('[DEBUG-AUTH] verifyBearerToken: Missing or invalid Authorization header');
-    return null;
-  }
+  if (!auth?.startsWith('Bearer ')) return null;
   const token = auth.slice('Bearer '.length);
 
   try {
     const { data, error } = await supabaseAdmin.auth.getUser(token);
-    if (error) {
-      console.log('[DEBUG-AUTH] verifyBearerToken: getUser error:', error.message);
-      return null;
-    }
-    if (!data.user) {
-      console.log('[DEBUG-AUTH] verifyBearerToken: getUser returned no user');
-      return null;
-    }
+    if (error || !data.user) return null;
 
     return {
       userId: data.user.id,
       email: data.user.email ?? '',
       appMetadata: data.user.app_metadata ?? {},
     };
-  } catch (err) {
-    console.log('[DEBUG-AUTH] verifyBearerToken: Exception caught:', err);
+  } catch {
     return null;
   }
 }

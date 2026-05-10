@@ -182,6 +182,19 @@ const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
 
 const LOCAL_BACKUP_KEY = "erp_data_backup";
 
+// Module-level constants — defined once at import time rather than as useMemo
+// with [] deps inside the provider (same end result, cheaper to allocate).
+const MANAGER_PERMISSIONS = new Set([
+  "viewAllCustomers", "viewCustomerLedger", "viewCustomerStatement",
+  "viewPendingAmounts", "viewAllDispatches", "viewDaybook",
+  "viewReports", "manageVehicles", "manageEmployees",
+]);
+
+const PARTNER_PERMISSIONS = new Set([
+  "viewAllCustomers", "viewCustomerLedger", "viewCustomerStatement",
+  "viewPendingAmounts", "viewAllDispatches", "viewReports",
+]);
+
 // ---------------------------------------------------------------------------
 // Context
 // ---------------------------------------------------------------------------
@@ -213,15 +226,15 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
   const [companySettings, setCompanySettings] = useState<CompanySettings>(DEFAULT_COMPANY_SETTINGS);
   const [bootstrapRequired, setBootstrapRequired] = useState<boolean | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [userRole, _setUserRole] = useState<UserRole | null>(() => {
-    const saved = localStorage.getItem('erp_user_role');
-    return saved === 'Admin' || saved === 'Manager' || saved === 'Partner' ? saved : null;
-  });
+  const [userRole, _setUserRole] = useState<UserRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error' | 'failed'>('idle');
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [historicalBalances, setHistoricalBalances] = useState<Record<string, number>>({});
   const [historicalEmployeeBalances, setHistoricalEmployeeBalances] = useState<Record<string, number>>({});
+  // True when initial data was loaded from IDB — those records are already persisted,
+  // so the backup effect can skip the redundant full-collection write storm.
+  const loadedFromIDB = useRef(false);
 
   // Subscribe to Supabase Auth state changes.  When the session transitions
   // the role is re-derived below (in the settings-load effect).
@@ -360,7 +373,20 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
 
   // ── Initial load: IndexedDB → localStorage fallback, then unblock UI ──
   // Does NOT depend on isVaultUnlocked so it runs exactly once per session.
+  // lastLoadedUserIdRef prevents a redundant second IDB scan: ErpContext calls
+  // getSession() async, so on cold boot the effect fires first with session=null
+  // (uid=undefined) and again once the session resolves (uid="real-id"). Both
+  // passes read identical local data. We skip the second run if the user ID
+  // hasn't actually changed. The sentinel `null` (distinct from `undefined`)
+  // ensures the very first run always proceeds.
+  const lastLoadedUserIdRef = useRef<string | undefined | null>(null);
   useEffect(() => {
+    const uid = session?.user?.id;
+    // null means "never loaded" — always proceed on first mount.
+    // After the first load, skip re-runs when the user ID is unchanged.
+    if (lastLoadedUserIdRef.current !== null && uid === lastLoadedUserIdRef.current) return;
+    lastLoadedUserIdRef.current = uid;
+
     async function loadData() {
       let loaded = false;
 
@@ -369,6 +395,11 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
         const localEmpty = await isLocalEmpty();
         if (!localEmpty) {
           loaded = await loadFromIDB();
+          if (loaded) {
+            // Records came from IDB — they're already persisted there.
+            // Signal the backup effect to skip the redundant write-all pass.
+            loadedFromIDB.current = true;
+          }
         }
       } catch (e) {
         console.warn('[ErpContext] IndexedDB load failed:', e);
@@ -397,6 +428,12 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
       try {
         const cloudData = await pullAllFromCloud();
         if (cloudData) {
+          if (cloudData.skippedCount > 0) {
+            console.error(
+              `[ErpContext] Cloud pull: ${cloudData.skippedCount} record(s) could not be decrypted. ` +
+              'They were skipped — the vault key may not match these records.',
+            );
+          }
           await loadFromIDB();
         }
       } catch (e) {
@@ -432,6 +469,15 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
   const retryCountRef = useRef(0);
   const MAX_RETRIES = 5;
   const syncInProgressRef = useRef(false);
+  // Tracks whether the provider is still mounted — the retry loop checks this
+  // before each attempt so it doesn't keep firing after sign-out/unmount.
+  const isMountedRef = useRef(true);
+
+  // Clear the mounted flag on provider teardown so async retry loops abort cleanly.
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   const updatePendingCount = useCallback(() => {
     let count = 0;
@@ -517,11 +563,8 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
     const hasDeletions = Object.keys(payload.deletions).length > 0;
     if (!hasUpdates && !hasDeletions) return true;
 
-    // Capture any concurrent edits that arrived before we reset the queue.
-    const preflightQueue = { ...syncQueueRef.current };
-
-    // Reset queue before the async call so concurrent mutations that arrive
-    // while this request is in-flight go into the next batch.
+    // Reset queue before the async call so mutations that arrive while the
+    // request is in-flight accumulate into the next batch, not this one.
     syncQueueRef.current = { updates: {}, deletions: {} };
     updatePendingCount();
     syncInProgressRef.current = true;
@@ -558,31 +601,34 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
       retryCountRef.current = 0;
       setSyncStatus('idle');
       return true;
-    } catch {
+    } catch (err) {
+      console.error('[sync] flushSyncQueue failed:', err);
       setSyncStatus('error');
-      // Merge the failed payload back, then also merge any edits that arrived
-      // during the failed request so nothing is lost.
+      // Requeue the failed payload so it retries on the next sync cycle.
       requeueFailedPayload(payload);
-      requeueFailedPayload(preflightQueue);
       return false;
     } finally {
       syncInProgressRef.current = false;
     }
-  }, [session, requeueFailedPayload]);
+  }, [requeueFailedPayload]);
 
   /** Flushes the accumulated delta queue to the server after a 400ms debounce.
-   *  Retries with exponential backoff (400ms, 800ms, 1.6s, 3.2s, 6.4s). */
+   *  Retries with exponential backoff (400ms, 800ms, 1.6s, 3.2s, 6.4s).
+   *  Aborts the retry loop immediately if the provider unmounts (e.g. sign-out). */
   const triggerSync = useCallback(() => {
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(async () => {
       let ok = await flushSyncQueue();
-      while (!ok && retryCountRef.current < MAX_RETRIES) {
+      // Check isMountedRef before each retry — the loop runs for up to 12 s
+      // and the provider may unmount (sign-out) before it finishes.
+      while (!ok && retryCountRef.current < MAX_RETRIES && isMountedRef.current) {
         retryCountRef.current++;
         const backoff = Math.min(400 * Math.pow(2, retryCountRef.current - 1), 6400);
         await new Promise((resolve) => setTimeout(resolve, backoff));
+        if (!isMountedRef.current) break;
         ok = await flushSyncQueue();
       }
-      if (!ok && retryCountRef.current >= MAX_RETRIES) {
+      if (!ok && retryCountRef.current >= MAX_RETRIES && isMountedRef.current) {
         setSyncStatus('failed');
       }
     }, 400);
@@ -627,7 +673,17 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
     if (backupTimeoutRef.current) clearTimeout(backupTimeoutRef.current);
     backupTimeoutRef.current = setTimeout(async () => {
       try {
-        // Save each collection to IndexedDB — all writes in parallel
+        // When data was loaded from IDB it's already persisted — writing every
+        // record back would saturate the storage thread with thousands of no-op
+        // writes and cause the "hang then recover" symptom. Only do the full
+        // write-all when data came from the localStorage fallback (IDB was empty).
+        if (loadedFromIDB.current) {
+          // Collections are already in IDB; queueUpdate/flushSyncQueue handles
+          // mutations. Only persist the singleton which isn't a collection write.
+          await saveLocalSingleton('companySettings', companySettings);
+          return;
+        }
+        // Data came from localStorage fallback — populate IDB for future cold boots.
         const collections: Record<string, any[]> = {
           customers, employees, employeeTransactions, slips,
           transactions, vehicles, invoices, quotations, tasks, auditLogs,
@@ -640,6 +696,8 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
         }
         writes.push(saveLocalSingleton('companySettings', companySettings));
         await Promise.all(writes);
+        // Mark as persisted so subsequent mutations don't re-trigger the full write.
+        loadedFromIDB.current = true;
       } catch (e) {
         console.error('[ErpContext] IndexedDB backup failed:', e);
       }
@@ -656,7 +714,7 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
     tasks,
     auditLogs,
     companySettings,
-    bootstrapRequired,
+    // bootstrapRequired intentionally omitted — it's not read inside the effect
     isLoading,
   ]);
 
@@ -740,7 +798,6 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
 
     if (resolvedRole) {
       _setUserRole(resolvedRole);
-      localStorage.setItem('erp_user_role', resolvedRole);
     }
   }, [isLoading, session, companySettings.users]);
 
@@ -759,18 +816,6 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
         u.email.toLowerCase() === (session.user.email ?? '').toLowerCase(),
     ) ?? null;
   }, [session, companySettings.users]);
-
-  // Stable Sets for O(1) default-permission lookups (created once, never reallocated).
-  const MANAGER_PERMISSIONS = useMemo(() => new Set([
-    "viewAllCustomers", "viewCustomerLedger", "viewCustomerStatement",
-    "viewPendingAmounts", "viewAllDispatches", "viewDaybook",
-    "viewReports", "manageVehicles", "manageEmployees",
-  ]), []);
-
-  const PARTNER_PERMISSIONS = useMemo(() => new Set([
-    "viewAllCustomers", "viewCustomerLedger", "viewCustomerStatement",
-    "viewPendingAmounts", "viewAllDispatches", "viewReports",
-  ]), []);
 
   const getCurrentActor = useCallback(() => {
     if (!session) {
@@ -819,7 +864,7 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
 
     if (userRole === "Manager") return MANAGER_PERMISSIONS.has(key);
     return PARTNER_PERMISSIONS.has(key);
-  }, [userRole, currentSessionUser, MANAGER_PERMISSIONS, PARTNER_PERMISSIONS]);
+  }, [userRole, currentSessionUser]);
 
   // -----------------------------------------------------------------------
   // Vehicle CRUD
@@ -1036,7 +1081,9 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
       },
     });
     return flushSyncQueue();
-  }, [userRole, queueUpdate, recordAudit, flushSyncQueue]);
+    // companySettings is read inside for Partner/Manager role merging — it must
+    // be in deps to prevent stale-closure bugs when settings change between renders.
+  }, [userRole, companySettings, queueUpdate, recordAudit, flushSyncQueue]);
 
   /** Toggles a material's active/inactive state by ID. */
   const toggleMaterialActive = useCallback((id: string) => {
@@ -1230,7 +1277,7 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
   // Slip CRUD
   // -----------------------------------------------------------------------
 
-  /** Appends a new dispatch slip. */
+  /** Appends a new dispatch slip. Auto-creates a daybook Income entry for any on-slip cash collected. */
   const addSlip = useCallback((slip: Slip): boolean => {
     setSlips((prev) => [...prev, slip]);
     queueUpdate("slips", slip);
@@ -1247,6 +1294,25 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
         totalAmount: slip.totalAmount,
       },
     });
+
+    // When cash is collected at dispatch for a credit customer, record a daybook Income
+    // transaction so the cash flow is visible in the daybook. The transaction carries
+    // slipId for cross-reference but no customerId — the slip's amountPaid field already
+    // handles the credit in getCustomerBalance to avoid double-counting.
+    if ((slip.amountPaid ?? 0) > 0 && slip.customerId !== "CASH") {
+      const cashTx: Transaction = {
+        id: generateId(),
+        date: slip.date,
+        type: "Income",
+        amount: slip.amountPaid!,
+        category: "Cash Receipt (Slip)",
+        description: `Cash collected on dispatch for ${formatVehicleNo(slip.vehicleNo)}`,
+        slipId: slip.id,
+      };
+      setTransactions((prev) => [...prev, cashTx]);
+      queueUpdate("transactions", cashTx);
+    }
+
     return true;
   }, [queueUpdate, recordAudit]);
 
@@ -1268,7 +1334,7 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
     return true;
   }, [slips, queueUpdate, recordAudit]);
 
-  /** Partially updates a slip by ID (used by EditSlipForm). */
+  /** Partially updates a slip by ID (used by EditSlipForm). Keeps the auto-generated cash receipt transaction in sync. */
   const updateSlip = useCallback((id: string, updates: Partial<Slip>): boolean => {
     const previous = slips.find((s) => s.id === id);
     if (!previous) return false;
@@ -1289,8 +1355,36 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
         invoiceId: updated.invoiceId,
       },
     });
+
+    // Keep the linked daybook cash-receipt transaction in sync with amountPaid changes.
+    if ("amountPaid" in updates && updated.customerId !== "CASH") {
+      const linked = transactions.find((t) => t.slipId === id && t.category === "Cash Receipt (Slip)");
+      const newAmount = updated.amountPaid ?? 0;
+
+      if (!linked && newAmount > 0) {
+        const cashTx: Transaction = {
+          id: generateId(),
+          date: updated.date,
+          type: "Income",
+          amount: newAmount,
+          category: "Cash Receipt (Slip)",
+          description: `Cash collected on dispatch for ${formatVehicleNo(updated.vehicleNo)}`,
+          slipId: id,
+        };
+        setTransactions((prev) => [...prev, cashTx]);
+        queueUpdate("transactions", cashTx);
+      } else if (linked && newAmount <= 0) {
+        setTransactions((prev) => prev.filter((t) => t.id !== linked.id));
+        queueDelete("transactions", linked.id);
+      } else if (linked && newAmount > 0 && linked.amount !== newAmount) {
+        const updated2 = { ...linked, amount: newAmount };
+        setTransactions((prev) => prev.map((t) => (t.id === linked.id ? updated2 : t)));
+        queueUpdate("transactions", updated2);
+      }
+    }
+
     return true;
-  }, [slips, queueUpdate, recordAudit]);
+  }, [slips, transactions, queueUpdate, queueDelete, recordAudit]);
 
   // -----------------------------------------------------------------------
   // Transaction CRUD
@@ -1574,17 +1668,21 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
 
   const loadHistoricalData = useCallback(async () => {
     try {
-      const allSlips = await getLocalCollection('slips');
+      const [allSlips, allInvoices, allTransactions, allQuotations, allEmployeeTx, allAuditLogs] =
+        await Promise.all([
+          getLocalCollection('slips'),
+          getLocalCollection('invoices'),
+          getLocalCollection('transactions'),
+          getLocalCollection('quotations'),
+          getLocalCollection('employeeTransactions'),
+          getLocalCollection('auditLogs'),
+        ]);
+
       setSlips(allSlips as unknown as Slip[]);
-      const allInvoices = await getLocalCollection('invoices');
       setInvoices(allInvoices as unknown as Invoice[]);
-      const allTransactions = await getLocalCollection('transactions');
       setTransactions(allTransactions as unknown as Transaction[]);
-      const allQuotations = await getLocalCollection('quotations');
       setQuotations(allQuotations as unknown as Quotation[]);
-      const allEmployeeTx = await getLocalCollection('employeeTransactions');
       setEmployeeTransactions(allEmployeeTx as unknown as EmployeeTransaction[]);
-      const allAuditLogs = await getLocalCollection('auditLogs');
       setAuditLogs(allAuditLogs as unknown as AuditLog[]);
 
       // Reset historical balances since all data is now in state
@@ -1597,9 +1695,11 @@ export function ErpProvider({ children, isVaultUnlocked = false }: { children: R
 
   const loadInactiveCustomers = useCallback(async () => {
     try {
-      const allCustomers = await getLocalCollection('customers');
+      const [allCustomers, allEmployees] = await Promise.all([
+        getLocalCollection('customers'),
+        getLocalCollection('employees'),
+      ]);
       setCustomers(allCustomers as unknown as Customer[]);
-      const allEmployees = await getLocalCollection('employees');
       setEmployees(allEmployees as unknown as Employee[]);
     } catch (e) {
       console.error('[ErpContext] Failed to load inactive customers:', e);
